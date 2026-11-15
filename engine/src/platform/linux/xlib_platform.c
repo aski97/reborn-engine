@@ -20,6 +20,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h> /* IconicState */
 
 /* ============================================================================
  * State
@@ -36,6 +37,7 @@ struct rb_platform_state {
     /* Atoms are interned once: each XInternAtom is a round trip to the server. */
     Atom        wm_protocols;
     Atom        wm_delete_window;
+    Atom        wm_state;
     Atom        net_wm_name;
     Atom        utf8_string;
     xlib_window windows[RB_MAX_WINDOWS];
@@ -50,6 +52,13 @@ _Static_assert(offsetof(struct rb_platform_state, common) == 0,
  * default handler turns into exit.
  */
 #define XLIB_SIZE_MAX 32767u
+
+/*
+ * Events each window subscribes to; XSelectInput replaces the whole mask, so it
+ * is set once here. StructureNotify: ConfigureNotify (size). FocusChange:
+ * FocusIn/FocusOut. PropertyChange: PropertyNotify, for WM_STATE (minimized).
+ */
+#define XLIB_EVENT_MASK (StructureNotifyMask | FocusChangeMask | PropertyChangeMask)
 
 /* ============================================================================
  * Helpers
@@ -81,6 +90,75 @@ static void xlib_set_title(rb_platform_state *state, Window xid, const char *tit
                     bytes, length);
     XChangeProperty(state->display, xid, XA_WM_NAME, state->utf8_string, 8, PropModeReplace, bytes,
                     length);
+}
+
+static rb_window_size xlib_window_size(u32 width, u32 height) {
+    /* No per-monitor scale in the core protocol: logical units are pixels (ADR 0006). */
+    return (rb_window_size){width, height, width, height};
+}
+
+static void xlib_handle_configure(rb_platform_state *state, const XConfigureEvent *ev) {
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+    /*
+     * Also sent for moves and restacking: the common state drops those, since
+     * the size is unchanged.
+     */
+    rb_platform_common_window_resized(&state->common, window->id,
+                                      xlib_window_size((u32)ev->width, (u32)ev->height));
+}
+
+static void xlib_handle_focus(rb_platform_state *state, const XFocusChangeEvent *ev) {
+    /*
+     * A keyboard grab (the window manager during Alt+Tab or a drag) moves the
+     * focus away and back without the user changing window: those come with mode
+     * NotifyGrab / NotifyUngrab and are ignored.
+     */
+    if (ev->mode == NotifyGrab || ev->mode == NotifyUngrab) {
+        return;
+    }
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+    rb_platform_common_window_focused(&state->common, window->id, ev->type == FocusIn);
+}
+
+/*
+ * X11 has no "minimized" event: the window manager writes the ICCCM WM_STATE
+ * property on the client window, and IconicState means minimized. Unmap/Map is
+ * not used: compositing window managers may keep minimized windows mapped.
+ */
+static void xlib_handle_property(rb_platform_state *state, const XPropertyEvent *ev) {
+    if (ev->atom != state->wm_state || ev->state != PropertyNewValue) {
+        return;
+    }
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+
+    Atom           type;
+    int            format;
+    unsigned long  count;
+    unsigned long  bytes_after;
+    unsigned char *data = NULL;
+    /* Offset 0, length 2 (in 32-bit units): state and icon window. A round trip. */
+    int result = XGetWindowProperty(state->display, ev->window, state->wm_state, 0, 2, False,
+                                    state->wm_state, &type, &format, &count, &bytes_after, &data);
+    if (result == Success && type == state->wm_state && format == 32 && count >= 1) {
+        /*
+         * Format 32 data comes back as an array of C `long`, which is 64 bits on
+         * 64-bit Linux, not as 32-bit values.
+         */
+        long wm_state = ((const long *)(const void *)data)[0];
+        rb_platform_common_window_minimized(&state->common, window->id, wm_state == IconicState);
+    }
+    if (data != NULL) {
+        XFree(data);
+    }
 }
 
 static void xlib_handle_client_message(rb_platform_state *state, const XClientMessageEvent *msg) {
@@ -132,6 +210,7 @@ bool rb_platform_startup(rb_platform_state *state) {
     /* False: create the atom if no client has yet. */
     state->wm_protocols = XInternAtom(state->display, "WM_PROTOCOLS", False);
     state->wm_delete_window = XInternAtom(state->display, "WM_DELETE_WINDOW", False);
+    state->wm_state = XInternAtom(state->display, "WM_STATE", False);
     state->net_wm_name = XInternAtom(state->display, "_NET_WM_NAME", False);
     state->utf8_string = XInternAtom(state->display, "UTF8_STRING", False);
     RB_LOG_DEBUG("Xlib platform started on display \"%s\"", DisplayString(state->display));
@@ -210,7 +289,14 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
         return invalid;
     }
     xlib_set_title(state, xid, desc->title != NULL ? desc->title : "");
+    XSelectInput(state->display, xid, XLIB_EVENT_MASK);
 
+    /*
+     * The requested size: if the window manager picks another (a tiling one
+     * does), its ConfigureNotify arrives as RB_EVENT_WINDOW_RESIZED.
+     */
+    rb_platform_common_window_opened(&state->common, id,
+                                     xlib_window_size(desc->width, desc->height));
     xlib_window *slot = &state->windows[rb_handle_index(id)];
     slot->xid = xid;
     slot->id = id;
@@ -250,14 +336,29 @@ void rb_platform_pump(rb_platform_state *state) {
      * XPending returns how many events are queued; when none are, it first
      * flushes our requests and reads what the server has sent, without
      * waiting. XNextEvent alone would block on an empty queue. ClientMessage
-     * needs no XSelectInput: it is always delivered. Other events are ignored
-     * until resize, focus and input.
+     * needs no XSelectInput: it is always delivered; the others come from
+     * XLIB_EVENT_MASK. Events for windows already destroyed find no slot and
+     * are dropped by the handlers.
      */
     while (XPending(state->display) > 0) {
         XEvent event;
         XNextEvent(state->display, &event);
-        if (event.type == ClientMessage) {
+        switch (event.type) {
+        case ClientMessage:
             xlib_handle_client_message(state, &event.xclient);
+            break;
+        case ConfigureNotify:
+            xlib_handle_configure(state, &event.xconfigure);
+            break;
+        case FocusIn:
+        case FocusOut:
+            xlib_handle_focus(state, &event.xfocus);
+            break;
+        case PropertyNotify:
+            xlib_handle_property(state, &event.xproperty);
+            break;
+        default:
+            break;
         }
     }
 }

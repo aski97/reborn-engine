@@ -58,8 +58,56 @@ are not needed for v0.1 but must not require an API break later.
 2. Own enum by character (virtual key) — names match the letter; game bindings scatter on
    AZERTY/QWERTZ.
 
+**G. Window lifecycle: what the API offers**
+1. Events only (resize, focus, minimize) — smallest; the renderer still needs the size when it
+   creates the swapchain.
+2. Events + queries (`rb_window_get_size`, `rb_window_is_focused`, `rb_window_is_minimized`),
+   answering as of the last pump.
+3. 2 + commands (`set_size`, `minimize`, `focus`) — nothing needs them before fullscreen and video
+   options.
+
+**H. Shape of lifecycle events**
+1. One type per transition (`RESIZED`, `FOCUS_GAINED`/`LOST`, `MINIMIZED`/`RESTORED`) — a `switch`
+   handles them; only resize has a payload.
+2. One `WINDOW_STATE_CHANGED` with a snapshot — fewer types; every handler diffs it against the
+   previous state.
+
+**I. Units of a resize**
+1. One event with logical size and pixel size — a DPI change alters pixels only and still fires;
+   on Linux both are equal.
+2. Two events (logical, pixel), as SDL3 and GLFW — precise; two events per resize.
+3. Pixels only, plus a scale query.
+
+**J. Size of a minimized window** (Win32 reports 0×0, X11 keeps the size, Vulkan rejects a 0×0
+swapchain)
+1. Size kept while minimized; only `MINIMIZED` is sent — same on both OSes, the renderer skips
+   frames.
+2. Report 0×0 as Win32 does — Linux differs, every user handles zero.
+
+**K. Filtering redundant OS messages** (Win32 sends `WM_SIZE` with an unchanged size, X11
+`ConfigureNotify` for moves)
+1. Per-window state in `rb_platform_common`; backends report what the OS says, the common code
+   compares and queues an event only on a change — written once, unit-testable, shared with the
+   queries.
+2. Each backend filters by itself — duplicated, not testable without windows.
+
+**L. Bursts of resizes** (one per mouse move while dragging a border: hundreds, the queue holds 256)
+1. Merge a resize into the newest queued event when that is a resize of the same window — keeps
+   ordering, the mechanism planned for mouse moves; the ring needs newest-element access.
+2. Send the resize only at the end of the drag (`WM_EXITSIZEMOVE`) — Win32 only.
+
+**M. Win32 modal loop** (while dragging or resizing, `rb_platform_pump` does not return)
+1. Keep it as a known limit until the game loop (§4).
+2. A `WM_TIMER` that runs game code inside the modal loop — engine code inside an OS callback.
+3. A window thread — needs threading (backlog).
+
+**N. Minimized on X11** (no such event: the window manager reports it)
+1. ICCCM `WM_STATE` property (`IconicState`), read on `PropertyNotify` — oldest, most widely set.
+2. EWMH `_NET_WM_STATE_HIDDEN` — newer; a list of atoms to parse.
+3. `UnmapNotify`/`MapNotify` — compositing window managers may keep minimized windows mapped.
+
 ## Decision
-**A1, B2 (then B3 with §6), C3, D2, E1, F1.**
+**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1.**
 - **A1:** the public API is one header; CMake compiles `platform/win32/` or `platform/linux/`.
   If Linux ever needs two backends, the vtable lives inside the Linux backend only (A3 locally).
 - **B2:** systems never allocate their own state; `rb_engine` owns every system's memory.
@@ -110,6 +158,26 @@ Further choices:
   titles to `_NET_WM_NAME` and `WM_NAME`, both typed `UTF8_STRING`. Rejected: `XStoreName`
   (types them Latin-1) and `Xutf8SetWMProperties` (converts through the process locale).
 
+Window lifecycle:
+- **G2, H1, I1:** queries answer "how is the window now", events "what changed"; the renderer
+  needs the former at swapchain creation and the latter to recreate it. `rb_window_size` holds
+  logical and pixel size and is both the event payload (`ev.resize`) and the query result.
+- **J1:** a minimized window keeps its size, so no consumer ever sees zero from minimizing.
+  Maximizing is not a state: for the game it is a resize. Win32 can still report 0 pixels for a
+  window shrunk to its title bar; the renderer skips such frames like minimized ones.
+- **K1:** the state is not a cache with expiry: the OS reports every change, so it is current as of
+  the last pump. It is updated before the event is queued, so queries stay right when the queue
+  drops an event. A new window starts with its measured size, not focused, not minimized; the
+  OS's messages during creation therefore send nothing, and the first focus arrives as an event.
+- **L1:** only the newest queued event is checked, so events of different kinds never change order.
+  Within one pump, a drag yields one resize per window.
+- **M1:** with L1 a frozen drag still ends in one resize; the freeze is solved with the game loop.
+- **N1:** focus on X11 comes from `FocusIn`/`FocusOut`, ignoring the ones caused by keyboard grabs
+  (`NotifyGrab`/`NotifyUngrab`: the window manager during Alt+Tab or a drag). On Win32 focus is
+  `WM_SETFOCUS`/`WM_KILLFOCUS` (keyboard focus, as on X11; `WM_ACTIVATE` would report a minimized
+  window as active). Messages sent while a window is being created or destroyed produce no events:
+  the application already knows.
+
 ### File layout
 ```
 engine/include/reborn/platform.h          public API
@@ -134,7 +202,8 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
   surface (`VK_KHR_win32_surface` / `VK_KHR_xlib_surface`).
 - Using a destroyed window is a detectable error instead of undefined behaviour.
 - The maximum number of windows is a compile-time constant.
-- Pure parts (ring buffer, handle pool, key mapping) are unit-tested; windows and events are
+- Pure parts (ring buffer, handle pool, key mapping, window state and event merging) are
+  unit-tested; windows and events are
   tested once logging and the game lifecycle exist (§4, §5).
 - Linux needs `libx11-dev` in `docker/linux.Dockerfile`. The container has no X server, so the
   Linux scripts gate on `ctest` and no longer run the sandbox, which runs on a Linux desktop
@@ -149,5 +218,7 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 | XWayland not good enough (fractional scaling blur, HDR, a distro dropping it) | Add a Wayland backend next to Xlib, chosen at runtime inside `platform/linux/` | Public API unchanged; adds `wayland-client` + `libxkbcommon` (new approval) |
 | Xlib's synchronous round-trips become measurable | Move window/event code to XCB (E2) | Linux backend only |
 | More windows than the pool allows | Raise the constant | None |
+| Fullscreen, video options | Window commands (G3), maximized as a state | Additions only |
+| A window manager without `WM_STATE` | Also read `_NET_WM_STATE_HIDDEN` (N2) | Linux backend only |
 | Events lost in bursts | Grow the ring buffer or change the overflow policy | None for users |
 | Another OS | New `platform/<os>/` directory | None for users |

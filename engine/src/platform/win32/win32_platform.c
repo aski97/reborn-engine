@@ -97,13 +97,33 @@ static win32_window *win32_find_window(rb_platform_state *state, HWND hwnd) {
     return NULL;
 }
 
-static void win32_push_window_event(rb_platform_state *state, HWND hwnd, rb_event_type type) {
-    const win32_window *window = win32_find_window(state, hwnd);
-    if (window == NULL) {
-        return; /* still inside CreateWindowExW: the slot does not know its HWND yet */
+/* Client area in pixels to rb_window_size; logical units at 96 DPI (ADR 0006). */
+static rb_window_size win32_window_size(HWND hwnd, u32 pixel_width, u32 pixel_height) {
+    int dpi = (int)GetDpiForWindow(hwnd);
+    return (rb_window_size){
+        .width = (u32)MulDiv((int)pixel_width, USER_DEFAULT_SCREEN_DPI, dpi),
+        .height = (u32)MulDiv((int)pixel_height, USER_DEFAULT_SCREEN_DPI, dpi),
+        .pixel_width = pixel_width,
+        .pixel_height = pixel_height,
+    };
+}
+
+static void win32_handle_size(rb_platform_state *state, u32 id, HWND hwnd, WPARAM kind,
+                              LPARAM lparam) {
+    switch (kind) {
+    case SIZE_MINIMIZED:
+        /* The client area is 0x0 now: the size is kept, so the renderer never sees zero. */
+        rb_platform_common_window_minimized(&state->common, id, true);
+        break;
+    case SIZE_RESTORED:
+    case SIZE_MAXIMIZED:
+        rb_platform_common_window_minimized(&state->common, id, false);
+        rb_platform_common_window_resized(&state->common, id,
+                                          win32_window_size(hwnd, LOWORD(lparam), HIWORD(lparam)));
+        break;
+    default:
+        break; /* SIZE_MAXSHOW / SIZE_MAXHIDE: sent to pop-ups only */
     }
-    rb_event event = {.type = type, .window = {window->id}};
-    rb_platform_common_push_event(&state->common, &event);
 }
 
 /* ============================================================================
@@ -127,12 +147,40 @@ static LRESULT CALLBACK win32_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LP
         return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
 
+    /*
+     * NULL while CreateWindowExW runs (the slot does not know its HWND yet) and
+     * inside DestroyWindow (the slot is cleared first): messages sent then do not
+     * become events.
+     */
+    const win32_window *window = win32_find_window(state, hwnd);
+
     switch (msg) {
     case WM_CLOSE:
         /* Not passed to DefWindowProcW, which would destroy the window: closing is a request. */
         RB_LOG_TRACE("WM_CLOSE: close requested");
-        win32_push_window_event(state, hwnd, RB_EVENT_WINDOW_CLOSE_REQUESTED);
+        if (window != NULL) {
+            rb_event event = {.type = RB_EVENT_WINDOW_CLOSE_REQUESTED, .window = {window->id}};
+            rb_platform_common_push_event(&state->common, &event);
+        }
         return 0;
+
+    case WM_SIZE:
+        /* Sent for every change, also redundant ones: the common state filters them. */
+        if (window != NULL) {
+            win32_handle_size(state, window->id, hwnd, wparam, lparam);
+        }
+        return 0;
+
+    /*
+     * Keyboard focus, the same notion as X11's FocusIn/FocusOut. WM_ACTIVATE is
+     * about the active top-level window, which a minimized window can still be.
+     */
+    case WM_SETFOCUS:
+    case WM_KILLFOCUS:
+        if (window != NULL) {
+            rb_platform_common_window_focused(&state->common, window->id, msg == WM_SETFOCUS);
+        }
+        return DefWindowProcW(hwnd, msg, wparam, lparam);
 
     case WM_DPICHANGED: {
         /* Moved to a monitor with another scale: the suggested rect keeps the logical size. */
@@ -253,16 +301,24 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     SetWindowPos(hwnd, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
+    /*
+     * Measured, not computed: the state and the log hold what the sizing above
+     * really produced. Recorded before the slot learns its HWND, so the WM_SIZE
+     * sent by ShowWindow finds it and is filtered as unchanged.
+     */
+    RECT client;
+    GetClientRect(hwnd, &client);
+    rb_window_size size = win32_window_size(hwnd, (u32)client.right, (u32)client.bottom);
+    rb_platform_common_window_opened(&state->common, id, size);
+
     win32_window *slot = &state->windows[rb_handle_index(id)];
     slot->hwnd = hwnd;
     slot->id = id;
+    /* Also activates the window: WM_SETFOCUS becomes RB_EVENT_WINDOW_FOCUS_GAINED. */
     ShowWindow(hwnd, SW_SHOW);
 
-    /* Measured, not computed: the log shows what the sizing above really produced. */
-    RECT client;
-    GetClientRect(hwnd, &client);
-    RB_LOG_INFO("Window 0x%08x created: %ux%u logical, %ldx%ld pixels at %u DPI (%u%%)", id,
-                desc->width, desc->height, client.right, client.bottom, (unsigned)dpi,
+    RB_LOG_INFO("Window 0x%08x created: %ux%u logical, %ux%u pixels at %u DPI (%u%%)", id,
+                size.width, size.height, size.pixel_width, size.pixel_height, (unsigned)dpi,
                 (unsigned)MulDiv((int)dpi, 100, USER_DEFAULT_SCREEN_DPI));
     return (rb_window){id};
 }
@@ -273,8 +329,14 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
         return;
     }
     win32_window *slot = &state->windows[rb_handle_index(window.id)];
-    DestroyWindow(slot->hwnd);
+    /*
+     * The slot is cleared before DestroyWindow, which sends messages of its own
+     * (WM_KILLFOCUS...): the application destroyed the window, it needs no
+     * events about it.
+     */
+    HWND hwnd = slot->hwnd;
     *slot = (win32_window){0};
+    DestroyWindow(hwnd);
     rb_handle_pool_free(&state->common.window_pool, window.id);
     RB_LOG_DEBUG("Window 0x%08x destroyed", window.id);
 }

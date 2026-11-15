@@ -17,7 +17,8 @@ indices and never touch the elements, so the caller keeps a typed array and no g
   - Up to 2^20 slots; slots handed out from 0 upwards, freed slots reused last-in first-out.
   - Id 0 is never valid; stale ids (freed, double-freed, reused slot) are rejected.
   - A slot is retired after 4 095 reuses instead of wrapping its generation.
-- **Ring** (`ring.h`): FIFO of indices, any capacity (0 = always full and empty).
+- **Ring** (`ring.h`): FIFO of indices, any capacity (0 = always full and empty). The newest
+  element can be read without popping it, so a producer can merge into it (platform resize events).
 - Both: no allocation, the caller provides the memory. Not thread-safe.
 - Internal to the engine: not part of the public API (yet).
 
@@ -64,9 +65,9 @@ while (rb_ring_pop_index(&ring, &i)) handle(&events[i]);
 
 ## Future work
 - Dynamic array, hash map: own memory, need the allocator (roadmap §6) and their own ADR.
-- Newest-element access in the ring, to merge consecutive mouse moves (platform events).
 
 ## History
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-15 | Handle pool and ring buffer |
+| v0.1.0 | 2026-11-15 | `rb_ring_newest_index`, used to merge consecutive resize events |

@@ -35,5 +35,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   and event queue overflow (one warning per burst). The platform API asserts its pointer
   parameters. The sandbox logs to the console and to
   `reborn.log.jsonl`.
+- Window lifecycle (ADR 0006): `RB_EVENT_WINDOW_RESIZED` (logical and pixel size),
+  `FOCUS_GAINED` / `FOCUS_LOST`, `MINIMIZED` / `RESTORED`, sent only on a real change; consecutive
+  resizes merge in the queue. Queries `rb_window_get_size`, `rb_window_is_focused`,
+  `rb_window_is_minimized`. Win32 and Xlib backends; the sandbox logs every event.
+  `rb_ring_newest_index` in the ring buffer.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

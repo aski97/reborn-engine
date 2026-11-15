@@ -26,3 +26,12 @@ bool rb_ring_pop_index(rb_ring *ring, u32 *out_index) {
     --ring->count;
     return true;
 }
+
+bool rb_ring_newest_index(const rb_ring *ring, u32 *out_index) {
+    if (ring->count == 0) {
+        return false;
+    }
+    /* Same 64-bit sum as push: the newest is the slot before the next free one. */
+    *out_index = (u32)(((u64)ring->head + ring->count - 1u) % ring->capacity);
+    return true;
+}

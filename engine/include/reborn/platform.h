@@ -69,6 +69,27 @@ RB_API void rb_window_destroy(rb_platform_state *state, rb_window window);
 
 RB_API bool rb_window_is_valid(const rb_platform_state *state, rb_window window);
 
+/*
+ * Client area size. Logical units are what rb_window_desc uses; pixels are what
+ * the renderer draws to (equal on Linux, scaled by the monitor's DPI on Windows).
+ * While the window is minimized the size keeps its last value, it never drops to
+ * zero. Windows can still report 0 pixels for a window shrunk to its title bar.
+ */
+typedef struct rb_window_size {
+    u32 width; /* logical units */
+    u32 height;
+    u32 pixel_width;
+    u32 pixel_height;
+} rb_window_size;
+
+/*
+ * State as of the last rb_platform_pump, which may be newer than the event being
+ * handled. Stale or zero handles give a zero size and false.
+ */
+RB_API rb_window_size rb_window_get_size(const rb_platform_state *state, rb_window window);
+RB_API bool           rb_window_is_focused(const rb_platform_state *state, rb_window window);
+RB_API bool           rb_window_is_minimized(const rb_platform_state *state, rb_window window);
+
 /* ============================================================================
  * Events
  * ========================================================================== */
@@ -80,19 +101,40 @@ typedef enum rb_event_type {
      * application decides (close it, ask to save, ignore).
      */
     RB_EVENT_WINDOW_CLOSE_REQUESTED,
+    /*
+     * Logical or pixel size changed (`resize`). Consecutive resizes of one window
+     * are merged into the newest, so a drag does not flood the queue. A DPI change
+     * alters the pixels only. Not sent on minimize: the size is kept.
+     */
+    RB_EVENT_WINDOW_RESIZED,
+    /* Keyboard focus. */
+    RB_EVENT_WINDOW_FOCUS_GAINED,
+    RB_EVENT_WINDOW_FOCUS_LOST,
+    /* Restored means "no longer minimized"; maximizing is just a resize. */
+    RB_EVENT_WINDOW_MINIMIZED,
+    RB_EVENT_WINDOW_RESTORED,
 } rb_event_type;
 
 /*
  * Every event names its window: the OS delivers one stream for all windows
- * (per thread on Win32, per connection on X11). Payloads for resize, keys and
- * mouse will be a union selected by `type`.
+ * (per thread on Win32, per connection on X11). Only the union member named
+ * after `type` is meaningful; types without one carry no payload.
  */
 typedef struct rb_event {
     rb_event_type type;
     rb_window     window;
+    union {
+        rb_window_size resize; /* RB_EVENT_WINDOW_RESIZED: the new size */
+    };
 } rb_event;
 
-/* Reads pending OS messages into the event queue. Never blocks. */
+/*
+ * A new window starts with its created size, not focused, not minimized; events
+ * report real changes from there (the OS's redundant messages are filtered out).
+ * Focus usually arrives right after creation as RB_EVENT_WINDOW_FOCUS_GAINED.
+ */
+
+/* Reads pending OS messages into the event queue and updates window state. Never blocks. */
 RB_API void rb_platform_pump(rb_platform_state *state);
 
 /* Pops the oldest queued event into *out. False when the queue is empty. */

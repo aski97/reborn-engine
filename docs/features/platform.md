@@ -24,12 +24,20 @@ header; each OS has its own backend, chosen by CMake.
   each burst of drops logs one warning.
 - Closing a window is a request (`RB_EVENT_WINDOW_CLOSE_REQUESTED`): the window lives until
   `rb_window_destroy`.
+- Lifecycle events: `RESIZED` (logical and pixel size in `ev.resize`), `FOCUS_GAINED` / `FOCUS_LOST`
+  (keyboard focus), `MINIMIZED` / `RESTORED`. Sent only on a real change; consecutive resizes of a
+  window merge into the newest queued one. Maximizing is a resize.
+- Queries `rb_window_get_size`, `rb_window_is_focused`, `rb_window_is_minimized` answer as of the
+  last pump; stale handles give zero / false. A new window starts with its created size, not
+  focused, not minimized; focus usually follows as an event.
+- A minimized window keeps its size (Win32's 0×0 is not reported). Windows can report 0 pixels for
+  a window shrunk to its title bar.
 - Backends: **Win32** (Windows), **Xlib** (Linux; X11 or XWayland). Startup fails without an X
   server (`$DISPLAY` unset or unreachable).
 - Pointer parameters (`state`, `desc`, `out`) must not be NULL: asserted in debug builds.
 - Failures are logged with their reason (Win32: `GetLastError` text); startup, window creation
   (with the measured pixel size and DPI) and destruction are logged too.
-- Not yet: resize, focus, minimize, keyboard and mouse events; physical-pixel size for the renderer.
+- Not yet: keyboard and mouse events; window commands (set size, minimize, fullscreen).
 - Known limits: while a window is dragged or resized, Windows runs its own loop and
   `rb_platform_pump` does not return. On Linux, an X protocol error or a lost connection ends the
   process (Xlib's default error handlers).
@@ -43,6 +51,7 @@ flowchart TB
     subgraph common["platform/platform.c (no OS headers)"]
         Q["event queue: rb_ring + rb_event[256]"]
         P["window pool: rb_handle_pool"]
+        S["window state: size, focused, minimized"]
     end
     subgraph win32["platform/win32/win32_platform.c"]
         WP["window procedure"]
@@ -55,14 +64,24 @@ flowchart TB
     API --> common
     API --> win32
     API --> xlib
-    WP -- "push event" --> Q
-    PUMP -- "push event" --> Q
+    WP -- "push event / report change" --> S
+    PUMP -- "push event / report change" --> S
+    S -- "event on real change" --> Q
+    WP -- "close request" --> Q
+    PUMP -- "close request" --> Q
     win32 -- "alloc / free ids" --> P
     xlib -- "alloc / free ids" --> P
 ```
 CMake compiles only the backend of the target OS, so each build contains one of the two.
 Each backend's `struct rb_platform_state` embeds `rb_platform_common` as its first member, so
 `platform.c` reaches the shared part through a pointer cast without knowing the backend.
+
+Backends report what the OS says (`rb_platform_common_window_resized/focused/minimized`); the
+common code compares with the stored state and queues an event only on a change, so the filtering
+of redundant OS messages is written once and unit-tested. Win32: `WM_SIZE` (`SIZE_MINIMIZED`
+becomes minimized, the size is kept), `WM_SETFOCUS` / `WM_KILLFOCUS`. Xlib: `ConfigureNotify`,
+`FocusIn` / `FocusOut` (grab-induced ones ignored), `PropertyNotify` on ICCCM `WM_STATE`
+(`IconicState`).
 
 ## API
 ```c
@@ -74,8 +93,13 @@ for (bool running = true; running;) {
     rb_platform_pump(platform);
     rb_event ev;
     while (rb_platform_poll_event(platform, &ev)) {
-        if (ev.type == RB_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
+        switch (ev.type) {
+        case RB_EVENT_WINDOW_CLOSE_REQUESTED: running = false; break;
+        case RB_EVENT_WINDOW_RESIZED: /* ev.resize.pixel_width, ... */ break;
+        default: break;
+        }
     }
+    if (rb_window_is_minimized(platform, win)) continue; /* nothing to draw */
 }
 
 rb_window_destroy(platform, win);
@@ -87,6 +111,11 @@ free(platform);
 - One backend per OS chosen by CMake; caller-provided state memory; generational window handles;
   polled event queue; Xlib on Linux; physical key codes; UTF-8 strings (ADR 0006).
 - State passed explicitly to every call; close is a request; sizes in logical units (ADR 0006).
+- Window lifecycle: events + queries, one event type per transition, logical and pixel size in one
+  resize, size kept while minimized, common state filters redundant OS messages, consecutive
+  resizes merged, ICCCM `WM_STATE` for minimized on X11 (ADR 0006, G–N).
+- Messages sent while a window is created or destroyed produce no events (Win32 clears the slot
+  before `DestroyWindow`).
 - `UNICODE` is defined in the Win32 backend, so an accidental `-A` call fails to compile.
 - The window is created hidden, sized with the DPI of the monitor it landed on
   (`GetDpiForWindow`, not `GetDpiForSystem`, which is fixed at logon), then shown.
@@ -95,9 +124,10 @@ free(platform);
   as `UTF8_STRING` (`XStoreName` would type them Latin-1). No custom X error handlers yet.
 
 ## Future work
-- Window lifecycle events: resize, focus, minimize.
 - Keyboard and mouse, input state, merging consecutive mouse moves.
-- Physical-pixel size and Vulkan surface for the renderer.
+- Vulkan surface for the renderer.
+- Window commands (set size, minimize, fullscreen); maximized as a state.
+- Win32 modal loop: the game freezes while a window is dragged (revisit with the game loop, §4).
 - Linux: X error handling, UTF-8 title validation (parity with Windows), HiDPI via `Xft.dpi`.
 - Integration tests once the application lifecycle exists.
 
@@ -107,3 +137,4 @@ free(platform);
 | v0.1.0 | 2026-11-15 | Public API, shared event queue, Win32 backend (create, close, DPI) |
 | v0.1.0 | 2026-11-15 | Xlib backend (create, close request, UTF-8 titles); sandbox opens a window on Linux |
 | v0.1.0 | 2026-11-15 | Logging of failures, window creation/destruction and queue overflow; NULL pointers asserted |
+| v0.1.0 | 2026-11-15 | Window lifecycle: resize, focus, minimize events and queries; merged resizes |

@@ -21,7 +21,7 @@
 - [x] Generational handle pool and index-only ring buffer (ADR 0007)
 - [x] Linux backend: Xlib (ADR 0006)
 - [x] Linux build scripts gate on `ctest`; the sandbox runs on a Linux desktop
-- [ ] Window lifecycle: resize, focus, minimize (create and close request done)
+- [x] Window lifecycle: resize, focus, minimize (events + queries, ADR 0006)
 - [x] Event queue (fixed-size ring buffer, ADR 0006)
 - [ ] Basic keyboard/mouse input by physical key position
 
@@ -80,3 +80,5 @@
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
 - [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
 - [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
+- [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
+- [ ] Win32 modal loop: the game freezes while a window is dragged or resized (with §4)

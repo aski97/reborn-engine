@@ -36,4 +36,11 @@ bool rb_ring_push_index(rb_ring *ring, u32 *out_index);
  */
 bool rb_ring_pop_index(rb_ring *ring, u32 *out_index);
 
+/*
+ * On success *out_index is the slot of the most recently pushed element, which
+ * stays queued. Lets a producer merge a new element into the last one instead
+ * of pushing (e.g. consecutive resize events). False if empty.
+ */
+bool rb_ring_newest_index(const rb_ring *ring, u32 *out_index);
+
 #endif /* RB_CONTAINERS_RING_H */

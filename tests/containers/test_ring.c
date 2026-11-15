@@ -91,3 +91,43 @@ RB_TEST(ring, keeps_fifo_order_of_values_across_wrap) {
     }
     RB_EXPECT_EQ_INT(next_out, next_in);
 }
+
+/* ============================================================================
+ * Newest element
+ * ========================================================================== */
+
+RB_TEST(ring, newest_fails_when_empty) {
+    rb_ring ring;
+    rb_ring_init(&ring, 4);
+    u32 index = 0;
+    RB_EXPECT(!rb_ring_newest_index(&ring, &index));
+}
+
+RB_TEST(ring, newest_is_last_pushed_and_stays_queued) {
+    rb_ring ring;
+    rb_ring_init(&ring, 4);
+    u32 pushed = 0;
+    u32 newest = 0;
+    for (u32 i = 0; i < 3; ++i) {
+        RB_REQUIRE(rb_ring_push_index(&ring, &pushed));
+        RB_REQUIRE(rb_ring_newest_index(&ring, &newest));
+        RB_EXPECT_EQ_UINT(newest, pushed);
+    }
+    RB_EXPECT_EQ_UINT(ring.count, 3);
+}
+
+RB_TEST(ring, newest_follows_wrap_around) {
+    rb_ring ring;
+    rb_ring_init(&ring, 4);
+    u32 index = 0;
+    for (u32 i = 0; i < 4; ++i) {
+        RB_REQUIRE(rb_ring_push_index(&ring, &index)); /* slots 0..3 */
+    }
+    RB_REQUIRE(rb_ring_pop_index(&ring, &index));  /* frees 0 */
+    RB_REQUIRE(rb_ring_push_index(&ring, &index)); /* wraps to 0 */
+    RB_EXPECT_EQ_UINT(index, 0);
+
+    u32 newest = 99;
+    RB_REQUIRE(rb_ring_newest_index(&ring, &newest));
+    RB_EXPECT_EQ_UINT(newest, 0);
+}
