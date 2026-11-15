@@ -85,7 +85,7 @@ Further choices:
 - **Queue overflow:** the queue is sized so it never fills in practice (a few hundred events) and
   consecutive mouse moves are merged. If it fills anyway, new events are dropped and counted:
   a full queue means a stalled frame. Dropping any event can leave a key stuck, so the policy is
-  revisited if overflow is ever observed.
+  revisited if overflow is ever observed. Each burst of drops logs one warning (ADR 0008).
 - **DPI:** the process declares Per-Monitor V2 awareness at startup
   (`SetProcessDpiAwarenessContext`), otherwise Windows bitmap-scales the window and it looks blurry.
 - **State passed explicitly** to every call (`rb_window_create(platform, &desc)`), never kept in
@@ -118,6 +118,8 @@ engine/src/platform/platform.c            OS-independent: event queue, key state
 engine/src/platform/win32/win32_platform.c
 engine/src/platform/linux/xlib_platform.c
 ```
+Stateless OS services used by the logger (console, debugger detection) live next to the backends
+in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 - Each backend's `struct rb_platform_state` embeds `rb_platform_common` as a member, so the event
   queue and input state are written once. `platform.c` includes no OS header.
 - Backend files carry the backend prefix: three `platform.c` open in an editor or a debugger

@@ -30,10 +30,10 @@
 - [ ] Game loop with high-resolution timer
 - [ ] Timestep strategy (fixed vs variable: to decide)
 
-### 5. Logging
-- [ ] Levels (TRACE → FATAL), console with colors, file output
-- [ ] `RB_ASSERT`
-- [ ] Structured output (JSON lines) for LLM consumption
+### 5. Logging (done before finishing §3, to see window and input events)
+- [x] Levels (TRACE → FATAL), console with colors, file output (ADR 0008)
+- [x] `RB_ASSERT`
+- [x] Structured output (JSON lines) for LLM consumption
 
 ### 6. Memory
 - [ ] OS allocation (VirtualAlloc / mmap)
@@ -60,7 +60,9 @@
 - [ ] Containers that own memory: dynamic array, hash map, string/string builder
       (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
-      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
+      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide); make the logger thread-safe
+- [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
+      debug API, monotonic clock once the game loop timer exists (ADR 0008)
 - [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
       package manager on Linux (distros to support: to decide)
 - [ ] Integration tests for platform/renderer (offscreen render + golden images)
@@ -75,6 +77,6 @@
 - [ ] More platforms
 - [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
 - [ ] Text input events (Unicode), separate from key events
-- [ ] Xlib error handlers (default ones exit the process): decide with logging (§5)
+- [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
 - [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
 - [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels

@@ -4,6 +4,8 @@
  */
 #include "rb_test.h"
 
+#include <reborn/log.h>
+
 #include "platform/platform_internal.h"
 
 static rb_event make_close_event(u32 window_id) {
@@ -50,4 +52,33 @@ RB_TEST(platform, full_queue_drops_newest_and_counts_it) {
     rb_event ev;
     RB_REQUIRE(rb_platform_common_poll_event(&common, &ev));
     RB_EXPECT_EQ_UINT(ev.window.id, 0);
+}
+
+static void count_warnings(const rb_log_record *record, void *user) {
+    if (record->level == RB_LOG_LEVEL_WARN) {
+        ++*(u32 *)user;
+    }
+}
+
+RB_TEST(platform, queue_overflow_warns_once_per_burst) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 warnings = 0;
+    RB_REQUIRE(rb_log_add_sink(count_warnings, &warnings, RB_LOG_LEVEL_TRACE));
+
+    rb_event ev = make_close_event(1);
+    for (u32 i = 0; i < RB_EVENT_QUEUE_CAPACITY + 3u; ++i) {
+        rb_platform_common_push_event(&common, &ev);
+    }
+    RB_EXPECT_EQ_UINT(warnings, 1);
+
+    /* Room again: the next push succeeds and ends the burst; the next drop warns again. */
+    rb_event out;
+    RB_REQUIRE(rb_platform_common_poll_event(&common, &out));
+    rb_platform_common_push_event(&common, &ev);
+    rb_platform_common_push_event(&common, &ev);
+    RB_EXPECT_EQ_UINT(warnings, 2);
+    RB_EXPECT_EQ_UINT(common.dropped_events, 4);
+
+    rb_log_remove_sink(count_warnings, &warnings);
 }

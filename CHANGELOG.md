@@ -27,3 +27,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   The sandbox opens a window on both platforms.
 - Linux build scripts no longer run the sandbox (the container has no X server): `ctest` is the
   gate. The sandbox runs on a Linux desktop (e.g. a WSL distro with WSLg).
+- Logging (ADR 0008): `reborn/log.h` with TRACE…FATAL levels, `RB_LOG_*` macros (compile-time
+  minimum level), up to 8 sinks, colored stderr console (UTF-8 on Windows via `WriteConsoleW`) and
+  a JSON lines file. Startup logs the local date and time of `t = 0`; JSON lines carry `ts`
+  (Unix milliseconds). `reborn/assert.h`: `RB_ASSERT` / `RB_ASSERT_MSG` (debug builds).
+- Platform backends log failures (Win32 `GetLastError` text), window creation and destruction,
+  and event queue overflow (one warning per burst). The platform API asserts its pointer
+  parameters. The sandbox logs to the console and to
+  `reborn.log.jsonl`.
+- `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
+  repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

@@ -31,8 +31,10 @@ typedef struct rb_platform_common {
 
     rb_ring  event_ring;
     rb_event events[RB_EVENT_QUEUE_CAPACITY];
-    /* Events lost because the queue was full; reported once logging exists. */
+    /* Events lost because the queue was full, since startup. */
     u32 dropped_events;
+    /* The last push was dropped: a burst of drops logs one warning, not one per event. */
+    bool dropping_events;
 } rb_platform_common;
 
 RB_INLINE rb_platform_common *rb_platform_common_of(rb_platform_state *state) {
@@ -45,7 +47,7 @@ RB_INLINE const rb_platform_common *rb_platform_common_of_const(const rb_platfor
 
 bool rb_platform_common_init(rb_platform_common *common);
 
-/* Drops the event and counts it when the queue is full. */
+/* Drops the event, counts it and warns once per burst when the queue is full. */
 void rb_platform_common_push_event(rb_platform_common *common, const rb_event *event);
 
 bool rb_platform_common_poll_event(rb_platform_common *common, rb_event *out);

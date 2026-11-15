@@ -23,6 +23,10 @@ function(reborn_set_compiler_options target)
         if(REBORN_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
+        # __FILE__ (used by logs and asserts) would otherwise be the absolute path:
+        # long, and it leaks the user's home directory into every log (ADR 0008).
+        # Only macros are remapped: debug info keeps full paths for the debugger.
+        target_compile_options(${target} PRIVATE "-fmacro-prefix-map=${PROJECT_SOURCE_DIR}/=")
     elseif(MSVC)
         target_compile_options(${target} PRIVATE /W4)
         if(REBORN_WARNINGS_AS_ERRORS)
@@ -65,4 +69,10 @@ function(reborn_set_compiler_options target)
         $<$<CONFIG:Debug>:RB_DEBUG=1>
         $<$<NOT:$<CONFIG:Debug>>:RB_RELEASE=1>
     )
+
+    # The Windows CRT marks standard C functions (fopen, getenv...) deprecated in favour
+    # of its `_s` versions (C11 Annex K), which glibc does not ship: we use the standard ones.
+    if(WIN32)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
 endfunction()

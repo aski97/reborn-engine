@@ -10,6 +10,9 @@ add_executable(reborn_tests
     framework/rb_test.c
     containers/test_handle_pool.c
     containers/test_ring.c
+    core/test_assert.c
+    core/test_assert_disabled.c
+    core/test_log.c
     core/test_version.c
     platform/test_platform.c
 )

@@ -13,6 +13,9 @@
  */
 #include "platform/platform_internal.h"
 
+#include <reborn/assert.h>
+#include <reborn/log.h>
+
 #include <string.h>
 
 #include <X11/Xlib.h>
@@ -94,6 +97,7 @@ static void xlib_handle_client_message(rb_platform_state *state, const XClientMe
     if (window == NULL) {
         return; /* queued before rb_window_destroy: the window no longer exists for us */
     }
+    RB_LOG_TRACE("WM_DELETE_WINDOW: close requested");
     rb_event event = {.type = RB_EVENT_WINDOW_CLOSE_REQUESTED, .window = {window->id}};
     rb_platform_common_push_event(&state->common, &event);
 }
@@ -107,6 +111,7 @@ usize rb_platform_state_size(void) {
 }
 
 bool rb_platform_startup(rb_platform_state *state) {
+    RB_ASSERT(state != NULL);
     memset(state, 0, sizeof(*state));
     if (!rb_platform_common_init(&state->common)) {
         return false;
@@ -118,6 +123,9 @@ bool rb_platform_startup(rb_platform_state *state) {
      */
     state->display = XOpenDisplay(NULL);
     if (state->display == NULL) {
+        /* XDisplayName(NULL) is the name XOpenDisplay tried: $DISPLAY, or "" if unset. */
+        RB_LOG_ERROR("Cannot open X display \"%s\": no X server reachable (DISPLAY unset?)",
+                     XDisplayName(NULL));
         return false;
     }
 
@@ -126,10 +134,12 @@ bool rb_platform_startup(rb_platform_state *state) {
     state->wm_delete_window = XInternAtom(state->display, "WM_DELETE_WINDOW", False);
     state->net_wm_name = XInternAtom(state->display, "_NET_WM_NAME", False);
     state->utf8_string = XInternAtom(state->display, "UTF8_STRING", False);
+    RB_LOG_DEBUG("Xlib platform started on display \"%s\"", DisplayString(state->display));
     return true;
 }
 
 void rb_platform_shutdown(rb_platform_state *state) {
+    RB_ASSERT(state != NULL);
     /* Safe after a failed startup, as on Win32: the zeroed state has no display. */
     if (state->display == NULL) {
         return;
@@ -142,6 +152,7 @@ void rb_platform_shutdown(rb_platform_state *state) {
     /* Flushes pending requests; the server also frees anything we left behind. */
     XCloseDisplay(state->display);
     state->display = NULL;
+    RB_LOG_DEBUG("Xlib platform shut down");
 }
 
 /* ============================================================================
@@ -149,14 +160,19 @@ void rb_platform_shutdown(rb_platform_state *state) {
  * ========================================================================== */
 
 rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc) {
+    RB_ASSERT(state != NULL);
+    RB_ASSERT(desc != NULL);
     rb_window invalid = {RB_HANDLE_INVALID};
     if (desc->width == 0 || desc->height == 0 || desc->width > XLIB_SIZE_MAX ||
         desc->height > XLIB_SIZE_MAX) {
+        RB_LOG_ERROR("Window size must be 1..%u per side, got %ux%u", XLIB_SIZE_MAX, desc->width,
+                     desc->height);
         return invalid;
     }
 
     u32 id = rb_handle_pool_alloc(&state->common.window_pool);
     if (id == RB_HANDLE_INVALID) {
+        RB_LOG_ERROR("No free window slot (at most %u windows)", RB_MAX_WINDOWS);
         return invalid;
     }
 
@@ -176,6 +192,7 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     Window xid =
         XCreateSimpleWindow(state->display, root, 0, 0, desc->width, desc->height, 0, black, black);
     if (xid == None) {
+        RB_LOG_ERROR("XCreateSimpleWindow failed: Xlib ran out of resource ids");
         rb_handle_pool_free(&state->common.window_pool, id);
         return invalid;
     }
@@ -187,6 +204,7 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
      */
     Atom protocols[] = {state->wm_delete_window};
     if (!XSetWMProtocols(state->display, xid, protocols, (int)RB_ARRAY_COUNT(protocols))) {
+        RB_LOG_ERROR("XSetWMProtocols failed: the close button could not be intercepted");
         XDestroyWindow(state->display, xid);
         rb_handle_pool_free(&state->common.window_pool, id);
         return invalid;
@@ -204,10 +222,12 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
      */
     XMapWindow(state->display, xid);
     XFlush(state->display);
+    RB_LOG_INFO("Window 0x%08x created: %ux%u pixels", id, desc->width, desc->height);
     return (rb_window){id};
 }
 
 void rb_window_destroy(rb_platform_state *state, rb_window window) {
+    RB_ASSERT(state != NULL);
     if (!rb_handle_pool_valid(&state->common.window_pool, window.id)) {
         return;
     }
@@ -217,6 +237,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
     XFlush(state->display);
     *slot = (xlib_window){0};
     rb_handle_pool_free(&state->common.window_pool, window.id);
+    RB_LOG_DEBUG("Window 0x%08x destroyed", window.id);
 }
 
 /* ============================================================================
@@ -224,6 +245,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
  * ========================================================================== */
 
 void rb_platform_pump(rb_platform_state *state) {
+    RB_ASSERT(state != NULL);
     /*
      * XPending returns how many events are queued; when none are, it first
      * flushes our requests and reads what the server has sent, without

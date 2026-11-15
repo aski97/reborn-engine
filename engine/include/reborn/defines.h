@@ -101,6 +101,18 @@ _Static_assert(sizeof(void *) == 8, "Reborn only supports 64-bit targets");
     #define RB_NO_INLINE __attribute__((noinline))
 #endif
 
+/*
+ * Lets the compiler check a printf-style call: argument `fmt_index` is the
+ * format string, variadic arguments start at `first_arg` (1-based). Without
+ * it, `%u` given a pointer compiles silently and prints garbage.
+ */
+#if defined(RB_COMPILER_CLANG) || defined(RB_COMPILER_GCC)
+    #define RB_PRINTF_FORMAT(fmt_index, first_arg)                                                 \
+        __attribute__((format(printf, fmt_index, first_arg)))
+#else
+    #define RB_PRINTF_FORMAT(fmt_index, first_arg)
+#endif
+
 #define RB_UNUSED(x) ((void)(x))
 /* Only valid on true arrays: on a pointer it silently yields a wrong count. */
 #define RB_ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))

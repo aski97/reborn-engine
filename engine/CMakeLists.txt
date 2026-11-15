@@ -14,15 +14,23 @@ configure_file(
 set(REBORN_SOURCES
     src/containers/handle_pool.c
     src/containers/ring.c
+    src/core/assert.c
+    src/core/log.c
     src/core/version.c
     src/platform/platform.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
 if(WIN32)
-    list(APPEND REBORN_SOURCES src/platform/win32/win32_platform.c)
+    list(APPEND REBORN_SOURCES
+        src/platform/win32/win32_os.c
+        src/platform/win32/win32_platform.c
+    )
 elseif(LINUX)
-    list(APPEND REBORN_SOURCES src/platform/linux/xlib_platform.c)
+    list(APPEND REBORN_SOURCES
+        src/platform/linux/linux_os.c
+        src/platform/linux/xlib_platform.c
+    )
 endif()
 
 # -----------------------------------------------------------------------------

@@ -7,6 +7,9 @@
  */
 #include "platform/platform_internal.h"
 
+#include <reborn/assert.h>
+#include <reborn/log.h>
+
 /* Trims rarely used APIs (sockets, cryptography...) out of <windows.h>: faster builds. */
 #define WIN32_LEAN_AND_MEAN
 /*
@@ -59,6 +62,32 @@ static bool win32_utf8_to_wide(const char *utf8, wchar_t *out, int out_count) {
     return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, out, out_count) != 0;
 }
 
+/*
+ * Logs `what` with the system's description of GetLastError(). A macro, so the
+ * record carries the caller's location instead of this helper's.
+ */
+#define WIN32_LOG_LAST_ERROR(what) win32_log_last_error((what), __FILE__, __LINE__, __func__)
+
+static void win32_log_last_error(const char *what, const char *file, u32 line, const char *func) {
+    DWORD   error = GetLastError();
+    wchar_t wide[512];
+    char    text[1024];
+    /* In the user's language: the text is for whoever reads the log on this machine. */
+    DWORD length = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+                                  error, 0, wide, (DWORD)RB_ARRAY_COUNT(wide), NULL);
+    /* System messages end with "\r\n", which would break the log line. */
+    while (length > 0 &&
+           (wide[length - 1] == L'\r' || wide[length - 1] == L'\n' || wide[length - 1] == L' ')) {
+        --length;
+    }
+    int bytes = length > 0 ? WideCharToMultiByte(CP_UTF8, 0, wide, (int)length, text,
+                                                 (int)sizeof(text) - 1, NULL, NULL)
+                           : 0;
+    text[bytes > 0 ? bytes : 0] = '\0';
+    rb_log_write(RB_LOG_LEVEL_ERROR, file, line, func, "%s failed: error %lu: %s", what,
+                 (unsigned long)error, bytes > 0 ? text : "(no description)");
+}
+
 static win32_window *win32_find_window(rb_platform_state *state, HWND hwnd) {
     for (u32 i = 0; i < RB_MAX_WINDOWS; ++i) {
         if (state->windows[i].hwnd == hwnd) {
@@ -101,12 +130,16 @@ static LRESULT CALLBACK win32_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LP
     switch (msg) {
     case WM_CLOSE:
         /* Not passed to DefWindowProcW, which would destroy the window: closing is a request. */
+        RB_LOG_TRACE("WM_CLOSE: close requested");
         win32_push_window_event(state, hwnd, RB_EVENT_WINDOW_CLOSE_REQUESTED);
         return 0;
 
     case WM_DPICHANGED: {
         /* Moved to a monitor with another scale: the suggested rect keeps the logical size. */
         const RECT *suggested = (const RECT *)lparam;
+        /* The new DPI is in both halves of wparam (X and Y are always equal). */
+        RB_LOG_DEBUG("Window moved to a monitor at %u DPI (%u%%)", (unsigned)LOWORD(wparam),
+                     (unsigned)MulDiv(LOWORD(wparam), 100, USER_DEFAULT_SCREEN_DPI));
         SetWindowPos(hwnd, NULL, suggested->left, suggested->top,
                      suggested->right - suggested->left, suggested->bottom - suggested->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
@@ -127,6 +160,7 @@ usize rb_platform_state_size(void) {
 }
 
 bool rb_platform_startup(rb_platform_state *state) {
+    RB_ASSERT(state != NULL);
     ZeroMemory(state, sizeof(*state));
     if (!rb_platform_common_init(&state->common)) {
         return false;
@@ -149,16 +183,23 @@ bool rb_platform_startup(rb_platform_state *state) {
         .hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH),
         .lpszClassName = WIN32_CLASS_NAME,
     };
-    return RegisterClassExW(&wc) != 0;
+    if (RegisterClassExW(&wc) == 0) {
+        WIN32_LOG_LAST_ERROR("RegisterClassExW");
+        return false;
+    }
+    RB_LOG_DEBUG("Win32 platform started");
+    return true;
 }
 
 void rb_platform_shutdown(rb_platform_state *state) {
+    RB_ASSERT(state != NULL);
     for (u32 i = 0; i < RB_MAX_WINDOWS; ++i) {
         if (state->windows[i].hwnd != NULL) {
             rb_window_destroy(state, (rb_window){state->windows[i].id});
         }
     }
     UnregisterClassW(WIN32_CLASS_NAME, state->instance);
+    RB_LOG_DEBUG("Win32 platform shut down");
 }
 
 /* ============================================================================
@@ -166,18 +207,24 @@ void rb_platform_shutdown(rb_platform_state *state) {
  * ========================================================================== */
 
 rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc) {
+    RB_ASSERT(state != NULL);
+    RB_ASSERT(desc != NULL);
     rb_window invalid = {RB_HANDLE_INVALID};
     if (desc->width == 0 || desc->height == 0) {
+        RB_LOG_ERROR("Window size must not be zero, got %ux%u", desc->width, desc->height);
         return invalid;
     }
 
     wchar_t title[WIN32_TITLE_MAX];
     if (!win32_utf8_to_wide(desc->title, title, WIN32_TITLE_MAX)) {
+        RB_LOG_ERROR("Window title is not valid UTF-8 or longer than %d UTF-16 units",
+                     WIN32_TITLE_MAX - 1);
         return invalid;
     }
 
     u32 id = rb_handle_pool_alloc(&state->common.window_pool);
     if (id == RB_HANDLE_INVALID) {
+        RB_LOG_ERROR("No free window slot (at most %u windows)", RB_MAX_WINDOWS);
         return invalid;
     }
 
@@ -188,6 +235,7 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
         CreateWindowExW(ex_style, WIN32_CLASS_NAME, title, style, CW_USEDEFAULT, CW_USEDEFAULT,
                         CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, state->instance, state);
     if (hwnd == NULL) {
+        WIN32_LOG_LAST_ERROR("CreateWindowExW");
         rb_handle_pool_free(&state->common.window_pool, id);
         return invalid;
     }
@@ -209,10 +257,18 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     slot->hwnd = hwnd;
     slot->id = id;
     ShowWindow(hwnd, SW_SHOW);
+
+    /* Measured, not computed: the log shows what the sizing above really produced. */
+    RECT client;
+    GetClientRect(hwnd, &client);
+    RB_LOG_INFO("Window 0x%08x created: %ux%u logical, %ldx%ld pixels at %u DPI (%u%%)", id,
+                desc->width, desc->height, client.right, client.bottom, (unsigned)dpi,
+                (unsigned)MulDiv((int)dpi, 100, USER_DEFAULT_SCREEN_DPI));
     return (rb_window){id};
 }
 
 void rb_window_destroy(rb_platform_state *state, rb_window window) {
+    RB_ASSERT(state != NULL);
     if (!rb_handle_pool_valid(&state->common.window_pool, window.id)) {
         return;
     }
@@ -220,6 +276,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
     DestroyWindow(slot->hwnd);
     *slot = (win32_window){0};
     rb_handle_pool_free(&state->common.window_pool, window.id);
+    RB_LOG_DEBUG("Window 0x%08x destroyed", window.id);
 }
 
 /* ============================================================================

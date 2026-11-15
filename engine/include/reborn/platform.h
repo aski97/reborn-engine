@@ -18,6 +18,7 @@
  *   free(platform);
  *
  * No OS header may ever be included here: this file reaches game code.
+ * Pointer parameters must not be NULL unless documented (RB_ASSERT in debug builds).
  */
 #ifndef RB_PLATFORM_H
 #define RB_PLATFORM_H

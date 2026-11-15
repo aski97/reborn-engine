@@ -1,6 +1,6 @@
-#include <stdio.h>
 #include <stdlib.h>
 
+#include <reborn/log.h>
 #include <reborn/platform.h>
 #include <reborn/version.h>
 
@@ -11,7 +11,7 @@
 static int run_window(void) {
     rb_platform_state *platform = malloc(rb_platform_state_size());
     if (platform == NULL || !rb_platform_startup(platform)) {
-        fprintf(stderr, "Platform startup failed\n");
+        RB_LOG_FATAL("Platform startup failed");
         free(platform);
         return 1;
     }
@@ -20,7 +20,7 @@ static int run_window(void) {
         platform,
         &(rb_window_desc){.title = "Reborn Sandbox — città", .width = 1280, .height = 720});
     if (!rb_window_is_valid(platform, window)) {
-        fprintf(stderr, "Window creation failed\n");
+        RB_LOG_FATAL("Window creation failed");
         rb_platform_shutdown(platform);
         free(platform);
         return 1;
@@ -31,6 +31,7 @@ static int run_window(void) {
         rb_event ev;
         while (rb_platform_poll_event(platform, &ev)) {
             if (ev.type == RB_EVENT_WINDOW_CLOSE_REQUESTED) {
+                RB_LOG_INFO("Window 0x%08x: close requested, shutting down", ev.window.id);
                 running = false;
             }
         }
@@ -43,13 +44,23 @@ static int run_window(void) {
 }
 
 int main(void) {
-    printf("Reborn Engine v%s\n", rb_version_string());
+    /* The file lands in the working directory: the repository root when run as in CLAUDE.md. */
+    rb_log_startup(&(rb_log_config){
+        .console_level = RB_LOG_LEVEL_TRACE,
+        .file_path = "reborn.log.jsonl",
+        .file_level = RB_LOG_LEVEL_TRACE,
+    });
+    RB_LOG_INFO("Reborn Engine v%s", rb_version_string());
 
+    int result = 1;
     if (rb_version_number() != RB_VERSION_NUMBER) {
-        fprintf(stderr, "Version mismatch: header %s, library %s\n", RB_VERSION_STRING,
-                rb_version_string());
-        return 1;
+        RB_LOG_FATAL("Version mismatch: header %s, library %s", RB_VERSION_STRING,
+                     rb_version_string());
+    } else {
+        result = run_window();
     }
 
-    return run_window();
+    RB_LOG_INFO("Exiting with code %d", result);
+    rb_log_shutdown();
+    return result;
 }

@@ -34,6 +34,12 @@ Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debu
 - Includes: `<reborn/...>` and system headers with `<>`, internal headers with `""` relative to
   `engine/src/` (`"containers/ring.h"`).
 - File-local functions are `static`.
+- Diagnostics go through `<reborn/log.h>` (`RB_LOG_*`), never `printf`, see
+  `docs/features/logging.md`.
+- `RB_ASSERT` only for bugs in the calling code: required pointers at public entry points, and
+  invariants whose violation would silently corrupt state. Failures caused by input or the
+  environment (missing file, no X server, bad title) are logged and returned, never asserted.
+  Conditions must have no side effects (not evaluated in release).
 - Comments explain *why* (constraints, trade-offs, pitfalls), not what the code does.
   Decorative dividers to separate sections are welcome:
   ```c

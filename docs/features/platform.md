@@ -20,11 +20,15 @@ header; each OS has its own backend, chosen by CMake.
   scale), at most 32767.
 - Titles are UTF-8. Windows: up to 255 UTF-16 units, invalid UTF-8 fails the creation. Linux:
   passed through unvalidated as `_NET_WM_NAME` and `WM_NAME` (`UTF8_STRING`).
-- Events go through a 256-slot queue; when full, the newest event is dropped and counted.
+- Events go through a 256-slot queue; when full, the newest event is dropped and counted, and
+  each burst of drops logs one warning.
 - Closing a window is a request (`RB_EVENT_WINDOW_CLOSE_REQUESTED`): the window lives until
   `rb_window_destroy`.
 - Backends: **Win32** (Windows), **Xlib** (Linux; X11 or XWayland). Startup fails without an X
   server (`$DISPLAY` unset or unreachable).
+- Pointer parameters (`state`, `desc`, `out`) must not be NULL: asserted in debug builds.
+- Failures are logged with their reason (Win32: `GetLastError` text); startup, window creation
+  (with the measured pixel size and DPI) and destruction are logged too.
 - Not yet: resize, focus, minimize, keyboard and mouse events; physical-pixel size for the renderer.
 - Known limits: while a window is dragged or resized, Windows runs its own loop and
   `rb_platform_pump` does not return. On Linux, an X protocol error or a lost connection ends the
@@ -95,10 +99,11 @@ free(platform);
 - Keyboard and mouse, input state, merging consecutive mouse moves.
 - Physical-pixel size and Vulkan surface for the renderer.
 - Linux: X error handling, UTF-8 title validation (parity with Windows), HiDPI via `Xft.dpi`.
-- Integration tests once logging and the application lifecycle exist.
+- Integration tests once the application lifecycle exists.
 
 ## History
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-15 | Public API, shared event queue, Win32 backend (create, close, DPI) |
 | v0.1.0 | 2026-11-15 | Xlib backend (create, close request, UTF-8 titles); sandbox opens a window on Linux |
+| v0.1.0 | 2026-11-15 | Logging of failures, window creation/destruction and queue overflow; NULL pointers asserted |
