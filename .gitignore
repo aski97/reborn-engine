@@ -4,6 +4,10 @@
 # Machine-local CMake presets
 CMakeUserPresets.json
 
+# Personal, not shared: local agent instructions and study notes
+CLAUDE.local.md
+/learning/
+
 # Editors / tools
 .vs/
 .vscode/
