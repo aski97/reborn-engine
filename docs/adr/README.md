@@ -19,5 +19,6 @@ its implementation.
 | 0003 | [Versioning and repository layout](0003-versioning-and-repo-layout.md) | Accepted |
 | 0004 | [Unit testing](0004-unit-testing.md) | Accepted |
 | 0005 | [Linux build container](0005-linux-build-container.md) | Accepted |
+| 0006 | [Platform layer](0006-platform-layer.md) | Proposed |
 
 Template: [`template.md`](template.md).

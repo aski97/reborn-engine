@@ -17,10 +17,11 @@
 - [x] Feature page + ADR
 
 ### 3. Application layer and windows
-- [ ] Platform abstraction + Win32 backend
-- [ ] Linux backend (X11/XCB vs Wayland: to decide)
+- [ ] Platform abstraction + Win32 backend (ADR 0006)
+- [ ] Generational handle pool (windows first, reused by renderer resources)
+- [ ] Linux backend: Xlib (ADR 0006)
 - [ ] Window lifecycle (create, resize, close, focus, minimize)
-- [ ] Event queue, basic keyboard/mouse input
+- [ ] Event queue (fixed-size ring buffer), basic keyboard/mouse input by physical key position
 
 ### 4. Game lifecycle
 - [ ] Application interface (init / update / render / shutdown)
@@ -35,6 +36,7 @@
 ### 6. Memory
 - [ ] OS allocation (VirtualAlloc / mmap)
 - [ ] Arena allocator
+- [ ] Allocator interface; system startup takes an allocator instead of a size query (ADR 0006, B3)
 - [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
       otherwise overflows between objects inside an arena go undetected
 - [ ] Allocation tracking by tag, leak report
@@ -67,3 +69,5 @@
 - [ ] Batched 2D renderer (sprites, textures)
 - [ ] 3D
 - [ ] More platforms
+- [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
+- [ ] Text input events (Unicode), separate from key events
