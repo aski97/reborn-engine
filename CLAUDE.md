@@ -18,6 +18,7 @@ cmake --preset debug && cmake --build --preset debug
 ./build/debug/bin/sandbox
 ```
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
+Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`.
 
 ## Code conventions
 - C17, no extensions. Use `<reborn/defines.h>` types (`u32`, `f32`, `usize`...) when size matters.

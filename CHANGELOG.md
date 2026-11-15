@@ -11,3 +11,5 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `reborn/defines.h`: fixed-width types, platform/compiler detection, utilities.
 - Single-source version, exposed to C through a generated `reborn/version.h`.
 - Docs: feature pages, ADRs, roadmap, `CLAUDE.md` for LLM agents.
+- Linux build container (`docker/linux.Dockerfile`: Ubuntu 26.04, Clang 23 from apt.llvm.org) and
+  `scripts/linux-build.ps1`/`.sh` to build and run any preset on Linux from Windows.

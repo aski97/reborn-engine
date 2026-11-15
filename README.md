@@ -26,6 +26,17 @@ cmake --build --preset debug
 
 Presets: `debug`, `release`, `debug-asan`.
 
+### Checking Linux without a Linux machine
+
+Optional, development only: building the engine never requires Docker. With Docker installed,
+this builds and runs the presets in an Ubuntu container with the same Clang major as Windows:
+
+```powershell
+./scripts/linux-build.ps1 debug release debug-asan
+```
+
+Details in [docs/features/build-system.md](docs/features/build-system.md).
+
 ## Layout
 
 ```
@@ -33,6 +44,7 @@ engine/include/reborn/   public API   → #include <reborn/...>
 engine/src/              implementation
 sandbox/                 test application using the engine
 cmake/                   CMake modules
+docker/, scripts/        optional Linux check (dev tooling, not needed to build)
 docs/features/           one page per engine feature
 docs/adr/                architecture decision records
 ```

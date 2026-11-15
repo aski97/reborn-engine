@@ -8,7 +8,7 @@
 - [x] Single-source version + generated `version.h`
 - [x] Docs: changelog, roadmap, ADRs, feature pages, `CLAUDE.md`
 - [x] Verify CMake build on Windows (all presets)
-- [ ] Verify CMake build on Linux
+- [x] Verify CMake build on Linux (Docker, all presets — ADR 0005)
 
 ### 2. Unit testing
 - [ ] `rb_test.h`: test macros, expectations, auto-registration (constructor / `.CRT$XCU`)
@@ -47,7 +47,15 @@
 ## Backlog
 - [ ] LLM debug/control API (state inspection, scene commands)
 - [ ] Game code hot-reload as a DLL
-- [ ] CI: GitHub Actions (Windows + Linux), tests on every push
+- [ ] CI: GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
+      decide whether to publish the image (GHCR) or build it per run
+- [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
+- [ ] Reusable containers: dynamic array, hash map, ring buffer, string/string builder
+      (allocator-aware, see Memory; generic approach — macros vs `void*` + size — to decide)
+- [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
+      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
+- [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
+      package manager on Linux (distros to support: to decide)
 - [ ] Integration tests for platform/renderer (offscreen render + golden images)
 - [ ] Batched 2D renderer (sprites, textures)
 - [ ] 3D
