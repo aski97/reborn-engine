@@ -54,3 +54,7 @@ docs/adr/                architecture decision records
 - `rb_` prefix for functions and types, `RB_` for macros.
 - [Conventional Commits](https://www.conventionalcommits.org/) and [SemVer](https://semver.org/).
 - Changes are tracked in [CHANGELOG.md](CHANGELOG.md), the roadmap in [TODO.md](TODO.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Vittorio Belardo

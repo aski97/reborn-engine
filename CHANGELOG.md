@@ -13,3 +13,4 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Docs: feature pages, ADRs, roadmap, `CLAUDE.md` for LLM agents.
 - Linux build container (`docker/linux.Dockerfile`: Ubuntu 26.04, Clang 23 from apt.llvm.org) and
   `scripts/linux-build.ps1`/`.sh` to build and run any preset on Linux from Windows.
+- MIT license.
