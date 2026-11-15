@@ -52,33 +52,61 @@
 - [ ] First triangle → 2D quad
 
 ## Backlog
-- [ ] LLM debug/control API (state inspection, scene commands)
-- [ ] Game code hot-reload as a DLL
-- [ ] CI: GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
-      decide whether to publish the image (GHCR) or build it per run
-- [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
-- [ ] Containers that own memory: dynamic array, hash map, string/string builder
-      (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
+
+### Core
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
-      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide); make the logger thread-safe
+      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
+- [ ] Thread safety: decide which public functions must be callable from any thread (logger first,
+      then event queue, allocators...), state the guarantee in each function's doc comment,
+      protection per case (mutex, lock-free, per-thread data: to decide)
+- [ ] Configuration separate from code: values hard-coded today (window size and title, log level
+      and file, capacities...) read from a config file and/or command line (format and parser to decide)
 - [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
       debug API, monotonic clock once the game loop timer exists (ADR 0008)
-- [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
-      package manager on Linux (distros to support: to decide)
-- [ ] Integration tests for platform/renderer (offscreen render + golden images)
-- [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
-      fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
+- [ ] Containers that own memory: dynamic array, hash map, string/string builder
+      (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
+
+### Profiling and performance
+- [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find bottlenecks
+      (own implementation vs external tool: to decide)
+- [ ] Resource usage: memory by tag (builds on §6 allocation tracking: current, peak, allocation
+      count per subsystem), process CPU and memory from the OS, later GPU
+- [ ] Viewer: in-game overlay and/or export (JSON lines for LLMs, trace format for external viewers)
 - [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
       executable (ADR 0004), release build, timings not pass/fail (timer and approach to decide)
-- [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
-- [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
-- [ ] Batched 2D renderer (sprites, textures)
-- [ ] 3D
+
+### Platform
 - [ ] More platforms
 - [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
 - [ ] Text input events (Unicode), separate from key events
+- [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
+- [ ] Win32 modal loop: the game freezes while a window is dragged or resized (with §4)
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
 - [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
 - [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
-- [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
-- [ ] Win32 modal loop: the game freezes while a window is dragged or resized (with §4)
+
+### Rendering
+- [ ] Batched 2D renderer (sprites, textures)
+- [ ] 3D
+
+### Testing
+- [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
+      fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
+- [ ] Integration tests for platform/renderer (offscreen render + golden images)
+- [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
+- [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
+
+### Build, CI and tooling
+- [ ] CI: GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
+      decide whether to publish the image (GHCR) or build it per run
+- [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
+- [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
+      package manager on Linux (distros to support: to decide)
+- [ ] Game code hot-reload as a DLL
+- [ ] LLM debug/control API (state inspection, scene commands)
+
+### Documentation
+- [ ] Doc comments on every public header and function: purpose, parameters, ownership, errors,
+      thread safety (format, e.g. Doxygen-style `/** */` vs plain comments: to decide with the website)
+- [ ] Documentation website: feature pages, ADRs and an API reference generated from doc comments
+      (generator and hosting, e.g. GitHub Pages published by CI: to decide)
