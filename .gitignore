@@ -1,0 +1,15 @@
+# Build output (all presets build into build/<preset>/)
+/build/
+
+# Machine-local CMake presets
+CMakeUserPresets.json
+
+# Editors / tools
+.vs/
+.vscode/
+.idea/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,38 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Clang Debug",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "displayName": "Clang Release",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "debug-asan",
+      "displayName": "Clang Debug + ASan/UBSan",
+      "inherits": "debug",
+      "cacheVariables": { "REBORN_ENABLE_SANITIZERS": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug",      "configurePreset": "debug" },
+    { "name": "release",    "configurePreset": "release" },
+    { "name": "debug-asan", "configurePreset": "debug-asan" }
+  ]
+}
