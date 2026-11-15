@@ -61,7 +61,7 @@ flowchart LR
 ```
 
 ```powershell
-./scripts/linux-build.ps1                          # debug: configure, build, run sandbox
+./scripts/linux-build.ps1                          # debug: configure, build, run sandbox + ctest
 ./scripts/linux-build.ps1 debug release debug-asan # several presets, stops at first failure
 ./scripts/linux-build.ps1 -Shell                   # bash inside the container
 docker volume rm reborn-linux-build                # wipe Linux build output
@@ -81,7 +81,8 @@ On a Linux/macOS host use `scripts/linux-build.sh` (`--shell` instead of `-Shell
 | `RB_INLINE`, `RB_UNUSED`, `RB_ARRAY_COUNT`, `RB_KIB/MIB/GIB` | utilities |
 | `rb_version_string()`, `rb_version_number()` | version of the linked engine |
 
-CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANITIZERS`, `REBORN_BUILD_SANDBOX`.
+CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANITIZERS`, `REBORN_BUILD_SANDBOX`,
+`REBORN_BUILD_TESTS` (see [unit-testing.md](unit-testing.md)). Each configure preset has a matching test preset.
 
 ## Decisions
 - CMake + Ninja + Clang + C17 → [ADR 0001](../adr/0001-build-system-compiler-standard.md).
@@ -98,3 +99,4 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 |---|---|---|
 | v0.1.0 | 2026-11-15 | First version |
 | v0.1.0 | 2026-11-15 | Linux build container; all presets verified on Linux |
+| v0.1.0 | 2026-11-15 | `tests/` target, test presets; Linux scripts also run `ctest` |

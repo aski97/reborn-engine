@@ -11,10 +11,10 @@
 - [x] Verify CMake build on Linux (Docker, all presets — ADR 0005)
 
 ### 2. Unit testing
-- [ ] `rb_test.h`: test macros, expectations, auto-registration (constructor / `.CRT$XCU`)
-- [ ] CTest integration (`ctest --preset debug`, JUnit output)
-- [ ] `tests/` layout mirroring `engine/src/`, first test for `version`
-- [ ] Feature page + ADR
+- [x] `rb_test.h`: test macros, expectations, auto-registration (`__attribute__((constructor))`)
+- [x] CTest integration (`ctest --preset debug`, one entry per test, JUnit output — ADR 0004)
+- [x] `tests/` layout mirroring `engine/src/`, first test for `version`
+- [x] Feature page + ADR
 
 ### 3. Application layer and windows
 - [ ] Platform abstraction + Win32 backend
@@ -38,6 +38,7 @@
 - [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
       otherwise overflows between objects inside an arena go undetected
 - [ ] Allocation tracking by tag, leak report
+- [ ] Failing test allocator (fails at the N-th allocation) to cover error paths
 
 ### 7. Rendering (Vulkan)
 - [ ] Vulkan loading (link vs dynamic: to decide)
@@ -59,6 +60,10 @@
 - [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
       package manager on Linux (distros to support: to decide)
 - [ ] Integration tests for platform/renderer (offscreen render + golden images)
+- [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
+      fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
+- [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
+- [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
 - [ ] Batched 2D renderer (sprites, textures)
 - [ ] 3D
 - [ ] More platforms

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds and runs the engine on Linux inside Docker (see docs/features/build-system.md).
+    Builds, runs and tests the engine on Linux inside Docker (see docs/features/build-system.md).
 .EXAMPLE
     ./scripts/linux-build.ps1                          # debug preset
     ./scripts/linux-build.ps1 debug release debug-asan
@@ -16,6 +16,13 @@ param(
 $root   = Split-Path -Parent $PSScriptRoot
 $image  = 'reborn-linux'
 $volume = 'reborn-linux-build'
+
+# A missing command does not set $LASTEXITCODE: without this check the script
+# would exit with the code of whatever native tool ran before it, often 0.
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host 'error: docker not found on PATH (is Docker Desktop installed and running?)'
+    exit 1
+}
 
 # Cheap when nothing changed (every layer is cached), and keeps the image in
 # sync with the Dockerfile without a separate step to remember.
@@ -39,6 +46,6 @@ if ($Shell) {
 if (-not $Presets) { $Presets = @('debug') }
 
 # One container for all presets; `set -e` stops at the first failure.
-$steps = 'set -e; for p in "$@"; do cmake --preset "$p" && cmake --build --preset "$p" && "./build/$p/bin/sandbox"; done'
+$steps = 'set -e; for p in "$@"; do cmake --preset "$p" && cmake --build --preset "$p" && "./build/$p/bin/sandbox" && ctest --preset "$p"; done'
 docker run --rm @mounts $image sh -c $steps sh @Presets
 exit $LASTEXITCODE

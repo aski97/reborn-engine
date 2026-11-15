@@ -14,3 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Linux build container (`docker/linux.Dockerfile`: Ubuntu 26.04, Clang 23 from apt.llvm.org) and
   `scripts/linux-build.ps1`/`.sh` to build and run any preset on Linux from Windows.
 - MIT license.
+- Unit test framework `tests/framework/rb_test.h`: auto-registered `RB_TEST`, `RB_EXPECT_*` /
+  `RB_REQUIRE_*` checks, runner with `--list` / `--run`.
+- CTest integration: one CTest entry per test (discovered after each build), test presets with
+  JUnit output, `REBORN_BUILD_TESTS` option. First tests for `version`.
+- Linux build scripts also run `ctest`.

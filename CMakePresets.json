@@ -34,5 +34,22 @@
     { "name": "debug",      "configurePreset": "debug" },
     { "name": "release",    "configurePreset": "release" },
     { "name": "debug-asan", "configurePreset": "debug-asan" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 60
+      }
+    },
+    { "name": "debug",      "inherits": "base", "configurePreset": "debug" },
+    { "name": "release",    "inherits": "base", "configurePreset": "release" },
+    { "name": "debug-asan", "inherits": "base", "configurePreset": "debug-asan" }
   ]
 }

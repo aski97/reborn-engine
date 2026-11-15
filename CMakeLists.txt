@@ -30,6 +30,7 @@ option(REBORN_SHARED              "Build the engine as a shared library (DLL/.so
 option(REBORN_WARNINGS_AS_ERRORS  "Treat compiler warnings as errors"              OFF)
 option(REBORN_ENABLE_SANITIZERS   "Enable AddressSanitizer + UBSan in Debug"       OFF)
 option(REBORN_BUILD_SANDBOX       "Build the sandbox application"                  ON)
+option(REBORN_BUILD_TESTS         "Build the unit tests, registered in CTest"       ON)
 
 # -----------------------------------------------------------------------------
 # Output layout
@@ -52,4 +53,12 @@ add_subdirectory(engine)
 
 if(REBORN_BUILD_SANDBOX)
     add_subdirectory(sandbox)
+endif()
+
+if(REBORN_BUILD_TESTS)
+    # enable_testing() rather than include(CTest): the latter also adds CDash
+    # dashboard targets and a BUILD_TESTING option we do not use.
+    # Called here, at the top level, so that `ctest` works from build/<preset>/.
+    enable_testing()
+    add_subdirectory(tests)
 endif()

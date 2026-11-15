@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds and runs the engine on Linux inside Docker (see docs/features/build-system.md).
+# Builds, runs and tests the engine on Linux inside Docker (see docs/features/build-system.md).
 #
 #   scripts/linux-build.sh                          # debug preset
 #   scripts/linux-build.sh debug release debug-asan
@@ -31,5 +31,5 @@ fi
 
 # One container for all presets; `set -e` stops at the first failure.
 exec docker run --rm -v "$root:/src:ro" -v "$volume:/src/build" "$image" sh -c \
-    'set -e; for p in "$@"; do cmake --preset "$p" && cmake --build --preset "$p" && "./build/$p/bin/sandbox"; done' \
+    'set -e; for p in "$@"; do cmake --preset "$p" && cmake --build --preset "$p" && "./build/$p/bin/sandbox" && ctest --preset "$p"; done' \
     sh "$@"

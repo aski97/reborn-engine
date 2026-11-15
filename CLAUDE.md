@@ -17,7 +17,9 @@ the owner wants to understand and approve every architectural choice.
 ```sh
 cmake --preset debug && cmake --build --preset debug
 ./build/debug/bin/sandbox
+ctest --preset debug      # unit tests; JUnit in build/debug/junit.xml
 ```
+New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
 Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`.
 
