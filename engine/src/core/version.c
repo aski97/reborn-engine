@@ -1,4 +1,4 @@
-#include "reborn/version.h"
+#include <reborn/version.h>
 
 const char *rb_version_string(void) {
     return RB_VERSION_STRING;

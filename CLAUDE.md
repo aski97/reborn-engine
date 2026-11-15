@@ -27,7 +27,11 @@ Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debu
 - C17, no extensions. Use `<reborn/defines.h>` types (`u32`, `f32`, `usize`...) when size matters.
 - Prefixes: functions and types `rb_`, macros `RB_`.
 - Public functions live in `engine/include/reborn/` and are marked `RB_API`.
-- Platform-specific code only in `engine/src/platform/<os>/`.
+- One folder per subsystem under `engine/src/` (`core`, `containers`, `platform`...).
+- Platform-specific code only in `engine/src/platform/<os>/`; backend files carry the backend
+  prefix (`win32_platform.c`).
+- Includes: `<reborn/...>` and system headers with `<>`, internal headers with `""` relative to
+  `engine/src/` (`"containers/ring.h"`).
 - File-local functions are `static`.
 - Comments explain *why* (constraints, trade-offs, pitfalls), not what the code does.
   Decorative dividers to separate sections are welcome:

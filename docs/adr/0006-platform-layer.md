@@ -19,9 +19,9 @@ are not needed for v0.1 but must not require an API break later.
 **B. Who provides system state memory**
 1. Hidden `static` state allocated by the system itself — simplest; the engine cannot control
    where the memory comes from.
-2. Two-call startup (as in Kohi): `startup(&size, NULL, cfg)` returns the size, the engine
-   allocates and calls `startup(&size, mem, cfg)` — the engine owns all memory, fits arenas
-   (roadmap §6); one more call per system.
+2. Size query + startup: the system reports the size of its state, the engine allocates it and
+   passes it to `startup` — the engine owns all memory, fits arenas (roadmap §6); one more call
+   per system.
 3. Allocator passed in: `startup(allocator, cfg)` and the system takes its memory from it — one
    call, the engine still chooses the source; needs an allocator interface (§6 does not exist
    yet), and the total size is no longer known before allocating.
@@ -29,7 +29,7 @@ are not needed for v0.1 but must not require an API break later.
 **C. Referring to a window**
 1. Opaque pointer `rb_window *` (SDL, GLFW) — familiar, simple; a pointer to a destroyed window
    is undefined behaviour and may silently hit a new window reusing the memory.
-2. Public struct with one opaque pointer per subsystem (Kohi's `kwindow`) — everything about a
+2. Public struct with one opaque pointer per subsystem — everything about a
    window in one place; couples the window header to every subsystem, same dangling problem.
 3. Generational handle `typedef struct rb_window { u32 id; } rb_window;` (index + generation into
    a fixed pool) — stale handles are detected, no allocation per window, serializable (LLM debug
@@ -46,7 +46,7 @@ are not needed for v0.1 but must not require an API break later.
 **E. Linux backend**
 1. Xlib — one library (`libX11`), well documented, keyboard handling built in, used by GLFW;
    synchronous and old, X11-only.
-2. Xlib + XCB (Kohi) — asynchronous XCB for windows and events, Xlib for the connection and
+2. Xlib + XCB — asynchronous XCB for windows and events, Xlib for the connection and
    keyboard; three libraries and two APIs mixed.
 3. XCB + `libxkbcommon` — modern X11 stack; verbose, extra dependency for the keyboard.
 4. Wayland — default session on current distros; needs `wayland-scanner` generated protocol code,
@@ -69,7 +69,7 @@ are not needed for v0.1 but must not require an API break later.
   one call, and systems that allocate at runtime (renderer resources) need an allocator anyway.
 - **C3:** the API stays object-like (`rb_window_set_title(win, ...)`), the handle plays the role
   of `this`. The zero handle is invalid, so a zero-initialized `rb_window` is never a live window.
-  The same pool will be reused for renderer resources.
+  The pool is a generic container (ADR 0007), reused for renderer resources.
 - **D2:** one queue per platform, not per window: Win32 queues messages per thread and X11 per
   connection, so every event carries the window it refers to. Fixed-size ring buffer, no
   allocation. A per-frame input state (`rb_key_down`) is derived from the events. Text input will
@@ -92,6 +92,21 @@ Further choices:
   to UTF-16 (`MultiByteToWideChar`) and calls the `-W` functions. Rejected: UTF-16 in the API
   (`wchar_t` is 2 bytes on Windows, 4 on Linux) and `-A` functions with a UTF-8 manifest (a hidden
   setting that silently breaks if missing, not honoured by every API).
+
+### File layout
+```
+engine/include/reborn/platform.h          public API
+engine/src/platform/platform_internal.h   rb_platform_common + helpers shared by backends
+engine/src/platform/platform.c            OS-independent: event queue, key state, window pool
+engine/src/platform/win32/win32_platform.c
+engine/src/platform/linux/xlib_platform.c
+```
+- Each backend's `struct rb_platform_state` embeds `rb_platform_common` as a member, so the event
+  queue and input state are written once. `platform.c` includes no OS header.
+- Backend files carry the backend prefix: three `platform.c` open in an editor or a debugger
+  cannot be told apart. One file per backend; split it when it grows.
+- CMake picks the backend source per OS; Windows links `user32` (Clang links only `kernel32` by
+  default).
 
 ## Consequences
 - No OS header ever appears in `engine/include/`; the renderer asks the platform for a Vulkan
