@@ -15,7 +15,15 @@ set(REBORN_SOURCES
     src/containers/handle_pool.c
     src/containers/ring.c
     src/core/version.c
+    src/platform/platform.c
 )
+
+# One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
+if(WIN32)
+    list(APPEND REBORN_SOURCES src/platform/win32/win32_platform.c)
+elseif(LINUX)
+    list(APPEND REBORN_SOURCES src/platform/linux/xlib_platform.c)
+endif()
 
 # -----------------------------------------------------------------------------
 # Library
@@ -43,5 +51,16 @@ target_include_directories(reborn
         # Internal headers: reachable by engine sources, invisible to consumers.
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+if(WIN32)
+    # CMake's default library list already contains these, but it is a toolchain
+    # convenience: linking them explicitly keeps the dependency visible (ADR 0006).
+    target_link_libraries(reborn PRIVATE user32 gdi32)
+elseif(LINUX)
+    # Xlib is the only Linux system dependency (ADR 0006, `libx11-dev`). REQUIRED stops at
+    # configure time with a clear message when it is missing, instead of a compile error later.
+    find_package(X11 REQUIRED)
+    target_link_libraries(reborn PRIVATE X11::X11)
+endif()
 
 reborn_set_compiler_options(reborn)

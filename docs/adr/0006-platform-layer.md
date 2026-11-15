@@ -88,10 +88,27 @@ Further choices:
   revisited if overflow is ever observed.
 - **DPI:** the process declares Per-Monitor V2 awareness at startup
   (`SetProcessDpiAwarenessContext`), otherwise Windows bitmap-scales the window and it looks blurry.
+- **State passed explicitly** to every call (`rb_window_create(platform, &desc)`), never kept in
+  a hidden global: consistent with B2, allows several instances in tests. The application layer
+  (§4) will hold it, so game code never sees it.
+- **Close is a request:** the close button produces `RB_EVENT_WINDOW_CLOSE_REQUESTED` and the
+  window stays alive until the application destroys it (as Win32's `WM_CLOSE`); a handle never
+  becomes invalid behind its owner's back. On X11 each window registers `WM_DELETE_WINDOW`, so
+  the window manager sends a `ClientMessage` instead of killing the connection.
+- **Events from the first step:** the queue exists from the first backend with a single event
+  type, instead of a temporary `should_close` flag to be thrown away; resize, keys and mouse add
+  event types with their payload in a union selected by `type`.
+- **Sizes in logical units:** `rb_window_desc` sizes are scaled by the monitor's DPI (1280×720 at
+  150% is 1920×1080 physical pixels), so a window looks the same size on every monitor. The
+  renderer will query the size in physical pixels. Windows moved to a monitor with another scale
+  are resized by `WM_DPICHANGED`. The X11 core protocol has no per-monitor scale: on Linux
+  logical units are pixels. Sizes above 32767 are rejected there (16-bit protocol fields).
 - **Strings:** every engine string is UTF-8 `const char *`, as on Linux. The Win32 backend converts
   to UTF-16 (`MultiByteToWideChar`) and calls the `-W` functions. Rejected: UTF-16 in the API
   (`wchar_t` is 2 bytes on Windows, 4 on Linux) and `-A` functions with a UTF-8 manifest (a hidden
-  setting that silently breaks if missing, not honoured by every API).
+  setting that silently breaks if missing, not honoured by every API). The Xlib backend writes
+  titles to `_NET_WM_NAME` and `WM_NAME`, both typed `UTF8_STRING`. Rejected: `XStoreName`
+  (types them Latin-1) and `Xutf8SetWMProperties` (converts through the process locale).
 
 ### File layout
 ```
@@ -105,8 +122,10 @@ engine/src/platform/linux/xlib_platform.c
   queue and input state are written once. `platform.c` includes no OS header.
 - Backend files carry the backend prefix: three `platform.c` open in an editor or a debugger
   cannot be told apart. One file per backend; split it when it grows.
-- CMake picks the backend source per OS; Windows links `user32` (Clang links only `kernel32` by
-  default).
+- CMake picks the backend source per OS. Windows links `user32` and `gdi32` explicitly: CMake's
+  default library list already contains them, but that list is a toolchain convenience that can
+  change, while an explicit link documents the dependency. Linux uses `find_package(X11 REQUIRED)`
+  and links `X11::X11`.
 
 ## Consequences
 - No OS header ever appears in `engine/include/`; the renderer asks the platform for a Vulkan

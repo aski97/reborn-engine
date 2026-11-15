@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | Build system | [build-system.md](build-system.md) | Stable | v0.1.0 | 2026-11-15 |
 | Containers | [containers.md](containers.md) | In progress | v0.1.0 | 2026-11-15 |
-| Platform & windows | — | Planned | v0.1.0 | — |
+| Platform & windows | [platform.md](platform.md) | In progress | v0.1.0 | 2026-11-15 |
 | Application lifecycle | — | Planned | v0.1.0 | — |
 | Logging | — | Planned | v0.1.0 | — |
 | Memory | — | Planned | v0.1.0 | — |

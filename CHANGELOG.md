@@ -20,3 +20,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   JUnit output, `REBORN_BUILD_TESTS` option. First tests for `version`.
 - Linux build scripts also run `ctest`.
 - Internal containers (ADR 0007): generational handle pool and index-only ring buffer, with tests.
+- Platform layer (ADR 0006): `reborn/platform.h` with generational window handles and an event
+  queue; Win32 backend (UTF-8 titles, Per-Monitor V2 DPI, close as a request).
+- Xlib platform backend for Linux (UTF-8 titles via `_NET_WM_NAME`, close as a request through
+  `WM_DELETE_WINDOW`); links `libX11`, added to the Linux build container (`libx11-dev`).
+  The sandbox opens a window on both platforms.

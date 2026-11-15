@@ -11,6 +11,7 @@ add_executable(reborn_tests
     containers/test_handle_pool.c
     containers/test_ring.c
     core/test_version.c
+    platform/test_platform.c
 )
 
 target_include_directories(reborn_tests PRIVATE

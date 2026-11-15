@@ -16,10 +16,13 @@ ARG LLVM_VERSION=23
 # the matching version. curl and gpg are only needed to fetch its signing key.
 # libc6-dev and binutils are listed explicitly because --no-install-recommends
 # would otherwise leave Clang without libc headers or a linker.
+# libx11-dev provides the Xlib headers and library for the Linux platform
+# backend (ADR 0006); no X server is installed, so windows cannot open here.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         cmake ninja-build libc6-dev binutils \
+        libx11-dev \
     && . /etc/os-release \
     && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
         | gpg --dearmor -o /usr/share/keyrings/llvm.gpg \

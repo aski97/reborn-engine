@@ -17,11 +17,13 @@
 - [x] Feature page + ADR
 
 ### 3. Application layer and windows
-- [ ] Platform abstraction + Win32 backend (ADR 0006)
+- [x] Platform abstraction + Win32 backend (ADR 0006)
 - [x] Generational handle pool and index-only ring buffer (ADR 0007)
-- [ ] Linux backend: Xlib (ADR 0006)
-- [ ] Window lifecycle (create, resize, close, focus, minimize)
-- [ ] Event queue (fixed-size ring buffer), basic keyboard/mouse input by physical key position
+- [x] Linux backend: Xlib (ADR 0006)
+- [ ] Linux build scripts stop at the sandbox step: the container has no X server (approach to decide)
+- [ ] Window lifecycle: resize, focus, minimize (create and close request done)
+- [x] Event queue (fixed-size ring buffer, ADR 0006)
+- [ ] Basic keyboard/mouse input by physical key position
 
 ### 4. Game lifecycle
 - [ ] Application interface (init / update / render / shutdown)
@@ -64,6 +66,8 @@
 - [ ] Integration tests for platform/renderer (offscreen render + golden images)
 - [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
       fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
+- [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
+      executable (ADR 0004), release build, timings not pass/fail (timer and approach to decide)
 - [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
 - [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
 - [ ] Batched 2D renderer (sprites, textures)
@@ -71,3 +75,6 @@
 - [ ] More platforms
 - [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
 - [ ] Text input events (Unicode), separate from key events
+- [ ] Xlib error handlers (default ones exit the process): decide with logging (§5)
+- [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
+- [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
