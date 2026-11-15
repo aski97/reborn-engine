@@ -18,7 +18,7 @@
 
 ### 3. Application layer and windows
 - [ ] Platform abstraction + Win32 backend (ADR 0006)
-- [ ] Generational handle pool (windows first, reused by renderer resources)
+- [x] Generational handle pool and index-only ring buffer (ADR 0007)
 - [ ] Linux backend: Xlib (ADR 0006)
 - [ ] Window lifecycle (create, resize, close, focus, minimize)
 - [ ] Event queue (fixed-size ring buffer), basic keyboard/mouse input by physical key position
@@ -55,8 +55,8 @@
 - [ ] CI: GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
       decide whether to publish the image (GHCR) or build it per run
 - [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
-- [ ] Reusable containers: dynamic array, hash map, ring buffer, string/string builder
-      (allocator-aware, see Memory; generic approach — macros vs `void*` + size — to decide)
+- [ ] Containers that own memory: dynamic array, hash map, string/string builder
+      (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
       (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
 - [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,

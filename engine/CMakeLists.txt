@@ -12,6 +12,8 @@ configure_file(
 # -----------------------------------------------------------------------------
 
 set(REBORN_SOURCES
+    src/containers/handle_pool.c
+    src/containers/ring.c
     src/core/version.c
 )
 

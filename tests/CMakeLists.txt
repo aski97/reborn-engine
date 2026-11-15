@@ -8,6 +8,8 @@
 # without any error.
 add_executable(reborn_tests
     framework/rb_test.c
+    containers/test_handle_pool.c
+    containers/test_ring.c
     core/test_version.c
 )
 

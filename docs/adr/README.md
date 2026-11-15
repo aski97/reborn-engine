@@ -20,5 +20,6 @@ its implementation.
 | 0004 | [Unit testing](0004-unit-testing.md) | Accepted |
 | 0005 | [Linux build container](0005-linux-build-container.md) | Accepted |
 | 0006 | [Platform layer](0006-platform-layer.md) | Proposed |
+| 0007 | [Generational handles and index-only containers](0007-index-only-containers.md) | Accepted |
 
 Template: [`template.md`](template.md).

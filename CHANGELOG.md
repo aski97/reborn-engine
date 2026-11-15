@@ -19,3 +19,4 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - CTest integration: one CTest entry per test (discovered after each build), test presets with
   JUnit output, `REBORN_BUILD_TESTS` option. First tests for `version`.
 - Linux build scripts also run `ctest`.
+- Internal containers (ADR 0007): generational handle pool and index-only ring buffer, with tests.
