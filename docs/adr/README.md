@@ -1,6 +1,16 @@
 # Architecture Decision Records
 
-One decision per file. ADRs are never edited: a changed decision gets a new ADR that supersedes the old one.
+One decision per file (a topic, with all its sub-decisions). The status says whether it may still change:
+
+| Status | Meaning | Editable |
+|---|---|---|
+| Proposed | Being designed or implemented; options and decision are refined as we learn. | Yes |
+| Accepted | Implemented and verified. | No: a change needs a new ADR |
+| Rejected | Considered and dropped; kept as a record of why. | No |
+| Superseded by NNNN | Replaced by a later ADR. Only the status line changes. | No |
+
+An ADR may be committed while still *Proposed*. It becomes *Accepted* in the commit that completes
+its implementation.
 
 | # | Title | Status |
 |---|---|---|

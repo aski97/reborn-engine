@@ -5,7 +5,8 @@ the owner wants to understand and approve every architectural choice.
 
 ## Workflow
 - Before introducing a new architectural choice, present the alternatives with pros/cons
-  and let the owner decide. Record the decision in `docs/adr/`.
+  and let the owner decide. Record the decision in `docs/adr/`: one ADR per topic, *Proposed*
+  (editable) until implemented, then *Accepted* (immutable). See `docs/adr/README.md`.
 - No external libraries without explicit approval.
 - Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date.
 - Every major feature has a page in `docs/features/` (from `_template.md`). Create it with the
