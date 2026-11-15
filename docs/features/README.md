@@ -8,5 +8,6 @@
 | Logging | — | Planned | v0.1.0 | — |
 | Memory | — | Planned | v0.1.0 | — |
 | Vulkan renderer | — | Planned | v0.1.0 | — |
+| Unit testing | — | Planned | v0.1.0 | — |
 
 Status: Planned → In progress → Stable → Deprecated. New pages start from [`_template.md`](_template.md).
