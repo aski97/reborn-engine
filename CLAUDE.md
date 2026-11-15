@@ -21,7 +21,8 @@ ctest --preset debug      # unit tests; JUnit in build/debug/junit.xml
 ```
 New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
-Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`.
+Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`
+(tests only; `-Window` opens the sandbox through WSLg and blocks until it is closed).
 
 ## Code conventions
 - C17, no extensions. Use `<reborn/defines.h>` types (`u32`, `f32`, `usize`...) when size matters.

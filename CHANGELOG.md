@@ -25,3 +25,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Xlib platform backend for Linux (UTF-8 titles via `_NET_WM_NAME`, close as a request through
   `WM_DELETE_WINDOW`); links `libX11`, added to the Linux build container (`libx11-dev`).
   The sandbox opens a window on both platforms.
+- Linux build scripts no longer run the sandbox (the container has no X server): `ctest` is the
+  gate. `-Window` (`--window` in the `.sh`) builds one preset and opens the sandbox through WSLg
+  (or the host X server).
