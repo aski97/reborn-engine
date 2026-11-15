@@ -35,6 +35,8 @@
 ### 6. Memory
 - [ ] OS allocation (VirtualAlloc / mmap)
 - [ ] Arena allocator
+- [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
+      otherwise overflows between objects inside an arena go undetected
 - [ ] Allocation tracking by tag, leak report
 
 ### 7. Rendering (Vulkan)
