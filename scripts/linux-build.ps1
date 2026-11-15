@@ -1,16 +1,13 @@
 <#
 .SYNOPSIS
-    Builds and tests the engine on Linux inside Docker; -Window also opens the sandbox (see docs/features/build-system.md).
+    Builds and tests the engine on Linux inside Docker (see docs/features/build-system.md).
 .EXAMPLE
     ./scripts/linux-build.ps1                          # debug preset: configure, build, ctest
     ./scripts/linux-build.ps1 debug release debug-asan
-    ./scripts/linux-build.ps1 -Window                  # build debug, open the sandbox window via WSLg
-    ./scripts/linux-build.ps1 -Window release
     ./scripts/linux-build.ps1 -Shell                   # interactive bash in the container
 #>
 param(
     [switch]$Shell,
-    [switch]$Window,
     [Parameter(ValueFromRemainingArguments)][string[]]$Presets
 )
 
@@ -48,22 +45,8 @@ if ($Shell) {
 
 if (-not $Presets) { $Presets = @('debug') }
 
-# The container has no X server, so the sandbox cannot open a window there: the
-# unit tests are the pass/fail gate, and -Window runs the sandbox by hand.
-if ($Window) {
-    if ($Presets.Count -ne 1) {
-        Write-Host 'error: -Window takes a single preset'
-        exit 1
-    }
-    # Docker Desktop exposes WSLg's X server (XWayland) at this path inside its
-    # VM: mounting it lets Xlib in the container show windows on the Windows
-    # desktop. The script blocks until the window is closed.
-    $display = @('-v', '/run/desktop/mnt/host/wslg/.X11-unix:/tmp/.X11-unix', '-e', 'DISPLAY=:0')
-    $run = 'set -e; cmake --preset "$1" && cmake --build --preset "$1" && "./build/$1/bin/sandbox"'
-    docker run --rm @mounts @display $image sh -c $run sh $Presets[0]
-    exit $LASTEXITCODE
-}
-
+# The container has no X server, so the sandbox cannot open a window there:
+# the unit tests are the pass/fail gate. The sandbox runs on a Linux desktop.
 # One container for all presets; `set -e` stops at the first failure.
 $steps = 'set -e; for p in "$@"; do cmake --preset "$p" && cmake --build --preset "$p" && ctest --preset "$p"; done'
 docker run --rm @mounts $image sh -c $steps sh @Presets

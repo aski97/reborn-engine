@@ -30,7 +30,7 @@ Presets: `debug`, `release`, `debug-asan`.
 
 Optional, development only: building the engine never requires Docker. With Docker installed,
 this builds the presets in an Ubuntu container with the same Clang major as Windows, then runs
-the tests (`-Window` opens the sandbox window through WSLg):
+the tests (the sandbox itself needs a Linux desktop, e.g. a WSL distro with WSLg):
 
 ```powershell
 ./scripts/linux-build.ps1 debug release debug-asan

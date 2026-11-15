@@ -63,17 +63,15 @@ flowchart LR
 ```powershell
 ./scripts/linux-build.ps1                          # debug: configure, build, ctest
 ./scripts/linux-build.ps1 debug release debug-asan # several presets, stops at first failure
-./scripts/linux-build.ps1 -Window                  # build debug, open the sandbox via WSLg
 ./scripts/linux-build.ps1 -Shell                   # bash inside the container
 docker volume rm reborn-linux-build                # wipe Linux build output
 ```
 
-On a Linux/macOS host use `scripts/linux-build.sh` (`--shell`, `--window`).
+On a Linux/macOS host use `scripts/linux-build.sh` (`--shell`).
 
 The image includes `libx11-dev` for the Xlib backend but no X server, so the scripts do not run
-the sandbox: `ctest` is the pass/fail gate. `-Window` mounts the X socket of WSLg (Docker Desktop
-on Windows 11) and runs the sandbox of one preset; the script returns when the window is closed.
-With `--window` on a Linux host, the X server may need to allow local clients (`xhost +local:`).
+the sandbox: `ctest` is the pass/fail gate. The sandbox runs on a Linux desktop (a WSL distro with
+WSLg, or a Linux machine), outside these scripts.
 
 ## API
 
@@ -107,4 +105,4 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 | v0.1.0 | 2026-11-15 | Linux build container; all presets verified on Linux |
 | v0.1.0 | 2026-11-15 | `tests/` target, test presets; Linux scripts also run `ctest` |
 | v0.1.0 | 2026-11-15 | `libx11-dev` in the Linux container; the sandbox there needs an X server |
-| v0.1.0 | 2026-11-15 | Linux scripts gate on `ctest` only; `-Window` / `--window` opens the sandbox |
+| v0.1.0 | 2026-11-15 | Linux scripts gate on `ctest` only; the sandbox runs on a Linux desktop |

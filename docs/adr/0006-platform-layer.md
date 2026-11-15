@@ -135,10 +135,10 @@ engine/src/platform/linux/xlib_platform.c
 - Pure parts (ring buffer, handle pool, key mapping) are unit-tested; windows and events are
   tested once logging and the game lifecycle exist (§4, §5).
 - Linux needs `libx11-dev` in `docker/linux.Dockerfile`. The container has no X server, so the
-  Linux scripts gate on `ctest` and no longer run the sandbox; `-Window` runs it through WSLg's
-  X socket. Rejected: Xvfb in the image (new package, and the sandbox cannot close by itself
-  yet: revisit with integration tests) and a sandbox exiting 0 without a display (turns a failure
-  into success).
+  Linux scripts gate on `ctest` and no longer run the sandbox, which runs on a Linux desktop
+  (e.g. a WSL distro with WSLg). Rejected: Xvfb in the image (new package, and the sandbox
+  cannot close by itself yet: revisit with integration tests) and a sandbox exiting 0 without a
+  display (turns a failure into success).
 
 ### When to revisit
 | Trigger | Change | Impact |

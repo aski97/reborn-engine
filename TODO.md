@@ -20,7 +20,7 @@
 - [x] Platform abstraction + Win32 backend (ADR 0006)
 - [x] Generational handle pool and index-only ring buffer (ADR 0007)
 - [x] Linux backend: Xlib (ADR 0006)
-- [x] Linux build scripts gate on `ctest`; `-Window` opens the sandbox through WSLg
+- [x] Linux build scripts gate on `ctest`; the sandbox runs on a Linux desktop
 - [ ] Window lifecycle: resize, focus, minimize (create and close request done)
 - [x] Event queue (fixed-size ring buffer, ADR 0006)
 - [ ] Basic keyboard/mouse input by physical key position
