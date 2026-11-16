@@ -52,5 +52,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   The Xlib backend translates it through the server (the window manager's frame offsets the
   coordinates of `ConfigureNotify`). The sandbox logs moves and shows modifiers by name
   (`key S pressed [Ctrl]`).
+- Monotonic clock and sleep (ADR 0009): `reborn/clock.h` with `rb_time_now` (nanoseconds,
+  `QueryPerformanceCounter` / `CLOCK_MONOTONIC`), `rb_time_sleep` (at least the time asked; a
+  high-resolution waitable timer on Windows, so 1 ms lasts ~1.6 ms instead of ~15.6 ms) and
+  `rb_time_to_seconds`. The logger's `t` uses it and no longer jumps with the system time. The
+  sandbox sleeps 1 ms per iteration instead of spinning a CPU core.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

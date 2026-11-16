@@ -2,6 +2,10 @@
 
 ## v0.1.0 — Foundations
 
+Order of the remaining work: §4 timer → §6 core (OS allocation, arena, allocator interface, ASan,
+failing allocator) → rest of §4, designed on top of the allocators → rest of §6 (tracking) → §7.
+Section numbers stay fixed: ADRs and code refer to them.
+
 ### 1. Project setup
 - [x] Folder layout, git, `.gitignore` / `.gitattributes`
 - [x] CMake + presets (Clang, Ninja, C17)
@@ -26,8 +30,11 @@
 - [x] Basic keyboard/mouse input by physical key position (ADR 0006)
 
 ### 4. Game lifecycle
-- [ ] Application interface (init / update / render / shutdown)
-- [ ] Game loop with high-resolution timer
+- [x] High-resolution monotonic timer and sleep (done before §6, ADR 0009); the logger's `t` moves
+      to it (ADR 0008, H); the sandbox loop stops spinning a CPU core
+- [ ] Application interface (init / update / render / shutdown); the engine allocates the game's
+      state through the §6 allocators
+- [ ] Game loop: frame timing, per-frame arena reset
 - [ ] Timestep strategy (fixed vs variable: to decide)
 
 ### 5. Logging (done before finishing §3, to see window and input events)
@@ -41,8 +48,8 @@
 - [ ] Allocator interface; system startup takes an allocator instead of a size query (ADR 0006, B3)
 - [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
       otherwise overflows between objects inside an arena go undetected
-- [ ] Allocation tracking by tag, leak report
 - [ ] Failing test allocator (fails at the N-th allocation) to cover error paths
+- [ ] Allocation tracking by tag, leak report (after the rest of §4)
 
 ### 7. Rendering (Vulkan)
 - [ ] Vulkan loading (link vs dynamic: to decide)
@@ -62,7 +69,7 @@
 - [ ] Configuration separate from code: values hard-coded today (window size and title, log level
       and file, capacities...) read from a config file and/or command line (format and parser to decide)
 - [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
-      debug API, monotonic clock once the game loop timer exists (ADR 0008)
+      debug API (ADR 0008)
 - [ ] Containers that own memory: dynamic array, hash map, string/string builder
       (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
 

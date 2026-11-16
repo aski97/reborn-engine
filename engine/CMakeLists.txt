@@ -17,6 +17,7 @@ set(REBORN_SOURCES
     src/core/assert.c
     src/core/log.c
     src/core/version.c
+    src/platform/clock.c
     src/platform/input.c
     src/platform/platform.c
 )
@@ -24,12 +25,14 @@ set(REBORN_SOURCES
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
 if(WIN32)
     list(APPEND REBORN_SOURCES
+        src/platform/win32/win32_clock.c
         src/platform/win32/win32_input.c
         src/platform/win32/win32_os.c
         src/platform/win32/win32_platform.c
     )
 elseif(LINUX)
     list(APPEND REBORN_SOURCES
+        src/platform/linux/linux_clock.c
         src/platform/linux/linux_os.c
         src/platform/linux/xlib_input.c
         src/platform/linux/xlib_platform.c

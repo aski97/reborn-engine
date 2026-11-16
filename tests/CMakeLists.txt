@@ -14,6 +14,7 @@ add_executable(reborn_tests
     core/test_assert_disabled.c
     core/test_log.c
     core/test_version.c
+    platform/test_clock.c
     platform/test_input.c
     platform/test_platform.c
 )

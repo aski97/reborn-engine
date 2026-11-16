@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <reborn/clock.h>
 #include <reborn/log.h>
 #include <reborn/platform.h>
 #include <reborn/version.h>
@@ -87,8 +88,8 @@ static bool handle_event(const rb_event *ev) {
 }
 
 /*
- * Opens a window and runs until it is closed. The loop never sleeps, so it
- * keeps one CPU core busy: the game loop (roadmap §4) will add timing.
+ * Opens a window and runs until it is closed. A 1 ms sleep per iteration keeps
+ * a CPU core from spinning until the game loop (roadmap §4) paces frames.
  */
 static int run_window(void) {
     rb_platform_state *platform = malloc(rb_platform_state_size());
@@ -126,6 +127,7 @@ static int run_window(void) {
             RB_LOG_DEBUG("Query: Space was released this pump (down: %d)",
                          rb_key_is_down(platform, RB_KEY_SPACE));
         }
+        rb_time_sleep(RB_NS_PER_MS);
     }
 
     rb_window_destroy(platform, window);

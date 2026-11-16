@@ -8,6 +8,8 @@
  */
 #include <reborn/log.h>
 
+#include <reborn/clock.h>
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -35,9 +37,15 @@ typedef struct log_state {
     bool  started;
     FILE *file; /* JSON lines output added by startup; NULL if none */
 
-    /* The clock starts at the first log call, not at startup: earlier calls need a time too. */
+    /*
+     * The clock starts at the first log call, not at startup: earlier calls
+     * need a time too. `t` is measured on the monotonic clock (ADR 0009), so it
+     * never jumps; the wall clock taken at the same instant dates t = 0.
+     */
     bool            clock_started;
-    struct timespec clock_start;
+    u64             clock_start;
+    bool            clock_start_wall_valid;
+    struct timespec clock_start_wall;
 
     /* The console is prepared lazily, by the first line it prints. */
     bool console_ready;
@@ -356,29 +364,34 @@ void rb_log_remove_sink(rb_log_sink_fn fn, void *user) {
 
 /*
  * Wall clock (timespec_get is standard C11): it can jump if the system time
- * changes, harmless for logs. Starts the log clock on first use. False if the
- * clock cannot be read.
+ * changes, so it only dates records (`ts`, the anchor line), never measures
+ * them. False if it cannot be read.
  */
-static bool log_clock_read(struct timespec *now) {
-    if (timespec_get(now, TIME_UTC) != TIME_UTC) {
-        return false;
+static bool log_wall_clock_read(struct timespec *now) {
+    return timespec_get(now, TIME_UTC) == TIME_UTC;
+}
+
+/* Starts the log clock on first use: t = 0 is the first record. */
+static void log_clock_start(void) {
+    if (g_log.clock_started) {
+        return;
     }
-    if (!g_log.clock_started) {
-        g_log.clock_start = *now;
-        g_log.clock_started = true;
-    }
-    return true;
+    g_log.clock_start = rb_time_now();
+    g_log.clock_start_wall_valid = log_wall_clock_read(&g_log.clock_start_wall);
+    g_log.clock_started = true;
 }
 
 /*
  * One line with the absolute date and time of t = 0: any record's absolute
- * time is that plus its `t`, so console lines can stay short (ADR 0008).
+ * time is that plus its `t`, so console lines can stay short (ADR 0008). If
+ * the wall clock is changed while running, `ts` follows it and the anchor
+ * does not: `t` keeps measuring real durations.
  */
 static void log_announce_clock(void) {
-    struct timespec now;
-    char            stamp[RB_LOG_TIMESTAMP_LENGTH + 1] = "unknown time";
-    if (log_clock_read(&now)) {
-        rb_log_format_timestamp(&g_log.clock_start, stamp, sizeof(stamp));
+    char stamp[RB_LOG_TIMESTAMP_LENGTH + 1] = "unknown time";
+    log_clock_start();
+    if (g_log.clock_start_wall_valid) {
+        rb_log_format_timestamp(&g_log.clock_start_wall, stamp, sizeof(stamp));
     }
     RB_LOG_INFO("Log clock: t = 0 at %s", stamp);
 }
@@ -475,17 +488,12 @@ void rb_log_write(rb_log_level level, const char *file, u32 line, const char *fu
     log_format_message(fmt, args);
     va_end(args);
 
-    /*
-     * Subtracting seconds and nanoseconds separately keeps the nanoseconds,
-     * which a double holding seconds since 1970 would round off.
-     */
-    struct timespec now;
-    f64             elapsed = 0.0;
+    log_clock_start();
+    f64             elapsed = rb_time_to_seconds(rb_time_now() - g_log.clock_start);
+    struct timespec wall;
     i64             unix_ms = 0;
-    if (log_clock_read(&now)) {
-        elapsed = (f64)(now.tv_sec - g_log.clock_start.tv_sec) +
-                  (f64)(now.tv_nsec - g_log.clock_start.tv_nsec) * 1e-9;
-        unix_ms = (i64)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+    if (log_wall_clock_read(&wall)) {
+        unix_ms = (i64)wall.tv_sec * 1000 + wall.tv_nsec / 1000000;
     }
 
     rb_log_record record = {
