@@ -57,5 +57,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   high-resolution waitable timer on Windows, so 1 ms lasts ~1.6 ms instead of ~15.6 ms) and
   `rb_time_to_seconds`. The logger's `t` uses it and no longer jumps with the system time. The
   sandbox sleeps 1 ms per iteration instead of spinning a CPU core.
+- Virtual memory (ADR 0010, A1), internal to the engine: reserve an address range, commit and
+  decommit pages of it, release it (`VirtualAlloc` / `mmap`). Reserving costs no RAM nor commit
+  charge; out-of-memory is reported at commit on both platforms. Win32 `GetLastError` logging is
+  shared by the backend files (`win32_error.c`).
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

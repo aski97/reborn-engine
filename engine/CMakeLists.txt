@@ -26,13 +26,16 @@ set(REBORN_SOURCES
 if(WIN32)
     list(APPEND REBORN_SOURCES
         src/platform/win32/win32_clock.c
+        src/platform/win32/win32_error.c
         src/platform/win32/win32_input.c
+        src/platform/win32/win32_memory.c
         src/platform/win32/win32_os.c
         src/platform/win32/win32_platform.c
     )
 elseif(LINUX)
     list(APPEND REBORN_SOURCES
         src/platform/linux/linux_clock.c
+        src/platform/linux/linux_memory.c
         src/platform/linux/linux_os.c
         src/platform/linux/xlib_input.c
         src/platform/linux/xlib_platform.c

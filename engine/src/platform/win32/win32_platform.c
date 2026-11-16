@@ -6,6 +6,7 @@
  * and queues them, so engine code never runs inside an OS callback.
  */
 #include "platform/platform_internal.h"
+#include "platform/win32/win32_error.h"
 #include "platform/win32/win32_input.h"
 
 #include <reborn/assert.h>
@@ -62,32 +63,6 @@ static bool win32_utf8_to_wide(const char *utf8, wchar_t *out, int out_count) {
      * buffer.
      */
     return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, out, out_count) != 0;
-}
-
-/*
- * Logs `what` with the system's description of GetLastError(). A macro, so the
- * record carries the caller's location instead of this helper's.
- */
-#define WIN32_LOG_LAST_ERROR(what) win32_log_last_error((what), __FILE__, __LINE__, __func__)
-
-static void win32_log_last_error(const char *what, const char *file, u32 line, const char *func) {
-    DWORD   error = GetLastError();
-    wchar_t wide[512];
-    char    text[1024];
-    /* In the user's language: the text is for whoever reads the log on this machine. */
-    DWORD length = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
-                                  error, 0, wide, (DWORD)RB_ARRAY_COUNT(wide), NULL);
-    /* System messages end with "\r\n", which would break the log line. */
-    while (length > 0 &&
-           (wide[length - 1] == L'\r' || wide[length - 1] == L'\n' || wide[length - 1] == L' ')) {
-        --length;
-    }
-    int bytes = length > 0 ? WideCharToMultiByte(CP_UTF8, 0, wide, (int)length, text,
-                                                 (int)sizeof(text) - 1, NULL, NULL)
-                           : 0;
-    text[bytes > 0 ? bytes : 0] = '\0';
-    rb_log_write(RB_LOG_LEVEL_ERROR, file, line, func, "%s failed: error %lu: %s", what,
-                 (unsigned long)error, bytes > 0 ? text : "(no description)");
 }
 
 static win32_window *win32_find_window(rb_platform_state *state, HWND hwnd) {

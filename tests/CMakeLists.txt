@@ -16,6 +16,7 @@ add_executable(reborn_tests
     core/test_version.c
     platform/test_clock.c
     platform/test_input.c
+    platform/test_memory.c
     platform/test_platform.c
 )
 

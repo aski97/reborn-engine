@@ -23,5 +23,6 @@ its implementation.
 | 0007 | [Generational handles and index-only containers](0007-index-only-containers.md) | Accepted |
 | 0008 | [Logging and asserts](0008-logging-and-asserts.md) | Accepted |
 | 0009 | [Monotonic clock and sleep](0009-monotonic-clock-and-sleep.md) | Accepted |
+| 0010 | [Memory allocation](0010-memory-allocation.md) | Proposed |
 
 Template: [`template.md`](template.md).

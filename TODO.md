@@ -43,7 +43,7 @@ Section numbers stay fixed: ADRs and code refer to them.
 - [x] Structured output (JSON lines) for LLM consumption
 
 ### 6. Memory
-- [ ] OS allocation (VirtualAlloc / mmap)
+- [x] OS allocation: reserve / commit / decommit / release (VirtualAlloc / mmap, ADR 0010)
 - [ ] Arena allocator
 - [ ] Allocator interface; system startup takes an allocator instead of a size query (ADR 0006, B3)
 - [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
@@ -72,6 +72,12 @@ Section numbers stay fixed: ADRs and code refer to them.
       debug API (ADR 0008)
 - [ ] Containers that own memory: dynamic array, hash map, string/string builder
       (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
+- [ ] Chained arena blocks (ADR 0010, B3), inside `rb_arena` without an API change. Only when one
+      of these shows up: an arena whose size depends on content with no sensible upper bound
+      (editor, mods, long sessions); reservations failing in a real environment (`ulimit -v`,
+      Windows job objects); many small short-lived arenas (per asset, per entity), better carved
+      from a parent allocator than each reserving address space; a target without virtual memory
+      control (WebAssembly, some consoles)
 
 ### Profiling and performance
 - [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find bottlenecks
