@@ -1,8 +1,8 @@
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <reborn/clock.h>
 #include <reborn/log.h>
+#include <reborn/memory.h>
 #include <reborn/platform.h>
 #include <reborn/version.h>
 
@@ -90,12 +90,12 @@ static bool handle_event(const rb_event *ev) {
 /*
  * Opens a window and runs until it is closed. A 1 ms sleep per iteration keeps
  * a CPU core from spinning until the game loop (roadmap §4) paces frames.
+ * `engine` holds what lives as long as the engine: the platform state.
  */
-static int run_window(void) {
-    rb_platform_state *platform = malloc(rb_platform_state_size());
-    if (platform == NULL || !rb_platform_startup(platform)) {
+static int run_window(rb_arena *engine) {
+    rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(engine));
+    if (platform == NULL) {
         RB_LOG_FATAL("Platform startup failed");
-        free(platform);
         return 1;
     }
 
@@ -105,7 +105,6 @@ static int run_window(void) {
     if (!rb_window_is_valid(platform, window)) {
         RB_LOG_FATAL("Window creation failed");
         rb_platform_shutdown(platform);
-        free(platform);
         return 1;
     }
 
@@ -132,7 +131,6 @@ static int run_window(void) {
 
     rb_window_destroy(platform, window);
     rb_platform_shutdown(platform);
-    free(platform);
     return 0;
 }
 
@@ -150,7 +148,17 @@ int main(void) {
         RB_LOG_FATAL("Version mismatch: header %s, library %s", RB_VERSION_STRING,
                      rb_version_string());
     } else {
-        result = run_window();
+        /*
+         * An upper bound, not a need: only what is used gets committed (ADR 0010).
+         * Until the application layer (roadmap §4) owns it, the sandbox does.
+         */
+        rb_arena engine;
+        if (!rb_arena_create(&engine, RB_MIB(64))) {
+            RB_LOG_FATAL("Cannot reserve the engine arena");
+        } else {
+            result = run_window(&engine);
+            rb_arena_destroy(&engine);
+        }
     }
 
     RB_LOG_INFO("Exiting with code %d", result);

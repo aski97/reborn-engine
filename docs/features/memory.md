@@ -179,7 +179,6 @@ for (u32 n = 1;; ++n) {
   resizes count.
 
 ## Future work
-- Platform startup takes an allocator instead of a size query (ADR 0010, K1).
 - A failing allocator mode that fails every allocation from the N-th on (lasting out of memory), if
   error paths need it.
 - Decommit above a high-water mark if an arena's peak holds memory for too long.
@@ -192,3 +191,4 @@ for (u32 n = 1;; ++n) {
 | v0.1.0 | 2026-11-16 | Virtual memory: reserve, commit, decommit, release |
 | v0.1.0 | 2026-11-16 | Arena over a reservation or a buffer, temp scopes, ASan poisoning |
 | v0.1.0 | 2026-11-16 | Allocator interface, arena adapter, heap allocator, failing test allocator |
+| v0.1.0 | 2026-11-16 | Platform startup takes an allocator; the sandbox uses an engine arena |

@@ -7,7 +7,17 @@
 
 #include <reborn/log.h>
 
+#include "failing_allocator.h"
 #include "platform/platform_internal.h"
+
+/* The state is the first allocation: failing it must touch neither the OS nor the allocator. */
+RB_TEST(platform, startup_fails_cleanly_without_memory_for_its_state) {
+    rb_failing_allocator failing;
+    rb_failing_allocator_init(&failing, rb_heap_allocator(), 1);
+    RB_EXPECT(rb_platform_startup(rb_failing_allocator_get(&failing)) == NULL);
+    RB_EXPECT_EQ_UINT(failing.failure_count, 1);
+    RB_EXPECT_EQ_UINT(failing.live_bytes, 0);
+}
 
 static rb_event make_close_event(u32 window_id) {
     return (rb_event){.type = RB_EVENT_WINDOW_CLOSE_REQUESTED, .window = {window_id}};

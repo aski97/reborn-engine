@@ -1,6 +1,6 @@
 # 0010 — Memory allocation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 
 ## Context
@@ -125,6 +125,11 @@ see overflows inside custom allocators. Targets are 64-bit only (`defines.h`). N
   parent and fails its N-th allocation (1-based; 0 never fails). Growing resizes count as
   allocations, shrinking ones and frees do not. Counters: `allocation_count`, `failure_count`,
   `free_count`, `live_bytes` (for leak checks on error paths).
+
+- **Platform startup** (K1): `rb_platform_state *rb_platform_startup(rb_allocator)` allocates
+  the state zeroed, keeps the allocator in the shared state and frees through it on shutdown or on
+  a failed startup; `rb_platform_state_size` is gone. The sandbox gives it an engine-lifetime arena
+  (64 MiB reserved) until the application layer (§4) owns one.
 
 ## Consequences
 - Every system and container takes an `rb_allocator`; tests can inject failures anywhere.

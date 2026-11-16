@@ -53,6 +53,9 @@ typedef struct rb_input_state {
 } rb_input_state;
 
 typedef struct rb_platform_common {
+    /* Where the state came from: shutdown frees it there (ADR 0010, K1). */
+    rb_allocator allocator;
+
     rb_handle_pool  window_pool;
     u16             window_generations[RB_MAX_WINDOWS];
     u32             window_free_slots[RB_MAX_WINDOWS];

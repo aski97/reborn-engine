@@ -73,3 +73,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   `posix_memalign`). Failing allocator for tests in `tests/support/`.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.
+
+### Changed
+- `rb_platform_startup(allocator)` takes its state from an `rb_allocator` and returns it (`NULL`
+  on failure, nothing left allocated); shutdown frees it through the same allocator.
+  `rb_platform_state_size` is removed (ADR 0006, B3; ADR 0010, K1). The sandbox gives the platform
+  an engine-lifetime arena instead of `malloc`.

@@ -387,13 +387,8 @@ static LRESULT CALLBACK win32_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LP
  * System
  * ========================================================================== */
 
-usize rb_platform_state_size(void) {
-    return sizeof(struct rb_platform_state);
-}
-
-bool rb_platform_startup(rb_platform_state *state) {
-    RB_ASSERT(state != NULL);
-    ZeroMemory(state, sizeof(*state));
+/* Everything but the state's memory. On failure nothing is left to undo but the free. */
+static bool win32_startup(rb_platform_state *state) {
     if (!rb_platform_common_init(&state->common)) {
         return false;
     }
@@ -423,6 +418,21 @@ bool rb_platform_startup(rb_platform_state *state) {
     return true;
 }
 
+rb_platform_state *rb_platform_startup(rb_allocator allocator) {
+    RB_ASSERT(allocator.vtable != NULL);
+    /* Zeroed (ADR 0010, H1): every window slot starts empty. Failure is logged by the allocator. */
+    rb_platform_state *state = RB_ALLOC_TYPE(allocator, rb_platform_state);
+    if (state == NULL) {
+        return NULL;
+    }
+    state->common.allocator = allocator;
+    if (!win32_startup(state)) {
+        RB_FREE_TYPE(allocator, state, rb_platform_state);
+        return NULL;
+    }
+    return state;
+}
+
 void rb_platform_shutdown(rb_platform_state *state) {
     RB_ASSERT(state != NULL);
     for (u32 i = 0; i < RB_MAX_WINDOWS; ++i) {
@@ -432,6 +442,9 @@ void rb_platform_shutdown(rb_platform_state *state) {
     }
     UnregisterClassW(WIN32_CLASS_NAME, state->instance);
     RB_LOG_DEBUG("Win32 platform shut down");
+    /* Copied out first: the free ends the state's life, allocator field included. */
+    rb_allocator allocator = state->common.allocator;
+    RB_FREE_TYPE(allocator, state, rb_platform_state);
 }
 
 /* ============================================================================

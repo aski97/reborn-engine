@@ -28,9 +28,15 @@ add_executable(reborn_tests
 
 # Backend tests: only the backend of the target OS is in the engine (ADR 0006).
 if(WIN32)
-    target_sources(reborn_tests PRIVATE platform/win32/test_win32_input.c)
+    target_sources(reborn_tests PRIVATE
+        platform/win32/test_win32_input.c
+        platform/win32/test_win32_platform.c
+    )
 elseif(LINUX)
-    target_sources(reborn_tests PRIVATE platform/linux/test_xlib_input.c)
+    target_sources(reborn_tests PRIVATE
+        platform/linux/test_xlib_input.c
+        platform/linux/test_xlib_platform.c
+    )
 endif()
 
 target_include_directories(reborn_tests PRIVATE

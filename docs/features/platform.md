@@ -99,8 +99,10 @@ OS code mapping in `win32_input.c` / `xlib_input.c`: see [input.md](input.md).
 
 ## API
 ```c
-rb_platform_state *platform = malloc(rb_platform_state_size());
-rb_platform_startup(platform);
+rb_arena engine;
+rb_arena_create(&engine, RB_MIB(64));                /* lives as long as the engine */
+rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(&engine));
+if (platform == NULL) { /* logged */ }
 rb_window win = rb_window_create(platform, &(rb_window_desc){"Reborn", 1280, 720});
 
 for (bool running = true; running;) {
@@ -117,12 +119,13 @@ for (bool running = true; running;) {
 }
 
 rb_window_destroy(platform, win);
-rb_platform_shutdown(platform);
-free(platform);
+rb_platform_shutdown(platform);                      /* frees the state through the arena */
+rb_arena_destroy(&engine);
 ```
 
 ## Decisions
-- One backend per OS chosen by CMake; caller-provided state memory; generational window handles;
+- One backend per OS chosen by CMake; state taken from an allocator given at startup (ADR 0006,
+  B3; ADR 0010, K1); generational window handles;
   polled event queue; Xlib on Linux; physical key codes; UTF-8 strings (ADR 0006).
 - State passed explicitly to every call; close is a request; sizes in logical units (ADR 0006).
 - Window lifecycle: events + queries, one event type per transition, logical and pixel size in one
@@ -156,3 +159,4 @@ free(platform);
 | v0.1.0 | 2026-11-15 | Window lifecycle: resize, focus, minimize events and queries; merged resizes |
 | v0.1.0 | 2026-11-16 | Keyboard and mouse events and state ([input.md](input.md)) |
 | v0.1.0 | 2026-11-16 | Window position: `RB_EVENT_WINDOW_MOVED`, `rb_window_get_position` |
+| v0.1.0 | 2026-11-16 | Startup takes an `rb_allocator` and returns the state; `rb_platform_state_size` removed |

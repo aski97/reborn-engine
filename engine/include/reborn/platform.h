@@ -1,8 +1,7 @@
 /*
  * Platform layer: windows and OS events (ADR 0006).
  *
- *   rb_platform_state *platform = malloc(rb_platform_state_size());
- *   rb_platform_startup(platform);
+ *   rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(&engine_arena));
  *   rb_window win = rb_window_create(platform, &(rb_window_desc){"Reborn", 1280, 720});
  *
  *   for (bool running = true; running;) {
@@ -15,8 +14,7 @@
  *   }
  *
  *   rb_window_destroy(platform, win);
- *   rb_platform_shutdown(platform);
- *   free(platform);
+ *   rb_platform_shutdown(platform);   // frees the state through the same allocator
  *
  * No OS header may ever be included here: this file reaches game code.
  * Pointer parameters must not be NULL unless documented (RB_ASSERT in debug builds).
@@ -26,6 +24,7 @@
 
 #include <reborn/defines.h>
 #include <reborn/input.h>
+#include <reborn/memory.h>
 
 /* ============================================================================
  * System
@@ -34,16 +33,15 @@
 /* Opaque: its fields differ per backend and only the backend knows them. */
 typedef struct rb_platform_state rb_platform_state;
 
-/* Bytes the caller must provide to rb_platform_startup (ADR 0006, B2). */
-RB_API usize rb_platform_state_size(void);
-
 /*
- * `state` must point to rb_platform_state_size() bytes aligned for any type
- * (malloc guarantees it). The memory stays owned by the caller.
+ * Takes its state from `allocator` and keeps a copy of it, so the state behind
+ * the allocator (an arena) must outlive the platform (ADR 0010, K1). NULL on
+ * failure (logged), with nothing left allocated: no allocator memory, no X
+ * display, no window class.
  */
-RB_API bool rb_platform_startup(rb_platform_state *state);
+RB_API rb_platform_state *rb_platform_startup(rb_allocator allocator);
 
-/* Destroys any window still open. Does not free `state`: the caller does. */
+/* Destroys any window still open, then frees `state` through the startup allocator. */
 RB_API void rb_platform_shutdown(rb_platform_state *state);
 
 /* ============================================================================

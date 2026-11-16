@@ -311,13 +311,8 @@ static void xlib_handle_client_message(rb_platform_state *state, const XClientMe
  * System
  * ========================================================================== */
 
-usize rb_platform_state_size(void) {
-    return sizeof(struct rb_platform_state);
-}
-
-bool rb_platform_startup(rb_platform_state *state) {
-    RB_ASSERT(state != NULL);
-    memset(state, 0, sizeof(*state));
+/* Everything but the state's memory. On failure nothing is left to undo but the free. */
+static bool xlib_startup(rb_platform_state *state) {
     if (!rb_platform_common_init(&state->common)) {
         return false;
     }
@@ -356,12 +351,23 @@ bool rb_platform_startup(rb_platform_state *state) {
     return true;
 }
 
+rb_platform_state *rb_platform_startup(rb_allocator allocator) {
+    RB_ASSERT(allocator.vtable != NULL);
+    /* Zeroed (ADR 0010, H1): every window slot starts empty. Failure is logged by the allocator. */
+    rb_platform_state *state = RB_ALLOC_TYPE(allocator, rb_platform_state);
+    if (state == NULL) {
+        return NULL;
+    }
+    state->common.allocator = allocator;
+    if (!xlib_startup(state)) {
+        RB_FREE_TYPE(allocator, state, rb_platform_state);
+        return NULL;
+    }
+    return state;
+}
+
 void rb_platform_shutdown(rb_platform_state *state) {
     RB_ASSERT(state != NULL);
-    /* Safe after a failed startup, as on Win32: the zeroed state has no display. */
-    if (state->display == NULL) {
-        return;
-    }
     for (u32 i = 0; i < RB_MAX_WINDOWS; ++i) {
         if (state->windows[i].xid != None) {
             rb_window_destroy(state, (rb_window){state->windows[i].id});
@@ -369,8 +375,10 @@ void rb_platform_shutdown(rb_platform_state *state) {
     }
     /* Flushes pending requests; the server also frees anything we left behind. */
     XCloseDisplay(state->display);
-    state->display = NULL;
     RB_LOG_DEBUG("Xlib platform shut down");
+    /* Copied out first: the free ends the state's life, allocator field included. */
+    rb_allocator allocator = state->common.allocator;
+    RB_FREE_TYPE(allocator, state, rb_platform_state);
 }
 
 /* ============================================================================

@@ -160,15 +160,15 @@ primary monitor's top left, negative left of or above it)
    no round trip; depends on the window manager.
 
 ## Decision
-**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1, V1,
+**A1, B3 (B2 until §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1, V1,
 W1, X1; input: O1, P1, Q1, R1, S1, T1, U1.**
 - **A1:** the public API is one header; CMake compiles `platform/win32/` or `platform/linux/`.
   If Linux ever needs two backends, the vtable lives inside the Linux backend only (A3 locally).
-- **B2:** systems never allocate their own state; `rb_engine` owns every system's memory.
-  The size query is a separate function rather than a `NULL` argument, so each function does one
-  thing: `rb_platform_state_size()`, then `rb_platform_startup(state)`. Until §6 exists, the
-  caller allocates with `malloc`. Once the allocator interface exists, systems move to **B3**:
-  one call, and systems that allocate at runtime (renderer resources) need an allocator anyway.
+- **B3:** systems never choose where their memory comes from; the engine does.
+  `rb_platform_startup(allocator)` takes its state from the allocator it is given and keeps it,
+  and shutdown frees through it (ADR 0010, K1). Until §6 existed it was **B2**: the caller
+  queried `rb_platform_state_size()` and allocated with `malloc`. One call, and systems that
+  allocate at runtime (renderer resources) need an allocator anyway.
 - **C3:** the API stays object-like (`rb_window_set_title(win, ...)`), the handle plays the role
   of `this`. The zero handle is invalid, so a zero-initialized `rb_window` is never a live window.
   The pool is a generic container (ADR 0007), reused for renderer resources.
@@ -322,7 +322,6 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 ### When to revisit
 | Trigger | Change | Impact |
 |---|---|---|
-| Allocator interface available (§6) | System startup takes an allocator (B3) | Every system's startup signature; a new ADR |
 | XWayland not good enough (fractional scaling blur, HDR, a distro dropping it) | Add a Wayland backend next to Xlib, chosen at runtime inside `platform/linux/` | Public API unchanged; adds `wayland-client` + `libxkbcommon` (new approval) |
 | Xlib's synchronous round-trips become measurable | Move window/event code to XCB (E2) | Linux backend only |
 | More windows than the pool allows | Raise the constant | None |
