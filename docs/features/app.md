@@ -6,7 +6,7 @@
 | **Since** | v0.1.0 (2026-11-16) |
 | **Updated** | v0.1.0 (2026-11-16) |
 | **Code** | `engine/include/reborn/app.h`, `engine/src/app/` |
-| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md) |
+| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md) |
 
 ## Summary
 The engine owns the game loop. A game is a set of callbacks: the engine starts its systems, opens
@@ -42,7 +42,13 @@ and shuts everything down. Timing, frame memory and event handling are written o
   restarts the schedule.
 - **Memory:** a persistent arena (platform state, game state, game data for the whole run; 256 MiB
   reserved) and a frame arena reset at the start of every frame (64 MiB reserved). The state is
-  zeroed and aligned as configured (`RB_APP_STATE`).
+  zeroed and aligned as configured (`RB_APP_STATE`). `rb_app_allocator` gives the game a
+  general-purpose allocator (the heap) for objects freed one at a time, tagged
+  `RB_MEMORY_TAG_GAME`.
+- **Memory report:** at the end of the run (also after a failed `init`), once the platform is shut
+  down and before the arenas go: per tag that allocated, its peak and totals (INFO); per tag still
+  holding blocks, a `Memory leak` line (ERROR, exit code unchanged); per arena, its peak of
+  reserved (INFO). See [memory.md](memory.md).
 - **Not yet:** vetoing the close, variable update, several windows managed by the app, events
   between steps.
 
@@ -87,7 +93,13 @@ int main(void) {
 }
 ```
 Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_persistent_arena`,
-`rb_app_frame_arena`, `rb_app_quit`.
+`rb_app_frame_arena`, `rb_app_allocator`, `rb_app_quit`.
+
+```c
+/* Objects freed one at a time: freed by shutdown, or reported as a leak. */
+rb_enemy *enemy = RB_ALLOC_TYPE(rb_app_allocator(app), rb_enemy, RB_MEMORY_TAG_GAME);
+RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
+```
 
 ## Decisions
 - Engine owns the loop, game provides callbacks (ADR 0011, A1); `configure` separate from `init` (B2).
@@ -95,6 +107,8 @@ Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_persisten
 - Opaque `rb_app *` with accessors (E1); state allocated by the engine from its declared size (F1).
 - Frame cap on absolute deadlines until vsync (G1).
 - `rb_app_run` owns version check and logger, `main` is one line (H2).
+- The engine chooses the game's general-purpose allocator and reports leaks and arena peaks at the
+  end of the run (ADR 0012, D1).
 
 ## Future work
 - Veto on close; variable `update` for camera/UI if needed (ADR 0011, C4).
@@ -108,3 +122,4 @@ Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_persisten
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-16 | First version: callbacks, fixed step, frame cap, persistent and frame arenas |
+| v0.1.0 | 2026-11-16 | `rb_app_allocator`; memory report (leaks, arena peaks) at the end of the run |

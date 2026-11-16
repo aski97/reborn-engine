@@ -68,6 +68,11 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   `RB_ALLOC_TYPE` / `_ARRAY`, `RB_FREE_TYPE` / `_ARRAY`; `rb_arena_allocator` (frees and grows the
   last block in place, never below an open temp scope) and `rb_heap_allocator` (`_aligned_malloc` /
   `posix_memalign`). Failing allocator for tests in `tests/support/`.
+- Allocation tracking (ADR 0012): every allocator call names an `rb_memory_tag` (`GENERAL`,
+  `PLATFORM`, `GAME`); the helpers count live bytes and blocks, peak, allocations and frees per tag,
+  whichever allocator serves the call (`rb_memory_get_stats`). Arenas keep a high-water mark
+  (`rb_arena.peak`). At the end of the run the app logs each tag's peak and totals, a
+  `Memory leak` error per tag still holding blocks, and each arena's peak of reserved.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.
 - Application layer (ADR 0011): `reborn/app.h` with `rb_app_run(&callbacks)`. The engine owns the
@@ -78,6 +83,7 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   render skipped while minimized. The engine allocates the game's state (`RB_APP_STATE`) from a
   persistent arena and resets a frame arena every frame. `rb_app_run` also checks the game's header
   version against the library and starts the logger with `config.log`: a game's `main` is one line.
+  `rb_app_allocator` gives the game a general-purpose allocator for objects freed one at a time.
   Each phase is logged once, nothing per frame: the configuration as received and the quit reason
   at INFO, game init, loop and game shutdown at DEBUG.
 - Sandbox: a game under the application layer (`main.c` is the one-line entry point, `game.c`

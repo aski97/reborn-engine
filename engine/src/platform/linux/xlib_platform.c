@@ -354,13 +354,13 @@ static bool xlib_startup(rb_platform_state *state) {
 rb_platform_state *rb_platform_startup(rb_allocator allocator) {
     RB_ASSERT(allocator.vtable != NULL);
     /* Zeroed (ADR 0010, H1): every window slot starts empty. Failure is logged by the allocator. */
-    rb_platform_state *state = RB_ALLOC_TYPE(allocator, rb_platform_state);
+    rb_platform_state *state = RB_ALLOC_TYPE(allocator, rb_platform_state, RB_MEMORY_TAG_PLATFORM);
     if (state == NULL) {
         return NULL;
     }
     state->common.allocator = allocator;
     if (!xlib_startup(state)) {
-        RB_FREE_TYPE(allocator, state, rb_platform_state);
+        RB_FREE_TYPE(allocator, state, rb_platform_state, RB_MEMORY_TAG_PLATFORM);
         return NULL;
     }
     return state;
@@ -378,7 +378,7 @@ void rb_platform_shutdown(rb_platform_state *state) {
     RB_LOG_DEBUG("Xlib platform shut down");
     /* Copied out first: the free ends the state's life, allocator field included. */
     rb_allocator allocator = state->common.allocator;
-    RB_FREE_TYPE(allocator, state, rb_platform_state);
+    RB_FREE_TYPE(allocator, state, rb_platform_state, RB_MEMORY_TAG_PLATFORM);
 }
 
 /* ============================================================================

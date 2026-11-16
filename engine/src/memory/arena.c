@@ -103,6 +103,14 @@ static bool arena_commit(rb_arena *arena, usize end) {
     return true;
 }
 
+/* Every forward move goes through here, so the high-water mark (ADR 0012, C1) misses none. */
+static void arena_advance(rb_arena *arena, usize end) {
+    arena->pos = end;
+    if (end > arena->peak) {
+        arena->peak = end;
+    }
+}
+
 static void *arena_push(rb_arena *arena, usize size, usize align, bool zero) {
     RB_ASSERT(arena != NULL);
     RB_ASSERT(align > 0 && (align & (align - 1)) == 0);
@@ -134,7 +142,7 @@ static void *arena_push(rb_arena *arena, usize size, usize align, bool zero) {
     if (zero) {
         memset(ptr, 0, size);
     }
-    arena->pos = end;
+    arena_advance(arena, end);
     return ptr;
 }
 
@@ -257,7 +265,7 @@ static void *arena_allocator_resize(void *ctx, void *ptr, usize old_size, usize 
             return NULL;
         }
         RB_ASAN_UNPOISON(ptr, new_size);
-        arena->pos = end;
+        arena_advance(arena, end);
         return ptr;
     }
 

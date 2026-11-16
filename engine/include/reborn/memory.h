@@ -1,5 +1,6 @@
 /*
- * Memory (ADR 0010): the allocator interface, arenas, the heap allocator.
+ * Memory (ADR 0010, 0012): the allocator interface and its tags, arenas, the heap
+ * allocator.
  *
  *   rb_arena arena;
  *   if (!rb_arena_create(&arena, RB_GIB(1))) { ... }   // addresses only, no RAM yet
@@ -10,8 +11,8 @@
  *   rb_arena_destroy(&arena);
  *
  *   rb_allocator heap = rb_heap_allocator();           // or rb_arena_allocator(&arena)
- *   u32 *items = RB_ALLOC_ARRAY(heap, u32, count);
- *   RB_FREE_ARRAY(heap, items, u32, count);            // the caller passes the size back
+ *   u32 *items = RB_ALLOC_ARRAY(heap, u32, count, RB_MEMORY_TAG_GAME);
+ *   RB_FREE_ARRAY(heap, items, u32, count, RB_MEMORY_TAG_GAME);   // size and tag passed back
  *
  * An arena hands out memory by moving a position forward and frees it only all
  * together (reset) or back to a saved position (temp scopes). It never moves:
@@ -25,12 +26,43 @@
 #include <reborn/defines.h>
 
 /* ============================================================================
+ * Tags and stats (ADR 0012)
+ *
+ * Every allocation through the interface names what it belongs to; the
+ * helpers below count it under that tag, whichever allocator serves it.
+ * ========================================================================== */
+
+/* A subsystem adds its tag when it starts allocating. */
+typedef enum rb_memory_tag {
+    RB_MEMORY_TAG_GENERAL,  /* no subsystem: tools, tests */
+    RB_MEMORY_TAG_PLATFORM, /* platform state */
+    RB_MEMORY_TAG_GAME,     /* the game's own allocations */
+    RB_MEMORY_TAG_COUNT
+} rb_memory_tag;
+
+/* Counted since startup, through the rb_alloc... helpers only (arenas pushed directly are not). */
+typedef struct rb_memory_stats {
+    usize live_bytes;  /* allocated and not yet freed */
+    usize peak_bytes;  /* highest live_bytes so far */
+    usize live_blocks; /* blocks not yet freed: above 0 at shutdown is a leak */
+    u64   alloc_count; /* successful allocations, resizes of NULL included */
+    u64   free_count;
+} rb_memory_stats;
+
+/* "platform", "game"...; "unknown" out of range. */
+RB_API const char *rb_memory_tag_name(rb_memory_tag tag);
+
+RB_API rb_memory_stats rb_memory_get_stats(rb_memory_tag tag);
+
+/* ============================================================================
  * Allocator interface (ADR 0010, C1, D2)
  *
  * Every operation is sized: the caller passes back the size and alignment it
  * allocated with, so no allocator needs a header per block. Rules shared by
  * every allocator:
  * - `align` is a power of two (asserted), and the same in alloc, resize, free.
+ * - `tag` (ADR 0012) is the same in alloc, resize and free: a free under
+ *   another tag skews both tags' counters.
  * - Failure returns NULL and is logged by the allocator (G1); after a failed
  *   resize the old block is untouched and still the caller's.
  * - A size of 0 gives a valid pointer that must not be dereferenced and is
@@ -60,13 +92,14 @@ typedef struct rb_allocator {
 } rb_allocator;
 
 /* `size` bytes aligned to `align`, zeroed (H1). NULL on failure (logged). */
-RB_API void *rb_alloc(rb_allocator allocator, usize size, usize align);
+RB_API void *rb_alloc(rb_allocator allocator, usize size, usize align, rb_memory_tag tag);
 
 /* As rb_alloc without zeroing: for buffers about to be fully overwritten. */
-RB_API void *rb_alloc_uninit(rb_allocator allocator, usize size, usize align);
+RB_API void *rb_alloc_uninit(rb_allocator allocator, usize size, usize align, rb_memory_tag tag);
 
 /* `count` elements of `elem_size` bytes, zeroed. NULL also when the total overflows (logged). */
-RB_API void *rb_alloc_array(rb_allocator allocator, usize elem_size, usize align, usize count);
+RB_API void *rb_alloc_array(rb_allocator allocator, usize elem_size, usize align, usize count,
+                            rb_memory_tag tag);
 
 /*
  * Grows or shrinks a block, keeping its first min(old, new) bytes; grown bytes
@@ -74,23 +107,24 @@ RB_API void *rb_alloc_array(rb_allocator allocator, usize elem_size, usize align
  * the old block still valid. A NULL `ptr` (with `old_size` 0) allocates.
  */
 RB_API void *rb_resize(rb_allocator allocator, void *ptr, usize old_size, usize new_size,
-                       usize align);
+                       usize align, rb_memory_tag tag);
 
 /* As rb_resize, grown bytes left uninitialized. */
 RB_API void *rb_resize_uninit(rb_allocator allocator, void *ptr, usize old_size, usize new_size,
-                              usize align);
+                              usize align, rb_memory_tag tag);
 
-/* `size` and `align` as allocated (or as last resized). NULL does nothing. */
-RB_API void rb_free(rb_allocator allocator, void *ptr, usize size, usize align);
+/* `size`, `align` and `tag` as allocated (or as last resized). NULL does nothing. */
+RB_API void rb_free(rb_allocator allocator, void *ptr, usize size, usize align, rb_memory_tag tag);
 
 /* `_Alignof(T)` is the alignment the type needs (C11): no size or alignment to get wrong. */
-#define RB_ALLOC_TYPE(allocator, T) ((T *)rb_alloc((allocator), sizeof(T), _Alignof(T)))
-#define RB_ALLOC_ARRAY(allocator, T, count)                                                        \
-    ((T *)rb_alloc_array((allocator), sizeof(T), _Alignof(T), (count)))
-#define RB_FREE_TYPE(allocator, ptr, T) rb_free((allocator), (ptr), sizeof(T), _Alignof(T))
+#define RB_ALLOC_TYPE(allocator, T, tag) ((T *)rb_alloc((allocator), sizeof(T), _Alignof(T), (tag)))
+#define RB_ALLOC_ARRAY(allocator, T, count, tag)                                                   \
+    ((T *)rb_alloc_array((allocator), sizeof(T), _Alignof(T), (count), (tag)))
+#define RB_FREE_TYPE(allocator, ptr, T, tag)                                                       \
+    rb_free((allocator), (ptr), sizeof(T), _Alignof(T), (tag))
 /* `count` as allocated: it fitted then, so the product cannot overflow now. */
-#define RB_FREE_ARRAY(allocator, ptr, T, count)                                                    \
-    rb_free((allocator), (ptr), sizeof(T) * (count), _Alignof(T))
+#define RB_FREE_ARRAY(allocator, ptr, T, count, tag)                                               \
+    rb_free((allocator), (ptr), sizeof(T) * (count), _Alignof(T), (tag))
 
 /* ============================================================================
  * Arena
@@ -106,6 +140,7 @@ typedef struct rb_arena {
     usize committed; /* bytes usable without asking the OS, from base */
     usize reserved;  /* upper bound: the reservation, or the buffer's size */
     usize floor;     /* innermost open temp scope's pos: rb_arena_allocator never frees below */
+    usize peak;      /* highest pos so far, never lowered: what the reservation must hold */
     bool  owns_memory;
 } rb_arena;
 

@@ -11,6 +11,7 @@
 
 #include "app/app_internal.h"
 #include "app/frame_timing.h"
+#include "memory/memory_internal.h"
 
 /*
  * Longest frame delta the simulation sees. Longer gaps (suspend, a debugger
@@ -22,6 +23,16 @@
 
 #define APP_MAX_UPDATE_RATE 1000u
 
+/*
+ * Why the loop ends. A value, not the log text: code can branch on it (a close
+ * veto, a debug API), and the compiler checks every name.
+ */
+typedef enum app_quit_reason {
+    APP_QUIT_NONE,           /* still running */
+    APP_QUIT_WINDOW_CLOSED,  /* close requested on the main window */
+    APP_QUIT_GAME_REQUESTED, /* rb_app_quit */
+} app_quit_reason;
+
 struct rb_app {
     const rb_app_callbacks *callbacks;
     void                   *state;
@@ -29,7 +40,7 @@ struct rb_app {
     rb_arena                frame;
     rb_platform_state      *platform;
     rb_window               window;
-    bool                    quit_requested;
+    app_quit_reason         quit_reason;
     /* Totals for the closing log line. Frames count loop iterations, rendered or not. */
     u64 frame_count;
     u64 step_count;
@@ -52,18 +63,6 @@ rb_app_config rb_app_default_config(void) {
     };
 }
 
-/* "256 MiB", "64 KiB" or "100 bytes": exact, and readable for the usual round sizes. */
-static const char *app_format_size(char *buf, usize buf_size, usize bytes) {
-    if (bytes != 0 && bytes % RB_MIB(1) == 0) {
-        snprintf(buf, buf_size, "%zu MiB", (usize)(bytes / RB_MIB(1)));
-    } else if (bytes != 0 && bytes % RB_KIB(1) == 0) {
-        snprintf(buf, buf_size, "%zu KiB", (usize)(bytes / RB_KIB(1)));
-    } else {
-        snprintf(buf, buf_size, "%zu bytes", bytes);
-    }
-    return buf;
-}
-
 /*
  * Every field as configure left it, before validation: whatever happens next,
  * the log shows what the engine received (one day from a file).
@@ -81,9 +80,10 @@ static void app_log_config(const rb_app_config *config) {
                 config->window.width, config->window.height);
     RB_LOG_INFO("Config: %u updates/s, frame cap %s", config->update_rate, cap);
     RB_LOG_INFO("Config: state %s aligned to %zu, arenas %s persistent + %s frame reserved",
-                app_format_size(state, sizeof(state), config->state_size), config->state_align,
-                app_format_size(persistent, sizeof(persistent), config->persistent_reserve),
-                app_format_size(frame, sizeof(frame), config->frame_reserve));
+                rb_memory_format_size(state, sizeof(state), config->state_size),
+                config->state_align,
+                rb_memory_format_size(persistent, sizeof(persistent), config->persistent_reserve),
+                rb_memory_format_size(frame, sizeof(frame), config->frame_reserve));
     if (config->log.file_path != NULL) {
         RB_LOG_INFO("Config: log console %s, file \"%s\" %s",
                     rb_log_level_name(config->log.console_level), config->log.file_path,
@@ -152,9 +152,29 @@ static bool app_startup(rb_app *app, const rb_app_config *config) {
     return false;
 }
 
+static void app_log_arena(const char *name, const rb_arena *arena) {
+    char peak[32];
+    char reserved[32];
+    RB_LOG_INFO("Arena %s: peak %s of %s reserved", name,
+                rb_memory_format_size(peak, sizeof(peak), arena->peak),
+                rb_memory_format_size(reserved, sizeof(reserved), arena->reserved));
+}
+
+/*
+ * Once every system has given its memory back, and while the arenas still
+ * exist to read their peaks (ADR 0012). A leak is logged, not fatal: the run
+ * itself went fine.
+ */
+static void app_log_memory(const rb_app *app) {
+    rb_memory_log_report();
+    app_log_arena("persistent", &app->persistent);
+    app_log_arena("frame", &app->frame);
+}
+
 static void app_shutdown(rb_app *app) {
     rb_window_destroy(app->platform, app->window);
     rb_platform_shutdown(app->platform);
+    app_log_memory(app);
     rb_arena_destroy(&app->frame);
     rb_arena_destroy(&app->persistent);
 }
@@ -163,11 +183,29 @@ static void app_shutdown(rb_app *app) {
  * Loop
  * ========================================================================== */
 
-/* Only the first request is logged: it is the one that ends the loop. */
-static void app_request_quit(rb_app *app, const char *reason) {
-    if (!app->quit_requested) {
-        app->quit_requested = true;
-        RB_LOG_INFO("Quit: %s", reason);
+/* No default: -Wswitch then flags a reason added to the enum but not here. */
+static const char *app_quit_reason_text(app_quit_reason reason) {
+    switch (reason) {
+    case APP_QUIT_NONE:
+        return "none";
+    case APP_QUIT_WINDOW_CLOSED:
+        return "main window close requested";
+    case APP_QUIT_GAME_REQUESTED:
+        return "requested by the game";
+    }
+    return "unknown";
+}
+
+static bool app_quit_requested(const rb_app *app) {
+    return app->quit_reason != APP_QUIT_NONE;
+}
+
+/* Only the first request counts: it is the one that ends the loop. */
+static void app_request_quit(rb_app *app, app_quit_reason reason) {
+    RB_ASSERT(reason != APP_QUIT_NONE);
+    if (!app_quit_requested(app)) {
+        app->quit_reason = reason;
+        RB_LOG_INFO("Quit: %s", app_quit_reason_text(reason));
     }
 }
 
@@ -185,11 +223,11 @@ static void app_step(rb_app *app, f64 dt) {
             app->callbacks->on_event(app->state, app, &event);
         }
         if (event.type == RB_EVENT_WINDOW_CLOSE_REQUESTED && event.window.id == app->window.id) {
-            app_request_quit(app, "main window close requested");
+            app_request_quit(app, APP_QUIT_WINDOW_CLOSED);
         }
     }
     /* Every event of the step was still delivered; only the update is skipped. */
-    if (app->quit_requested) {
+    if (app_quit_requested(app)) {
         return;
     }
     app->callbacks->update(app->state, app, dt);
@@ -208,14 +246,14 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
     rb_frame_pacer_init(&pacer, frame_ns, now);
     RB_LOG_DEBUG("Loop started");
 
-    while (!app->quit_requested) {
+    while (!app_quit_requested(app)) {
         rb_step_clock_advance(&clock, rb_time_now());
         rb_arena_reset(&app->frame);
 
-        while (!app->quit_requested && rb_step_clock_consume(&clock)) {
+        while (!app_quit_requested(app) && rb_step_clock_consume(&clock)) {
             app_step(app, dt);
         }
-        if (app->quit_requested) {
+        if (app_quit_requested(app)) {
             break;
         }
 
@@ -269,7 +307,7 @@ static int app_run_logged(const rb_app_callbacks *callbacks, const rb_app_config
 
     /* A quit from init skips the loop entirely: no "Loop started" for a loop that never runs. */
     u64 start = rb_time_now();
-    if (!app.quit_requested) {
+    if (!app_quit_requested(&app)) {
         app_loop(&app, config);
     }
     f64 seconds = rb_time_to_seconds(rb_time_now() - start);
@@ -344,7 +382,13 @@ rb_arena *rb_app_frame_arena(rb_app *app) {
     return &app->frame;
 }
 
+/* The heap today; the game does not depend on it, so the source can change (ADR 0012, D1). */
+rb_allocator rb_app_allocator(rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return rb_heap_allocator();
+}
+
 void rb_app_quit(rb_app *app) {
     RB_ASSERT(app != NULL);
-    app_request_quit(app, "requested by the game");
+    app_request_quit(app, APP_QUIT_GAME_REQUESTED);
 }

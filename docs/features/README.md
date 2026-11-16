@@ -9,7 +9,7 @@
 | Clock & sleep | [clock.md](clock.md) | Stable | v0.1.0 | 2026-11-16 |
 | Application lifecycle | [app.md](app.md) | In progress | v0.1.0 | 2026-11-16 |
 | Logging & asserts | [logging.md](logging.md) | Stable | v0.1.0 | 2026-11-16 |
-| Memory | [memory.md](memory.md) | In progress | v0.1.0 | 2026-11-16 |
+| Memory | [memory.md](memory.md) | Stable | v0.1.0 | 2026-11-16 |
 | Vulkan renderer | — | Planned | v0.1.0 | — |
 | Unit testing | [unit-testing.md](unit-testing.md) | Stable | v0.1.0 | 2026-11-16 |
 

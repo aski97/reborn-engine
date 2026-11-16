@@ -19,6 +19,7 @@ add_executable(reborn_tests
     memory/test_allocator.c
     memory/test_arena.c
     memory/test_heap_allocator.c
+    memory/test_tracking.c
     platform/test_clock.c
     platform/test_input.c
     platform/test_memory.c

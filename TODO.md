@@ -50,7 +50,7 @@ Section numbers stay fixed: ADRs and code refer to them.
 - [x] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
       otherwise overflows between objects inside an arena go undetected
 - [x] Failing test allocator (fails at the N-th allocation) to cover error paths
-- [ ] Allocation tracking by tag, leak report (after the rest of §4)
+- [x] Allocation tracking by tag, leak report, arena high-water mark (ADR 0012)
 
 ### 7. Rendering (Vulkan)
 - [ ] Vulkan loading (link vs dynamic: to decide)

@@ -36,6 +36,11 @@ typedef struct recorder {
     /* Only render pushes: the position it finds is 0 if the arena is reset per frame. */
     usize max_frame_pos_at_render;
     bool  alpha_in_range;
+    /* init allocates this many bytes with rb_app_allocator (0: none); shutdown frees them if asked.
+     */
+    usize game_block_size;
+    bool  free_game_block;
+    void *game_block;
 } recorder;
 
 static recorder rec;
@@ -76,6 +81,10 @@ static bool test_init(void *state, rb_app *app) {
     rec.state_was_aligned = ((usize)state % 64) == 0;
     rec.state_in_persistent_arena =
         (u8 *)state >= persistent->base && (u8 *)state < persistent->base + persistent->pos;
+    if (rec.game_block_size > 0) {
+        rec.game_block =
+            rb_alloc(rb_app_allocator(app), rec.game_block_size, 8, RB_MEMORY_TAG_GAME);
+    }
     if (rec.quit_after_updates == 0) {
         rb_app_quit(app);
     }
@@ -107,8 +116,11 @@ static void test_render(void *state, rb_app *app, f64 alpha) {
 
 static void test_shutdown(void *state, rb_app *app) {
     (void)state;
-    (void)app;
     trace('s');
+    if (rec.free_game_block) {
+        rb_free(rb_app_allocator(app), rec.game_block, rec.game_block_size, 8, RB_MEMORY_TAG_GAME);
+        rec.game_block = NULL;
+    }
 }
 
 static const rb_app_callbacks test_callbacks = {
@@ -211,4 +223,56 @@ RB_TEST(app_run, quit_from_init_is_logged_before_any_loop) {
     rb_log_remove_sink(capture_phases, &log);
     RB_EXPECT_EQ_INT(code, 0);
     RB_EXPECT_EQ_STR(log.letters, PHASES_LOGGED ? "iqs" : "q");
+}
+
+/* ============================================================================
+ * Memory report (ADR 0012)
+ * ========================================================================== */
+
+typedef struct memory_log {
+    u32  leak_lines;
+    u32  arena_lines;
+    char leak[256];
+} memory_log;
+
+static void capture_memory(const rb_log_record *record, void *user) {
+    memory_log *log = user;
+    if (strncmp(record->message, "Memory leak", 11) == 0) {
+        ++log->leak_lines;
+        strncpy(log->leak, record->message, sizeof(log->leak) - 1);
+    } else if (strncmp(record->message, "Arena ", 6) == 0) {
+        ++log->arena_lines;
+    }
+}
+
+RB_TEST(app_run, game_memory_freed_in_shutdown_is_not_a_leak) {
+    reset_recorder(true, 1);
+    rec.game_block_size = 4096;
+    rec.free_game_block = true;
+    memory_log log = {0};
+    RB_REQUIRE(rb_log_add_sink(capture_memory, &log, RB_LOG_LEVEL_TRACE));
+    int code = rb_app_run(&test_callbacks);
+    rb_log_remove_sink(capture_memory, &log);
+    RB_EXPECT_EQ_INT(code, 0);
+    RB_EXPECT_EQ_UINT(log.leak_lines, 0);
+    RB_EXPECT_EQ_UINT(log.arena_lines, 2);
+    rb_memory_stats game = rb_memory_get_stats(RB_MEMORY_TAG_GAME);
+    RB_EXPECT_EQ_UINT(game.alloc_count, 1);
+    RB_EXPECT_EQ_UINT(game.live_blocks, 0);
+    /* The platform state went back too, through the persistent arena. */
+    RB_EXPECT_EQ_UINT(rb_memory_get_stats(RB_MEMORY_TAG_PLATFORM).live_blocks, 0);
+}
+
+RB_TEST(app_run, game_memory_left_at_shutdown_is_reported) {
+    reset_recorder(true, 1);
+    rec.game_block_size = 4096;
+    memory_log log = {0};
+    RB_REQUIRE(rb_log_add_sink(capture_memory, &log, RB_LOG_LEVEL_TRACE));
+    int code = rb_app_run(&test_callbacks);
+    rb_log_remove_sink(capture_memory, &log);
+    /* Reported, not fatal: the run itself went fine. */
+    RB_EXPECT_EQ_INT(code, 0);
+    RB_EXPECT_EQ_UINT(log.leak_lines, 1);
+    RB_EXPECT_EQ_STR(log.leak, "Memory leak (game): 1 block, 4 KiB never freed");
+    rb_free(rb_heap_allocator(), rec.game_block, rec.game_block_size, 8, RB_MEMORY_TAG_GAME);
 }

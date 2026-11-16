@@ -151,6 +151,26 @@ RB_TEST(arena, reset_keeps_memory_committed) {
     rb_arena_destroy(&arena);
 }
 
+/* The high-water mark (ADR 0012, C1): what the reservation had to hold, whatever came after. */
+RB_TEST(arena, peak_survives_reset_and_temp_end) {
+    rb_arena arena;
+    RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
+    RB_REQUIRE(rb_arena_push(&arena, 1000, 1) != NULL);
+    usize first = arena.pos;
+    RB_EXPECT_EQ_UINT(arena.peak, first);
+
+    rb_arena_temp temp = rb_arena_temp_begin(&arena);
+    RB_REQUIRE(rb_arena_push(&arena, 5000, 1) != NULL);
+    usize highest = arena.pos;
+    rb_arena_temp_end(temp);
+    RB_EXPECT_EQ_UINT(arena.peak, highest);
+
+    rb_arena_reset(&arena);
+    RB_REQUIRE(rb_arena_push(&arena, 10, 1) != NULL);
+    RB_EXPECT_EQ_UINT(arena.peak, highest);
+    rb_arena_destroy(&arena);
+}
+
 /* The last step is cut at the reservation: on Linux 3 pages, not a full 64 KiB. */
 RB_TEST(arena, commit_stops_at_the_reservation) {
     rb_arena arena;
@@ -269,7 +289,7 @@ RB_TEST(arena_allocator, alloc_comes_from_the_arena) {
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
     RB_EXPECT(allocator.ctx == &arena);
-    u8 *ptr = rb_alloc(allocator, 100, 16);
+    u8 *ptr = rb_alloc(allocator, 100, 16, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(ptr != NULL);
     RB_EXPECT_EQ_UINT((usize)ptr % 16, 0);
     RB_EXPECT(ptr >= arena.base && ptr + 100 == arena.base + arena.pos);
@@ -281,11 +301,11 @@ RB_TEST(arena_allocator, alloc_zeroes_reused_memory) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 64, 1);
+    u8          *first = rb_alloc(allocator, 64, 1, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL);
     memset(first, 0xEE, 64);
     rb_arena_reset(&arena);
-    u8 *second = rb_alloc(allocator, 64, 1);
+    u8 *second = rb_alloc(allocator, 64, 1, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(second == first);
     bool all_zero = true;
     for (usize i = 0; i < 64; ++i) {
@@ -300,13 +320,13 @@ RB_TEST(arena_allocator, free_of_the_last_allocation_pops_it) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    RB_REQUIRE(rb_alloc(allocator, 10, 1) != NULL);
+    RB_REQUIRE(rb_alloc(allocator, 10, 1, RB_MEMORY_TAG_GENERAL) != NULL);
     usize before = arena.pos;
-    u8   *last = rb_alloc(allocator, 100, 8);
+    u8   *last = rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(last != NULL);
-    rb_free(allocator, last, 100, 8);
+    rb_free(allocator, last, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(arena.pos >= before && arena.pos < before + 100);
-    RB_EXPECT(rb_alloc(allocator, 100, 8) == last);
+    RB_EXPECT(rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL) == last);
     rb_arena_destroy(&arena);
 }
 
@@ -314,11 +334,11 @@ RB_TEST(arena_allocator, free_of_another_allocation_keeps_the_position) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 100, 8);
+    u8          *first = rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL);
-    RB_REQUIRE(rb_alloc(allocator, 100, 8) != NULL);
+    RB_REQUIRE(rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL) != NULL);
     usize pos = arena.pos;
-    rb_free(allocator, first, 100, 8);
+    rb_free(allocator, first, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT_EQ_UINT(arena.pos, pos);
     rb_arena_destroy(&arena);
 }
@@ -327,14 +347,28 @@ RB_TEST(arena_allocator, resize_of_the_last_allocation_grows_in_place) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *ptr = rb_alloc(allocator, 4, 8);
+    u8          *ptr = rb_alloc(allocator, 4, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(ptr != NULL);
     memcpy(ptr, "abcd", 4);
-    u8 *grown = rb_resize(allocator, ptr, 4, 64, 8);
+    u8 *grown = rb_resize(allocator, ptr, 4, 64, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(grown == ptr);
     RB_EXPECT(memcmp(ptr, "abcd", 4) == 0);
     RB_EXPECT(ptr + 64 == arena.base + arena.pos);
     RB_EXPECT_EQ_UINT(ptr[63], 0);
+    rb_arena_destroy(&arena);
+}
+
+RB_TEST(arena_allocator, growing_in_place_raises_the_peak) {
+    rb_arena arena;
+    RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
+    rb_allocator allocator = rb_arena_allocator(&arena);
+    u8          *ptr = rb_alloc(allocator, 4, 8, RB_MEMORY_TAG_GENERAL);
+    RB_REQUIRE(ptr != NULL);
+    RB_REQUIRE(rb_resize(allocator, ptr, 4, 4096, 8, RB_MEMORY_TAG_GENERAL) == ptr);
+    RB_EXPECT_EQ_UINT(arena.peak, arena.pos);
+    RB_REQUIRE(rb_resize(allocator, ptr, 4096, 8, 8, RB_MEMORY_TAG_GENERAL) == ptr);
+    RB_EXPECT(arena.peak > arena.pos);
+    rb_free(allocator, ptr, 8, 8, RB_MEMORY_TAG_GENERAL);
     rb_arena_destroy(&arena);
 }
 
@@ -343,10 +377,10 @@ RB_TEST(arena_allocator, growing_in_place_commits) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *ptr = rb_alloc(allocator, 16, 8);
+    u8          *ptr = rb_alloc(allocator, 16, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(ptr != NULL);
     RB_EXPECT_EQ_UINT(arena.committed, RB_KIB(64));
-    u8 *grown = rb_resize(allocator, ptr, 16, RB_KIB(100), 8);
+    u8 *grown = rb_resize(allocator, ptr, 16, RB_KIB(100), 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(grown == ptr);
     RB_EXPECT_EQ_UINT(arena.committed, RB_KIB(128));
     ptr[RB_KIB(100) - 1] = 1;
@@ -357,11 +391,11 @@ RB_TEST(arena_allocator, resize_of_another_allocation_copies) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 4, 8);
-    u8          *second = rb_alloc(allocator, 4, 8);
+    u8          *first = rb_alloc(allocator, 4, 8, RB_MEMORY_TAG_GENERAL);
+    u8          *second = rb_alloc(allocator, 4, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL && second != NULL);
     memcpy(first, "abcd", 4);
-    u8 *moved = rb_resize(allocator, first, 4, 64, 8);
+    u8 *moved = rb_resize(allocator, first, 4, 64, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(moved != NULL);
     RB_EXPECT(moved > second);
     RB_EXPECT_EQ_UINT((usize)moved % 8, 0);
@@ -375,13 +409,13 @@ RB_TEST(arena_allocator, resize_shrinks_in_place) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 64, 8);
-    u8          *last = rb_alloc(allocator, 64, 8);
+    u8          *first = rb_alloc(allocator, 64, 8, RB_MEMORY_TAG_GENERAL);
+    u8          *last = rb_alloc(allocator, 64, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL && last != NULL);
     usize pos = arena.pos;
-    RB_EXPECT(rb_resize(allocator, first, 64, 8, 8) == first);
+    RB_EXPECT(rb_resize(allocator, first, 64, 8, 8, RB_MEMORY_TAG_GENERAL) == first);
     RB_EXPECT_EQ_UINT(arena.pos, pos);
-    RB_EXPECT(rb_resize(allocator, last, 64, 8, 8) == last);
+    RB_EXPECT(rb_resize(allocator, last, 64, 8, 8, RB_MEMORY_TAG_GENERAL) == last);
     RB_EXPECT(last + 8 == arena.base + arena.pos);
     rb_arena_destroy(&arena);
 }
@@ -390,11 +424,11 @@ RB_TEST(arena_allocator, resize_past_the_reservation_fails) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_KIB(64)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *ptr = rb_alloc(allocator, 4, 8);
+    u8          *ptr = rb_alloc(allocator, 4, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(ptr != NULL);
     memcpy(ptr, "abcd", 4);
     usize pos = arena.pos;
-    RB_EXPECT(rb_resize(allocator, ptr, 4, arena.reserved + 1, 8) == NULL);
+    RB_EXPECT(rb_resize(allocator, ptr, 4, arena.reserved + 1, 8, RB_MEMORY_TAG_GENERAL) == NULL);
     RB_EXPECT_EQ_UINT(arena.pos, pos);
     RB_EXPECT(memcmp(ptr, "abcd", 4) == 0);
     rb_arena_destroy(&arena);
@@ -408,16 +442,16 @@ RB_TEST(arena_allocator, free_does_not_pop_below_a_temp_scope) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *outer = rb_alloc(allocator, 100, 8);
+    u8          *outer = rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(outer != NULL);
     rb_arena_temp temp = rb_arena_temp_begin(&arena);
-    rb_free(allocator, outer, 100, 8);
+    rb_free(allocator, outer, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT_EQ_UINT(arena.pos, temp.pos);
     /* A block of the scope itself is popped as usual. */
-    u8 *inner = rb_alloc(allocator, 100, 8);
+    u8 *inner = rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(inner != NULL);
-    rb_free(allocator, inner, 100, 8);
-    RB_EXPECT(rb_alloc(allocator, 100, 8) == inner);
+    rb_free(allocator, inner, 100, 8, RB_MEMORY_TAG_GENERAL);
+    RB_EXPECT(rb_alloc(allocator, 100, 8, RB_MEMORY_TAG_GENERAL) == inner);
     rb_arena_temp_end(temp);
     RB_EXPECT_EQ_UINT(arena.pos, temp.pos);
     rb_arena_destroy(&arena);
@@ -428,10 +462,10 @@ RB_TEST(arena_allocator, resize_does_not_grow_into_a_temp_scope) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *outer = rb_alloc(allocator, 16, 8);
+    u8          *outer = rb_alloc(allocator, 16, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(outer != NULL);
     rb_arena_temp temp = rb_arena_temp_begin(&arena);
-    u8           *moved = rb_resize(allocator, outer, 16, 32, 8);
+    u8           *moved = rb_resize(allocator, outer, 16, 32, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(moved != NULL && moved != outer);
     rb_arena_temp_end(temp);
     RB_EXPECT(outer + 16 == arena.base + arena.pos);
@@ -521,15 +555,15 @@ RB_TEST(arena_allocator_asan, free_poisons_the_block) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 32, 8);
-    u8          *last = rb_alloc(allocator, 32, 8);
+    u8          *first = rb_alloc(allocator, 32, 8, RB_MEMORY_TAG_GENERAL);
+    u8          *last = rb_alloc(allocator, 32, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL && last != NULL);
     /* Not the last one: kept in place, but a use after free is reported. */
-    rb_free(allocator, first, 32, 8);
+    rb_free(allocator, first, 32, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(__asan_address_is_poisoned(first));
     RB_EXPECT(__asan_address_is_poisoned(first + 31));
     /* The last one: popped, back to the poisoned free tail. */
-    rb_free(allocator, last, 32, 8);
+    rb_free(allocator, last, 32, 8, RB_MEMORY_TAG_GENERAL);
     RB_EXPECT(__asan_address_is_poisoned(last));
     rb_arena_destroy(&arena);
 }
@@ -538,11 +572,11 @@ RB_TEST(arena_allocator_asan, shrink_poisons_the_tail) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *first = rb_alloc(allocator, 64, 8);
-    u8          *last = rb_alloc(allocator, 64, 8);
+    u8          *first = rb_alloc(allocator, 64, 8, RB_MEMORY_TAG_GENERAL);
+    u8          *last = rb_alloc(allocator, 64, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(first != NULL && last != NULL);
-    RB_REQUIRE(rb_resize(allocator, first, 64, 13, 8) == first);
-    RB_REQUIRE(rb_resize(allocator, last, 64, 16, 8) == last);
+    RB_REQUIRE(rb_resize(allocator, first, 64, 13, 8, RB_MEMORY_TAG_GENERAL) == first);
+    RB_REQUIRE(rb_resize(allocator, last, 64, 16, 8, RB_MEMORY_TAG_GENERAL) == last);
     /* 13 bytes: the shadow can say "first 5 bytes of this granule are valid". */
     RB_EXPECT(!__asan_address_is_poisoned(first + 12));
     RB_EXPECT(__asan_address_is_poisoned(first + 13));
@@ -556,9 +590,9 @@ RB_TEST(arena_allocator_asan, grow_in_place_unpoisons_only_the_new_size) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *ptr = rb_alloc(allocator, 16, 8);
+    u8          *ptr = rb_alloc(allocator, 16, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(ptr != NULL);
-    RB_REQUIRE(rb_resize(allocator, ptr, 16, 40, 8) == ptr);
+    RB_REQUIRE(rb_resize(allocator, ptr, 16, 40, 8, RB_MEMORY_TAG_GENERAL) == ptr);
     RB_EXPECT(!__asan_address_is_poisoned(ptr + 39));
     RB_EXPECT(__asan_address_is_poisoned(ptr + 40));
     rb_arena_destroy(&arena);
@@ -568,10 +602,10 @@ RB_TEST(arena_allocator_asan, copy_poisons_the_old_block) {
     rb_arena arena;
     RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
     rb_allocator allocator = rb_arena_allocator(&arena);
-    u8          *old = rb_alloc(allocator, 16, 8);
+    u8          *old = rb_alloc(allocator, 16, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(old != NULL);
-    RB_REQUIRE(rb_alloc(allocator, 16, 8) != NULL);
-    u8 *moved = rb_resize(allocator, old, 16, 64, 8);
+    RB_REQUIRE(rb_alloc(allocator, 16, 8, RB_MEMORY_TAG_GENERAL) != NULL);
+    u8 *moved = rb_resize(allocator, old, 16, 64, 8, RB_MEMORY_TAG_GENERAL);
     RB_REQUIRE(moved != NULL && moved != old);
     RB_EXPECT(__asan_address_is_poisoned(old));
     RB_EXPECT(!__asan_address_is_poisoned(moved + 63));

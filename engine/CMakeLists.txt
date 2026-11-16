@@ -22,6 +22,7 @@ set(REBORN_SOURCES
     src/memory/allocator.c
     src/memory/arena.c
     src/memory/heap_allocator.c
+    src/memory/tracking.c
     src/platform/clock.c
     src/platform/input.c
     src/platform/platform.c

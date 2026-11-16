@@ -134,6 +134,13 @@ RB_API rb_arena *rb_app_persistent_arena(rb_app *app);
 /* Reset at the start of every frame: scratch memory for a step or a render. */
 RB_API rb_arena *rb_app_frame_arena(rb_app *app);
 
+/*
+ * For objects freed one at a time. Tag them RB_MEMORY_TAG_GAME and free them
+ * before shutdown returns: whatever is left is logged as a leak at the end of
+ * the run (ADR 0012).
+ */
+RB_API rb_allocator rb_app_allocator(rb_app *app);
+
 /* Ends the loop after the current step's events, or after the current frame. */
 RB_API void rb_app_quit(rb_app *app);
 

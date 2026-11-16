@@ -2,17 +2,19 @@
 
 | | |
 |---|---|
-| **Status** | In progress |
+| **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-16) |
 | **Updated** | v0.1.0 (2026-11-16) |
 | **Code** | `engine/include/reborn/memory.h`, `engine/src/memory/`, `engine/src/platform/platform_os.h`, `engine/src/platform/*/…_memory.c`, `tests/support/failing_allocator.*` |
-| **ADRs** | [0010](../adr/0010-memory-allocation.md) |
+| **ADRs** | [0010](../adr/0010-memory-allocation.md), [0012](../adr/0012-allocation-tracking.md) |
 
 ## Summary
 Where engine memory comes from: virtual memory from the OS, reserved and committed as separate
 steps; arenas on top of it that grow in place and free everything at once; the C runtime's aligned
 heap for objects freed one at a time. Code that must not care where its memory comes from takes an
-`rb_allocator`, an interface that an arena, the heap or a test allocator plugs into.
+`rb_allocator`, an interface that an arena, the heap or a test allocator plugs into. Every
+allocation through it names a tag (the subsystem it belongs to) and is counted under it, so leaks
+and peaks show up per subsystem at the end of the run.
 
 ## Spec
 **Allocator interface** (public, `reborn/memory.h`)
@@ -27,6 +29,23 @@ heap for objects freed one at a time. Code that must not care where its memory c
 - Freeing `NULL` does nothing; resizing `NULL` (old size 0) allocates. Size 0 is an ordinary block:
   a valid pointer, not to be dereferenced, freed like any other.
 
+**Tracking** (public, `reborn/memory.h`; ADR 0012)
+- Every helper takes an `rb_memory_tag` as its last argument (`GENERAL` for tools and tests,
+  `PLATFORM`, `GAME`), the same in alloc, resize and free; out of range is asserted.
+- Counted per tag by the helpers, whichever allocator serves the call: `live_bytes`, `peak_bytes`,
+  `live_blocks`, `alloc_count` (a resize of `NULL` included), `free_count`
+  (`rb_memory_get_stats`). Failed calls and frees of `NULL` count nothing. Always on.
+- A free larger than its tag holds, or with no block left, is asserted (wrong size or tag).
+- Allocators never see tags; wrappers (failing allocator) call their parent's vtable, not the
+  helpers, so nothing is counted twice.
+- A block from `rb_arena_allocator` stays live for its tag until freed, even after the arena is
+  reset: code taking an `rb_allocator` frees what it allocates.
+- Report (internal, called by the app at the end of the run): one INFO line per tag that
+  allocated (`Memory game: peak 1.50 KiB, 3 allocations, 3 frees`), one ERROR line per tag with
+  live blocks (`Memory leak (game): 1 block, 512 bytes never freed`). Sizes print exactly when
+  round (`64 MiB`), with two decimals otherwise.
+- The stats table is global and not thread-safe.
+
 **Arena** (public, `reborn/memory.h`)
 - Hands out memory by moving a position forward; frees only everything (`reset`) or back to a saved
   position (temp scopes). Never moves: pointers stay valid until reset, temp end or destroy.
@@ -36,6 +55,8 @@ heap for objects freed one at a time. Code that must not care where its memory c
 - Allocations are zeroed (`_uninit` variant skips it), aligned to any power of two by address.
 - Failure returns `NULL` and logs: reservation full, OS out of memory, array size overflow.
 - Two allocations are not guaranteed adjacent. Not thread-safe.
+- `peak`: the highest position reached (red zones included under ASan), never lowered by reset or
+  temp end: what the reservation had to hold.
 - ASan builds: free memory and a 16-byte red zone before each allocation are poisoned, so an
   overflow into the neighbour, past the last allocation, or a use after reset / temp end is
   reported. Layout differs from normal builds (red zones, 8-byte minimum alignment).
@@ -53,6 +74,7 @@ heap for objects freed one at a time. Code that must not care where its memory c
 - Wraps a parent allocator and fails its N-th allocation (1-based; 0 never fails). Growing resizes
   count as allocations; shrinking resizes and frees never fail.
 - Counters: `allocation_count` (attempts), `failure_count`, `free_count`, `live_bytes`.
+- Forwards to the parent's vtable, so the helpers count each allocation once.
 
 **Virtual memory** (internal, `platform/platform_os.h`)
 - **Reserve** claims an address range: no RAM, no commit charge. Start aligned to
@@ -87,8 +109,8 @@ flowchart LR
     HO --> L
 ```
 
-The helpers (`memory/allocator.c`) do the zeroing, the array overflow check and the `NULL` cases,
-so each vtable implements only the raw operations.
+The helpers (`memory/allocator.c`) do the zeroing, the array overflow check, the `NULL` cases and
+the counting by tag (`memory/tracking.c`), so each vtable implements only the raw operations.
 
 Arena layout (ASan build; without ASan there are no red zones):
 
@@ -129,7 +151,7 @@ rb_arena_destroy(&frame);
 
 /* Code that does not choose its memory takes an rb_allocator. */
 bool names_create(rb_allocator allocator, rb_names *names, u32 capacity) {
-    names->items = RB_ALLOC_ARRAY(allocator, rb_name, capacity);   /* zeroed */
+    names->items = RB_ALLOC_ARRAY(allocator, rb_name, capacity, RB_MEMORY_TAG_GAME); /* zeroed */
     if (names->items == NULL) {
         return false;                                              /* logged */
     }
@@ -137,7 +159,7 @@ bool names_create(rb_allocator allocator, rb_names *names, u32 capacity) {
     return true;
 }
 void names_destroy(rb_allocator allocator, rb_names *names) {
-    RB_FREE_ARRAY(allocator, names->items, rb_name, names->capacity);
+    RB_FREE_ARRAY(allocator, names->items, rb_name, names->capacity, RB_MEMORY_TAG_GAME);
 }
 
 names_create(rb_heap_allocator(), &names, 64);        /* freed one by one */
@@ -177,12 +199,17 @@ for (u32 n = 1;; ++n) {
   (C11 `aligned_alloc` wants the size to be a multiple of the alignment).
 - Failing allocator in `tests/support/` (ADR 0004, L1): fails the N-th allocation only; growing
   resizes count.
+- Tag passed on every call, counted in a global table by the helpers (ADR 0012, A2): any allocator
+  is tracked; generic code takes its tag from its owner. Counters only, no per-block records (B1).
+- Arenas keep a high-water mark instead of being tracked by tag: they cannot leak (C1).
 
 ## Future work
 - A failing allocator mode that fails every allocation from the N-th on (lasting out of memory), if
   error paths need it.
 - Decommit above a high-water mark if an arena's peak holds memory for too long.
-- Tracking by tag and leak report (roadmap §6, after §4).
+- Call sites in the leak report (per-block records in debug builds, ADR 0012, B2) if a tag's
+  name is not enough to find a leak.
+- Atomic or per-thread stats once threads exist.
 - Chained arena blocks when a trigger in `TODO.md` shows up (ADR 0010, B3).
 
 ## History
@@ -192,3 +219,4 @@ for (u32 n = 1;; ++n) {
 | v0.1.0 | 2026-11-16 | Arena over a reservation or a buffer, temp scopes, ASan poisoning |
 | v0.1.0 | 2026-11-16 | Allocator interface, arena adapter, heap allocator, failing test allocator |
 | v0.1.0 | 2026-11-16 | Platform startup takes an allocator; the sandbox uses an engine arena |
+| v0.1.0 | 2026-11-16 | Tracking by tag, leak report, arena high-water mark |
