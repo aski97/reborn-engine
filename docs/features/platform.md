@@ -27,9 +27,15 @@ header; each OS has its own backend, chosen by CMake.
 - Lifecycle events: `RESIZED` (logical and pixel size in `ev.resize`), `FOCUS_GAINED` / `FOCUS_LOST`
   (keyboard focus), `MINIMIZED` / `RESTORED`. Sent only on a real change; consecutive resizes of a
   window merge into the newest queued one. Maximizing is a resize.
-- Queries `rb_window_get_size`, `rb_window_is_focused`, `rb_window_is_minimized` answer as of the
-  last pump; stale handles give zero / false. A new window starts with its created size, not
-  focused, not minimized; focus usually follows as an event.
+- `MOVED` (`ev.position`): the client area's top left on the virtual screen (every monitor on one
+  plane, origin at the primary's top left), in pixels, negative on monitors left of or above the
+  primary. Sent only on a real change; consecutive moves of a window merge; kept while minimized.
+  Windows delivers a drag's moves when the drag ends; X11 during the drag.
+- Queries `rb_window_get_size`, `rb_window_get_position`, `rb_window_is_focused`,
+  `rb_window_is_minimized` answer as of the last pump; stale handles give zero / false. A new
+  window starts with its created size and position (Linux: the requested position; the window
+  manager's placement follows as `MOVED`), not focused, not minimized; focus usually follows as an
+  event.
 - A minimized window keeps its size (Win32's 0×0 is not reported). Windows can report 0 pixels for
   a window shrunk to its title bar.
 - Backends: **Win32** (Windows), **Xlib** (Linux; X11 or XWayland). Startup fails without an X
@@ -80,9 +86,13 @@ Each backend's `struct rb_platform_state` embeds `rb_platform_common` as its fir
 Backends report what the OS says (`rb_platform_common_window_resized/focused/minimized`); the
 common code compares with the stored state and queues an event only on a change, so the filtering
 of redundant OS messages is written once and unit-tested. Win32: `WM_SIZE` (`SIZE_MINIMIZED`
-becomes minimized, the size is kept), `WM_SETFOCUS` / `WM_KILLFOCUS`. Xlib: `ConfigureNotify`,
+becomes minimized, the size is kept), `WM_MOVE` (ignored while minimized: it reports
+-32000,-32000), `WM_SETFOCUS` / `WM_KILLFOCUS`. Xlib: `ConfigureNotify`,
 `FocusIn` / `FocusOut` (grab-induced ones ignored), `PropertyNotify` on ICCCM `WM_STATE`
-(`IconicState`).
+(`IconicState`). The window manager reparents the X window into its frame, so `ConfigureNotify`
+gives coordinates relative to the frame: a `ConfigureNotify` or `ReparentNotify` marks the window,
+and after reading the events the pump asks the server once per marked window
+(`XTranslateCoordinates` to the root).
 
 Input (keys, buttons, mouse moves, wheel) follows the same pattern in `platform/input.c`, with the
 OS code mapping in `win32_input.c` / `xlib_input.c`: see [input.md](input.md).
@@ -118,6 +128,8 @@ free(platform);
 - Window lifecycle: events + queries, one event type per transition, logical and pixel size in one
   resize, size kept while minimized, common state filters redundant OS messages, consecutive
   resizes merged, ICCCM `WM_STATE` for minimized on X11 (ADR 0006, G–N).
+- Window position: client area origin in virtual screen pixels; on X11 translated by the server
+  once per window per pump (ADR 0006, V–X).
 - Messages sent while a window is created or destroyed produce no events (Win32 clears the slot
   before `DestroyWindow`).
 - `UNICODE` is defined in the Win32 backend, so an accidental `-A` call fails to compile.
@@ -128,6 +140,7 @@ free(platform);
   as `UTF8_STRING` (`XStoreName` would type them Latin-1). No custom X error handlers yet.
 
 ## Future work
+- A native Wayland backend would have no window position (Wayland hides global coordinates).
 - Vulkan surface for the renderer.
 - Window commands (set size, minimize, fullscreen); maximized as a state.
 - Win32 modal loop: the game freezes while a window is dragged (revisit with the game loop, §4).
@@ -142,3 +155,4 @@ free(platform);
 | v0.1.0 | 2026-11-15 | Logging of failures, window creation/destruction and queue overflow; NULL pointers asserted |
 | v0.1.0 | 2026-11-15 | Window lifecycle: resize, focus, minimize events and queries; merged resizes |
 | v0.1.0 | 2026-11-16 | Keyboard and mouse events and state ([input.md](input.md)) |
+| v0.1.0 | 2026-11-16 | Window position: `RB_EVENT_WINDOW_MOVED`, `rb_window_get_position` |

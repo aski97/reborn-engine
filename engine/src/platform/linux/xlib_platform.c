@@ -31,11 +31,14 @@
 typedef struct xlib_window {
     Window xid; /* 0 (None) when the slot is free */
     u32    id;  /* handle of this slot, to tag events */
+    /* Something that can move the window arrived: translate its position after the events. */
+    bool position_dirty;
 } xlib_window;
 
 struct rb_platform_state {
     rb_platform_common common; /* must stay first: see platform_internal.h */
     Display           *display;
+    Window             root; /* positions are translated to it: the whole screen */
     /* Atoms are interned once: each XInternAtom is a round trip to the server. */
     Atom        wm_protocols;
     Atom        wm_delete_window;
@@ -112,16 +115,41 @@ static rb_window_size xlib_window_size(u32 width, u32 height) {
 }
 
 static void xlib_handle_configure(rb_platform_state *state, const XConfigureEvent *ev) {
-    const xlib_window *window = xlib_find_window(state, ev->window);
+    xlib_window *window = xlib_find_window(state, ev->window);
     if (window == NULL) {
         return;
     }
     /*
      * Also sent for moves and restacking: the common state drops those, since
-     * the size is unchanged.
+     * the size is unchanged. Its x/y are relative to the parent, which is the
+     * window manager's frame, not the screen: the position is translated later.
      */
     rb_platform_common_window_resized(&state->common, window->id,
                                       xlib_window_size((u32)ev->width, (u32)ev->height));
+    window->position_dirty = true;
+}
+
+/*
+ * The window manager moves its frame, not our window: our window only gets a
+ * synthetic ConfigureNotify (ICCCM), whose coordinates are as right as the
+ * window manager makes them. Asking the server is always right; doing it once
+ * per window per pump keeps a drag's many events to one round trip (ADR 0006, X1).
+ */
+static void xlib_update_positions(rb_platform_state *state) {
+    for (u32 i = 0; i < RB_MAX_WINDOWS; ++i) {
+        xlib_window *window = &state->windows[i];
+        if (window->xid == None || !window->position_dirty) {
+            continue;
+        }
+        window->position_dirty = false;
+        int    x;
+        int    y;
+        Window child; /* required output, unused */
+        /* False only when the windows are on different screens, never for the root. */
+        if (XTranslateCoordinates(state->display, window->xid, state->root, 0, 0, &x, &y, &child)) {
+            rb_platform_common_window_moved(&state->common, window->id, (rb_window_position){x, y});
+        }
+    }
 }
 
 static void xlib_handle_focus(rb_platform_state *state, const XFocusChangeEvent *ev) {
@@ -305,6 +333,7 @@ bool rb_platform_startup(rb_platform_state *state) {
                      XDisplayName(NULL));
         return false;
     }
+    state->root = DefaultRootWindow(state->display);
 
     /* False: create the atom if no client has yet. */
     state->wm_protocols = XInternAtom(state->display, "WM_PROTOCOLS", False);
@@ -375,11 +404,10 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
      * file). None here only means Xlib ran out of ids.
      */
     int           screen = DefaultScreen(state->display);
-    Window        root = RootWindow(state->display, screen);
     unsigned long black = BlackPixel(state->display, screen);
     /* Border width 0 (the window manager draws its own); black until the renderer draws. */
-    Window xid =
-        XCreateSimpleWindow(state->display, root, 0, 0, desc->width, desc->height, 0, black, black);
+    Window xid = XCreateSimpleWindow(state->display, state->root, 0, 0, desc->width, desc->height,
+                                     0, black, black);
     if (xid == None) {
         RB_LOG_ERROR("XCreateSimpleWindow failed: Xlib ran out of resource ids");
         rb_handle_pool_free(&state->common.window_pool, id);
@@ -402,11 +430,13 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     XSelectInput(state->display, xid, XLIB_EVENT_MASK);
 
     /*
-     * The requested size: if the window manager picks another (a tiling one
-     * does), its ConfigureNotify arrives as RB_EVENT_WINDOW_RESIZED.
+     * The requested size and position: if the window manager picks others (it
+     * places every window, a tiling one also sizes it), its ConfigureNotify
+     * arrives as RB_EVENT_WINDOW_RESIZED / RB_EVENT_WINDOW_MOVED.
      */
     rb_platform_common_window_opened(&state->common, id,
-                                     xlib_window_size(desc->width, desc->height));
+                                     xlib_window_size(desc->width, desc->height),
+                                     (rb_window_position){0, 0});
     xlib_window *slot = &state->windows[rb_handle_index(id)];
     slot->xid = xid;
     slot->id = id;
@@ -462,6 +492,14 @@ void rb_platform_pump(rb_platform_state *state) {
         case ConfigureNotify:
             xlib_handle_configure(state, &event.xconfigure);
             break;
+        case ReparentNotify: {
+            /* Put into (or out of) a frame: the position on the screen changes. */
+            xlib_window *window = xlib_find_window(state, event.xreparent.window);
+            if (window != NULL) {
+                window->position_dirty = true;
+            }
+            break;
+        }
         case FocusIn:
         case FocusOut:
             xlib_handle_focus(state, &event.xfocus);
@@ -484,4 +522,5 @@ void rb_platform_pump(rb_platform_state *state) {
             break;
         }
     }
+    xlib_update_positions(state);
 }

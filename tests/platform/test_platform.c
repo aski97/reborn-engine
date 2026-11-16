@@ -92,10 +92,10 @@ static rb_window_size make_size(u32 width, u32 height) {
     return (rb_window_size){width, height, width * 2u, height * 2u};
 }
 
-/* A live window in `common`, as a backend would open it. */
+/* A live window in `common`, as a backend would open it, at (100, 50). */
 static u32 open_window(rb_platform_common *common, rb_window_size size) {
     u32 id = rb_handle_pool_alloc(&common->window_pool);
-    rb_platform_common_window_opened(common, id, size);
+    rb_platform_common_window_opened(common, id, size, (rb_window_position){100, 50});
     return id;
 }
 
@@ -117,6 +117,8 @@ RB_TEST(platform, opened_window_has_its_size_and_sends_nothing) {
     RB_REQUIRE(ws != NULL);
     RB_EXPECT_EQ_UINT(ws->size.width, 1280);
     RB_EXPECT_EQ_UINT(ws->size.pixel_height, 1440);
+    RB_EXPECT_EQ_INT(ws->position.x, 100);
+    RB_EXPECT_EQ_INT(ws->position.y, 50);
     RB_EXPECT(!ws->focused);
     RB_EXPECT(!ws->minimized);
     RB_EXPECT_EQ_UINT(count_events(&common), 0);
@@ -213,6 +215,42 @@ RB_TEST(platform, resizes_do_not_merge_across_windows_or_other_events) {
     }
     rb_event ev;
     RB_EXPECT(!rb_platform_common_poll_event(&common, &ev));
+}
+
+RB_TEST(platform, move_sends_event_only_on_change) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_window(&common, make_size(640, 480));
+
+    rb_platform_common_window_moved(&common, id, (rb_window_position){100, 50}); /* unchanged */
+    RB_EXPECT_EQ_UINT(count_events(&common), 0);
+
+    /* A monitor left of the primary one: negative coordinates are valid. */
+    rb_platform_common_window_moved(&common, id, (rb_window_position){-1200, 30});
+    rb_event ev;
+    RB_REQUIRE(rb_platform_common_poll_event(&common, &ev));
+    RB_EXPECT_EQ_INT(ev.type, RB_EVENT_WINDOW_MOVED);
+    RB_EXPECT_EQ_UINT(ev.window.id, id);
+    RB_EXPECT_EQ_INT(ev.position.x, -1200);
+    RB_EXPECT_EQ_INT(ev.position.y, 30);
+    RB_EXPECT_EQ_INT(rb_platform_common_window_state(&common, id)->position.x, -1200);
+}
+
+RB_TEST(platform, consecutive_moves_merge_into_the_newest) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_window(&common, make_size(640, 480));
+
+    /* A drag on X11: one move per mouse move. */
+    for (i32 i = 1; i <= (i32)RB_EVENT_QUEUE_CAPACITY * 2; ++i) {
+        rb_platform_common_window_moved(&common, id, (rb_window_position){100 + i, 50});
+    }
+    rb_event ev;
+    RB_REQUIRE(rb_platform_common_poll_event(&common, &ev));
+    RB_EXPECT_EQ_INT(ev.type, RB_EVENT_WINDOW_MOVED);
+    RB_EXPECT_EQ_INT(ev.position.x, 100 + (i32)RB_EVENT_QUEUE_CAPACITY * 2);
+    RB_EXPECT_EQ_UINT(count_events(&common), 0);
+    RB_EXPECT_EQ_UINT(common.dropped_events, 0);
 }
 
 RB_TEST(platform, focus_and_minimize_send_events_only_on_change) {

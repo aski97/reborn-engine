@@ -290,6 +290,19 @@ static LRESULT CALLBACK win32_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LP
         }
         return 0;
 
+    case WM_MOVE:
+        /*
+         * lparam holds the client area's top left in screen pixels, signed (a
+         * monitor left of the primary is negative). A minimized window reports
+         * -32000,-32000: ignored, the position is kept as the size is.
+         */
+        if (window != NULL && !IsIconic(hwnd)) {
+            rb_platform_common_window_moved(
+                &state->common, window->id,
+                (rb_window_position){GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});
+        }
+        return 0;
+
     /*
      * Keyboard focus, the same notion as X11's FocusIn/FocusOut. WM_ACTIVATE is
      * about the active top-level window, which a minimized window can still be.
@@ -505,7 +518,11 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     RECT client;
     GetClientRect(hwnd, &client);
     rb_window_size size = win32_window_size(hwnd, (u32)client.right, (u32)client.bottom);
-    rb_platform_common_window_opened(&state->common, id, size);
+    /* The client area's top left in screen pixels, where CW_USEDEFAULT placed the window. */
+    POINT origin = {0, 0};
+    ClientToScreen(hwnd, &origin);
+    rb_window_position position = {origin.x, origin.y};
+    rb_platform_common_window_opened(&state->common, id, size, position);
 
     win32_window *slot = &state->windows[rb_handle_index(id)];
     slot->hwnd = hwnd;
@@ -513,9 +530,9 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     /* Also activates the window: WM_SETFOCUS becomes RB_EVENT_WINDOW_FOCUS_GAINED. */
     ShowWindow(hwnd, SW_SHOW);
 
-    RB_LOG_INFO("Window 0x%08x created: %ux%u logical, %ux%u pixels at %u DPI (%u%%)", id,
+    RB_LOG_INFO("Window 0x%08x created: %ux%u logical, %ux%u pixels at %u DPI (%u%%), at %d,%d", id,
                 size.width, size.height, size.pixel_width, size.pixel_height, (unsigned)dpi,
-                (unsigned)MulDiv((int)dpi, 100, USER_DEFAULT_SCREEN_DPI));
+                (unsigned)MulDiv((int)dpi, 100, USER_DEFAULT_SCREEN_DPI), position.x, position.y);
     return (rb_window){id};
 }
 

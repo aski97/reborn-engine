@@ -29,9 +29,10 @@
  * with expiry: the OS reports every change, so it is current as of the last pump.
  */
 typedef struct rb_window_state {
-    rb_window_size size;
-    bool           focused;
-    bool           minimized;
+    rb_window_size     size;
+    rb_window_position position;
+    bool               focused;
+    bool               minimized;
 } rb_window_state;
 
 /*
@@ -92,8 +93,9 @@ bool rb_platform_common_poll_event(rb_platform_common *common, rb_event *out);
  * `id` must be a live window handle.
  * ========================================================================== */
 
-/* Initial state of a new window: `size`, not focused, not minimized. No event. */
-void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size);
+/* Initial state of a new window: `size` and `position`, not focused, not minimized. No event. */
+void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size,
+                                      rb_window_position position);
 
 /*
  * Called before the window's slot is freed. If the window had the keyboard,
@@ -103,6 +105,8 @@ void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_win
 void rb_platform_common_window_closed(rb_platform_common *common, u32 id);
 
 void rb_platform_common_window_resized(rb_platform_common *common, u32 id, rb_window_size size);
+void rb_platform_common_window_moved(rb_platform_common *common, u32 id,
+                                     rb_window_position position);
 /* Losing focus first releases every held key and button (rb_platform_common_release_input). */
 void rb_platform_common_window_focused(rb_platform_common *common, u32 id, bool focused);
 void rb_platform_common_window_minimized(rb_platform_common *common, u32 id, bool minimized);

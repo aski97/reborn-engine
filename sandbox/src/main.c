@@ -1,12 +1,41 @@
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <reborn/log.h>
 #include <reborn/platform.h>
 #include <reborn/version.h>
 
+/*
+ * Modifiers as " [Ctrl+Shift]" (empty without any), so a combination reads as
+ * one line in the log: "key S pressed [Ctrl]".
+ */
+static const char *format_mods(u32 mods, char *buf, usize size) {
+    static const struct {
+        u32         bit;
+        const char *name;
+    } names[] = {{RB_KEY_MOD_CTRL, "Ctrl"},
+                 {RB_KEY_MOD_SHIFT, "Shift"},
+                 {RB_KEY_MOD_ALT, "Alt"},
+                 {RB_KEY_MOD_SUPER, "Super"}};
+    usize used = 0;
+    buf[0] = '\0';
+    for (usize i = 0; i < RB_ARRAY_COUNT(names); ++i) {
+        if ((mods & names[i].bit) != 0 && used < size) {
+            int n =
+                snprintf(buf + used, size - used, "%s%s", used == 0 ? " [" : "+", names[i].name);
+            used += n > 0 ? (usize)n : 0;
+        }
+    }
+    if (used > 0 && used < size) {
+        snprintf(buf + used, size - used, "]");
+    }
+    return buf;
+}
+
 /* Logs every event, so window lifecycle and input can be checked by hand. False to quit. */
 static bool handle_event(const rb_event *ev) {
-    u32 id = ev->window.id;
+    u32  id = ev->window.id;
+    char mods[32];
     switch (ev->type) {
     case RB_EVENT_WINDOW_CLOSE_REQUESTED:
         RB_LOG_INFO("Window 0x%08x: close requested, shutting down", id);
@@ -14,6 +43,9 @@ static bool handle_event(const rb_event *ev) {
     case RB_EVENT_WINDOW_RESIZED:
         RB_LOG_DEBUG("Window 0x%08x: resized to %ux%u logical, %ux%u pixels", id, ev->resize.width,
                      ev->resize.height, ev->resize.pixel_width, ev->resize.pixel_height);
+        return true;
+    case RB_EVENT_WINDOW_MOVED:
+        RB_LOG_DEBUG("Window 0x%08x: moved to %d,%d", id, ev->position.x, ev->position.y);
         return true;
     case RB_EVENT_WINDOW_FOCUS_GAINED:
         RB_LOG_DEBUG("Window 0x%08x: focus gained", id);
@@ -29,16 +61,17 @@ static bool handle_event(const rb_event *ev) {
         return true;
     case RB_EVENT_KEY_PRESSED:
     case RB_EVENT_KEY_RELEASED:
-        RB_LOG_DEBUG("Window 0x%08x: key %s %s%s (mods 0x%x)", id, rb_key_name(ev->key.key),
+        RB_LOG_DEBUG("Window 0x%08x: key %s %s%s%s", id, rb_key_name(ev->key.key),
                      ev->type == RB_EVENT_KEY_PRESSED ? "pressed" : "released",
-                     ev->key.repeat ? " (repeat)" : "", ev->key.mods);
+                     format_mods(ev->key.mods, mods, sizeof(mods)),
+                     ev->key.repeat ? " (repeat)" : "");
         return true;
     case RB_EVENT_MOUSE_BUTTON_PRESSED:
     case RB_EVENT_MOUSE_BUTTON_RELEASED:
-        RB_LOG_DEBUG("Window 0x%08x: mouse %s %s at %d,%d (mods 0x%x)", id,
+        RB_LOG_DEBUG("Window 0x%08x: mouse %s %s at %d,%d%s", id,
                      rb_mouse_button_name(ev->button.button),
                      ev->type == RB_EVENT_MOUSE_BUTTON_PRESSED ? "pressed" : "released",
-                     ev->button.x, ev->button.y, ev->button.mods);
+                     ev->button.x, ev->button.y, format_mods(ev->button.mods, mods, sizeof(mods)));
         return true;
     case RB_EVENT_MOUSE_MOVED:
         /* TRACE: one per pump while the mouse moves. */

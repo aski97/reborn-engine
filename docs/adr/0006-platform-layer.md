@@ -142,9 +142,26 @@ swapchain)
    a press and release within one pump gives both — the flaw that rejected D3.
 2. `is_down` only.
 
+**V. Window position: which point**
+1. Top-left corner of the client area — consistent with sizes (client area); Win32 reports it
+   directly (`WM_MOVE`).
+2. Top-left corner of the outer frame (title bar included) — on X11 the frame belongs to the
+   window manager and its size is unreliable.
+
+**W. Units of the window position** (virtual screen: one plane holding every monitor, origin at the
+primary monitor's top left, negative left of or above it)
+1. Virtual screen pixels — one exact system, also across monitors with different scales.
+2. Logical units — no single logical scale exists across monitors at 100% and 150%.
+
+**X. Linux: position on the screen** (the window manager reparents our window into its frame, so
+`ConfigureNotify` reports it relative to the frame)
+1. Ask the server (`XTranslateCoordinates` to the root window) — always right; one round trip.
+2. Trust the synthetic `ConfigureNotify` the window manager sends with root coordinates (ICCCM) —
+   no round trip; depends on the window manager.
+
 ## Decision
-**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1;
-input: O1, P1, Q1, R1, S1, T1, U1.**
+**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1, V1,
+W1, X1; input: O1, P1, Q1, R1, S1, T1, U1.**
 - **A1:** the public API is one header; CMake compiles `platform/win32/` or `platform/linux/`.
   If Linux ever needs two backends, the vtable lives inside the Linux backend only (A3 locally).
 - **B2:** systems never allocate their own state; `rb_engine` owns every system's memory.
@@ -214,6 +231,15 @@ Window lifecycle:
   `WM_SETFOCUS`/`WM_KILLFOCUS` (keyboard focus, as on X11; `WM_ACTIVATE` would report a minimized
   window as active). Messages sent while a window is being created or destroyed produce no events:
   the application already knows.
+- **V1, W1:** `RB_EVENT_WINDOW_MOVED` (`ev.position`) and `rb_window_get_position`, with the same
+  rules as the size: sent only on a real change, consecutive moves of a window merged (L1), kept
+  while minimized (Win32 reports -32000,-32000 then: ignored, as J1). On Linux pixels and logical
+  units are equal. A new window starts at its measured position on Win32; on X11 at the requested
+  one, and the window manager's placement arrives as `MOVED`. With M1, a Win32 drag delivers one
+  `MOVED` when it ends; on X11 moves arrive during the drag.
+- **X1:** a `ConfigureNotify` (real or synthetic) or `ReparentNotify` marks the window, and after
+  reading the events the pump translates each marked window once: one round trip per window per
+  pump, not per event.
 
 Input:
 - **O1:** `rb_key` values are HID usages below 256. Names follow the US QWERTY label at that
@@ -307,3 +333,4 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 | First-person camera, cursor lock | Relative mouse motion (raw input / XInput2) | New event type; XInput2 is `libXi` (new approval) |
 | Prompts must show the layout's label ("press Z" on AZERTY) | Key label query (`ToUnicode` / `XLookupKeysym`) | Addition only |
 | Another OS | New `platform/<os>/` directory | None for users |
+| Native Wayland backend | Wayland gives clients no global position: `rb_window_get_position` reports none there | Document per backend; possibly a "position unknown" result |

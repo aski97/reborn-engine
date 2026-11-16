@@ -47,5 +47,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   `rb_key_was_pressed`, `rb_mouse_get_position`...). Held keys and buttons are released on focus
   loss. Win32 (scancodes, mouse capture, AltGr / Shift / Print Screen quirks, no window menu mode
   on Alt) and Xlib (evdev keycodes, detectable auto-repeat) backends; the sandbox logs input.
+- Window position (ADR 0006, V–X): `RB_EVENT_WINDOW_MOVED` and `rb_window_get_position`, the
+  client area's top left in virtual screen pixels; consecutive moves merge, kept while minimized.
+  The Xlib backend translates it through the server (the window manager's frame offsets the
+  coordinates of `ConfigureNotify`). The sandbox logs moves and shows modifiers by name
+  (`key S pressed [Ctrl]`).
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

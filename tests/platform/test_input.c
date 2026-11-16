@@ -15,7 +15,8 @@
 /* A live window in `common`, as a backend would open it. */
 static u32 open_window(rb_platform_common *common) {
     u32 id = rb_handle_pool_alloc(&common->window_pool);
-    rb_platform_common_window_opened(common, id, (rb_window_size){640, 480, 640, 480});
+    rb_platform_common_window_opened(common, id, (rb_window_size){640, 480, 640, 480},
+                                     (rb_window_position){0, 0});
     return id;
 }
 

@@ -85,12 +85,23 @@ typedef struct rb_window_size {
 } rb_window_size;
 
 /*
- * State as of the last rb_platform_pump, which may be newer than the event being
- * handled. Stale or zero handles give a zero size and false.
+ * Top-left corner of the client area on the virtual screen (every monitor on
+ * one plane, origin at the primary monitor's top left), in pixels: negative on
+ * a monitor left of or above the primary. Kept while the window is minimized.
  */
-RB_API rb_window_size rb_window_get_size(const rb_platform_state *state, rb_window window);
-RB_API bool           rb_window_is_focused(const rb_platform_state *state, rb_window window);
-RB_API bool           rb_window_is_minimized(const rb_platform_state *state, rb_window window);
+typedef struct rb_window_position {
+    i32 x;
+    i32 y;
+} rb_window_position;
+
+/*
+ * State as of the last rb_platform_pump, which may be newer than the event being
+ * handled. Stale or zero handles give a zero size and position, and false.
+ */
+RB_API rb_window_size     rb_window_get_size(const rb_platform_state *state, rb_window window);
+RB_API rb_window_position rb_window_get_position(const rb_platform_state *state, rb_window window);
+RB_API bool               rb_window_is_focused(const rb_platform_state *state, rb_window window);
+RB_API bool               rb_window_is_minimized(const rb_platform_state *state, rb_window window);
 
 /* ============================================================================
  * Events
@@ -109,6 +120,12 @@ typedef enum rb_event_type {
      * alters the pixels only. Not sent on minimize: the size is kept.
      */
     RB_EVENT_WINDOW_RESIZED,
+    /*
+     * The client area moved on the screen (`position`). Consecutive moves of one
+     * window are merged into the newest. Windows delivers a drag's moves when it
+     * ends (rb_platform_pump does not return during the drag).
+     */
+    RB_EVENT_WINDOW_MOVED,
     /* Keyboard focus. */
     RB_EVENT_WINDOW_FOCUS_GAINED,
     RB_EVENT_WINDOW_FOCUS_LOST,
@@ -169,16 +186,19 @@ typedef struct rb_event {
     rb_event_type type;
     rb_window     window;
     union {
-        rb_window_size        resize; /* RB_EVENT_WINDOW_RESIZED: the new size */
-        rb_key_event          key;    /* RB_EVENT_KEY_* */
-        rb_mouse_button_event button; /* RB_EVENT_MOUSE_BUTTON_* */
-        rb_mouse_position     move;   /* RB_EVENT_MOUSE_MOVED: the new position */
-        rb_mouse_wheel        wheel;  /* RB_EVENT_MOUSE_WHEEL */
+        rb_window_size        resize;   /* RB_EVENT_WINDOW_RESIZED: the new size */
+        rb_window_position    position; /* RB_EVENT_WINDOW_MOVED: the new position */
+        rb_key_event          key;      /* RB_EVENT_KEY_* */
+        rb_mouse_button_event button;   /* RB_EVENT_MOUSE_BUTTON_* */
+        rb_mouse_position     move;     /* RB_EVENT_MOUSE_MOVED: the new position */
+        rb_mouse_wheel        wheel;    /* RB_EVENT_MOUSE_WHEEL */
     };
 } rb_event;
 
 /*
- * A new window starts with its created size, not focused, not minimized; events
+ * A new window starts with its created size and position, not focused, not
+ * minimized (Linux: the requested position; the window manager's placement
+ * follows as RB_EVENT_WINDOW_MOVED); events
  * report real changes from there (the OS's redundant messages are filtered out).
  * Focus usually arrives right after creation as RB_EVENT_WINDOW_FOCUS_GAINED.
  */

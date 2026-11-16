@@ -32,14 +32,14 @@ bool rb_platform_common_init(rb_platform_common *common) {
 
 /*
  * Merges `event` into the newest queued event when that has the same type and
- * window: a resize or a mouse move replaces it (a drag sends one per mouse
- * move and only the final value matters), a wheel event adds to it (summing
+ * window: a resize, a window move or a mouse move replaces it (a drag sends one
+ * per mouse move and only the final value matters), a wheel event adds to it (summing
  * loses nothing). Only the newest is checked, so the order of different events
  * never changes.
  */
 static bool rb_platform_common_merge_event(rb_platform_common *common, const rb_event *event) {
-    if (event->type != RB_EVENT_WINDOW_RESIZED && event->type != RB_EVENT_MOUSE_MOVED &&
-        event->type != RB_EVENT_MOUSE_WHEEL) {
+    if (event->type != RB_EVENT_WINDOW_RESIZED && event->type != RB_EVENT_WINDOW_MOVED &&
+        event->type != RB_EVENT_MOUSE_MOVED && event->type != RB_EVENT_MOUSE_WHEEL) {
         return false;
     }
     u32 index;
@@ -116,6 +116,13 @@ rb_window_size rb_window_get_size(const rb_platform_state *state, rb_window wind
     return ws != NULL ? ws->size : (rb_window_size){0};
 }
 
+rb_window_position rb_window_get_position(const rb_platform_state *state, rb_window window) {
+    RB_ASSERT(state != NULL);
+    const rb_window_state *ws =
+        rb_platform_common_window_state(rb_platform_common_of_const(state), window.id);
+    return ws != NULL ? ws->position : (rb_window_position){0};
+}
+
 bool rb_window_is_focused(const rb_platform_state *state, rb_window window) {
     RB_ASSERT(state != NULL);
     const rb_window_state *ws =
@@ -156,8 +163,10 @@ static void rb_platform_common_push_window_event(rb_platform_common *common, u32
     rb_platform_common_push_event(common, &event);
 }
 
-void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size) {
-    *rb_platform_common_live_state(common, id) = (rb_window_state){.size = size};
+void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size,
+                                      rb_window_position position) {
+    *rb_platform_common_live_state(common, id) =
+        (rb_window_state){.size = size, .position = position};
 }
 
 void rb_platform_common_window_closed(rb_platform_common *common, u32 id) {
@@ -185,6 +194,17 @@ void rb_platform_common_window_resized(rb_platform_common *common, u32 id, rb_wi
     }
     ws->size = size;
     rb_event event = {.type = RB_EVENT_WINDOW_RESIZED, .window = {id}, .resize = size};
+    rb_platform_common_push_event(common, &event);
+}
+
+void rb_platform_common_window_moved(rb_platform_common *common, u32 id,
+                                     rb_window_position position) {
+    rb_window_state *ws = rb_platform_common_live_state(common, id);
+    if (ws->position.x == position.x && ws->position.y == position.y) {
+        return;
+    }
+    ws->position = position;
+    rb_event event = {.type = RB_EVENT_WINDOW_MOVED, .window = {id}, .position = position};
     rb_platform_common_push_event(common, &event);
 }
 
