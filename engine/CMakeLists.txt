@@ -12,6 +12,8 @@ configure_file(
 # -----------------------------------------------------------------------------
 
 set(REBORN_SOURCES
+    src/app/app.c
+    src/app/frame_timing.c
     src/containers/handle_pool.c
     src/containers/ring.c
     src/core/assert.c

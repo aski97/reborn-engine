@@ -1,5 +1,8 @@
 /*
- * Platform layer: windows and OS events (ADR 0006).
+ * Platform layer: windows and OS events (ADR 0006). A game runs under the
+ * application layer (reborn/app.h), which owns the platform and the main
+ * window and pumps them; the game reaches them through rb_app_platform. Driving
+ * the platform directly, as below, is for tools and tests.
  *
  *   rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(&engine_arena));
  *   rb_window win = rb_window_create(platform, &(rb_window_desc){"Reborn", 1280, 720});
@@ -210,11 +213,13 @@ RB_API bool rb_platform_poll_event(rb_platform_state *state, rb_event *out);
 /* ============================================================================
  * Input state
  *
- * Derived from the events, as of the last rb_platform_pump: the pump is the
- * frame. One keyboard and one mouse for all windows. `was_pressed` and
- * `was_released` count transitions during the last pump, so a key pressed and
- * released within it reports both while `is_down` is already false. Repeats are
- * not presses. Values outside the enums give false.
+ * Derived from the events, as of the last rb_platform_pump. Under the
+ * application layer the pump runs once per update step (ADR 0011, D1), so the
+ * edges cover exactly the time since the previous step. One keyboard and one
+ * mouse for all windows. `was_pressed` and `was_released` count transitions
+ * during the last pump, so a key pressed and released within it reports both
+ * while `is_down` is already false. Repeats are not presses. Values outside the
+ * enums give false.
  * ========================================================================== */
 
 RB_API bool rb_key_is_down(const rb_platform_state *state, rb_key key);

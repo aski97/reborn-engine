@@ -63,7 +63,8 @@ flowchart LR
 Backends map OS codes to `rb_key` / `rb_mouse_button` and report them; the common code keeps the
 state, decides repeats and modifiers, and queues the events, so both backends behave the same and
 the logic is unit-tested without windows. `rb_platform_pump` clears the edges and the wheel sum
-first: the pump is the frame. The mapping tables include no OS header, so they are tested on their
+first: the pump is the frame. The application layer pumps once per update step ([app.md](app.md)),
+so a game's `update` sees each press exactly once. The mapping tables include no OS header, so they are tested on their
 own OS.
 
 ## API
@@ -104,3 +105,4 @@ if (rb_mouse_button_was_pressed(platform, RB_MOUSE_BUTTON_LEFT)) {
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-16 | First version: keys, mouse buttons, moves, wheel; state queries; Win32 and Xlib |
+| v0.1.0 | 2026-11-16 | Under the application layer the pump, hence the edges, follow the update step |

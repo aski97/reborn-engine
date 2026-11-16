@@ -182,8 +182,9 @@ W1, X1; input: O1, P1, Q1, R1, S1, T1, U1.**
 - **F1:** game input is about position; text input is handled separately.
 
 Further choices:
-- **Public header** `reborn/platform.h`: the sandbox drives the platform until the application
-  layer (§4) owns the window; whether to make it internal is decided there.
+- **Public header** `reborn/platform.h`: stays public. The application layer owns the platform
+  and the main window, and the game queries input and windows through `rb_app_platform`
+  (ADR 0011, E1).
 - **Queue overflow:** the queue is sized so it never fills in practice (a few hundred events) and
   consecutive mouse moves are merged. If it fills anyway, new events are dropped and counted:
   a full queue means a stalled frame. Dropping any event can leave a key stuck, so the policy is
@@ -192,7 +193,7 @@ Further choices:
   (`SetProcessDpiAwarenessContext`), otherwise Windows bitmap-scales the window and it looks blurry.
 - **State passed explicitly** to every call (`rb_window_create(platform, &desc)`), never kept in
   a hidden global: consistent with B2, allows several instances in tests. The application layer
-  (§4) will hold it, so game code never sees it.
+  holds it and hands it to the game's callbacks (ADR 0011).
 - **Close is a request:** the close button produces `RB_EVENT_WINDOW_CLOSE_REQUESTED` and the
   window stays alive until the application destroys it (as Win32's `WM_CLOSE`); a handle never
   becomes invalid behind its owner's back. On X11 each window registers `WM_DELETE_WINDOW`, so
@@ -259,6 +260,8 @@ Input:
   grab (`FocusOut` with `NotifyGrab`, e.g. the window manager's Alt+Tab) also releases everything
   without a focus event: the releases go to the grabbing client.
 - **U1:** "the last pump" is the frame: `rb_platform_pump` clears the edges and the wheel first.
+  The application layer pumps once per fixed update step, so there "frame" means step (ADR 0011,
+  D1).
   The state is global (one keyboard, one mouse); events name their window. A destroyed window
   that had focus clears the input state without events.
 - **Event types** (one per transition, H1): `KEY_PRESSED` / `KEY_RELEASED` (`ev.key`),

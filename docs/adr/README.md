@@ -24,5 +24,6 @@ its implementation.
 | 0008 | [Logging and asserts](0008-logging-and-asserts.md) | Accepted |
 | 0009 | [Monotonic clock and sleep](0009-monotonic-clock-and-sleep.md) | Accepted |
 | 0010 | [Memory allocation](0010-memory-allocation.md) | Accepted |
+| 0011 | [Application layer and game loop](0011-application-layer-and-game-loop.md) | Accepted |
 
 Template: [`template.md`](template.md).

@@ -32,10 +32,10 @@ Section numbers stay fixed: ADRs and code refer to them.
 ### 4. Game lifecycle
 - [x] High-resolution monotonic timer and sleep (done before §6, ADR 0009); the logger's `t` moves
       to it (ADR 0008, H); the sandbox loop stops spinning a CPU core
-- [ ] Application interface (init / update / render / shutdown); the engine allocates the game's
-      state through the §6 allocators
-- [ ] Game loop: frame timing, per-frame arena reset
-- [ ] Timestep strategy (fixed vs variable: to decide)
+- [x] Application interface (configure / init / on_event / update / render / shutdown); the
+      engine allocates the game's state through the §6 allocators (ADR 0011)
+- [x] Game loop: frame timing, per-frame arena reset, frame cap until vsync (ADR 0011)
+- [x] Timestep strategy: fixed step with accumulator, one pump per step (ADR 0011)
 
 ### 5. Logging (done before finishing §3, to see window and input events)
 - [x] Levels (TRACE → FATAL), console with colors, file output (ADR 0008)
@@ -62,6 +62,12 @@ Section numbers stay fixed: ADRs and code refer to them.
 ## Backlog
 
 ### Core
+- [ ] Engine-provided entry point (ADR 0011, H3): `reborn/entry.h` defines `main` (and `WinMain` for
+      a Windows build without a console); the game only defines a function returning its
+      callbacks. When a GUI-subsystem build or command-line arguments are needed
+- [ ] Application: veto on the main window's close ("save before quitting?"); a variable
+      `update` next to the fixed one if camera or UI need it (ADR 0011, C4); window events
+      between steps if a low update rate makes them lag
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
       (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
 - [ ] Thread safety: decide which public functions must be callable from any thread (logger first,
@@ -99,7 +105,8 @@ Section numbers stay fixed: ADRs and code refer to them.
 - [ ] Gamepads
 - [ ] Input action mapping (bindings to actions), after the game lifecycle (§4)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
-- [ ] Win32 modal loop: the game freezes while a window is dragged or resized (with §4)
+- [ ] Win32 modal loop: the game freezes while a window is dragged or resized (the loop clamps
+      the frozen time, ADR 0011; running during the drag needs a timer or a window thread)
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
 - [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
 - [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels

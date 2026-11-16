@@ -8,7 +8,9 @@ the owner wants to understand and approve every architectural choice.
   and let the owner decide. Record the decision in `docs/adr/`: one ADR per topic, *Proposed*
   (editable) until implemented, then *Accepted* (immutable). See `docs/adr/README.md`.
 - No external libraries without explicit approval.
-- Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date.
+- Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date. `[Unreleased]` is the difference
+  from the last release: before the first one, everything is *Added* and describes the current
+  state (no *Changed* / *Removed*, no "no longer..."); edit the existing entry instead.
 - Every major feature has a page in `docs/features/` (from `_template.md`). Create it with the
   feature, update it (including the *History* table) when the feature changes, and update the index.
 - Everything in the repository is in English. Docs are concise.

@@ -1,4 +1,5 @@
 add_executable(sandbox
+    src/game.c
     src/main.c
 )
 

@@ -8,6 +8,8 @@
 # without any error.
 add_executable(reborn_tests
     framework/rb_test.c
+    app/test_app.c
+    app/test_frame_timing.c
     containers/test_handle_pool.c
     containers/test_ring.c
     core/test_assert.c
@@ -29,6 +31,8 @@ add_executable(reborn_tests
 # Backend tests: only the backend of the target OS is in the engine (ADR 0006).
 if(WIN32)
     target_sources(reborn_tests PRIVATE
+        # Opens a real window: Windows only, the Linux test container has no X server.
+        app/test_app_run.c
         platform/win32/test_win32_input.c
         platform/win32/test_win32_platform.c
     )

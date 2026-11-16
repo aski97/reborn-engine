@@ -146,9 +146,10 @@ rb_arena_destroy(&engine);
 - A native Wayland backend would have no window position (Wayland hides global coordinates).
 - Vulkan surface for the renderer.
 - Window commands (set size, minimize, fullscreen); maximized as a state.
-- Win32 modal loop: the game freezes while a window is dragged (revisit with the game loop, §4).
+- Win32 modal loop: the game freezes while a window is dragged. The game loop clamps the frozen
+  time ([app.md](app.md)); running during the drag still needs a solution (backlog).
 - Linux: X error handling, UTF-8 title validation (parity with Windows), HiDPI via `Xft.dpi`.
-- Integration tests once the application lifecycle exists.
+- Integration tests beyond the application runs in `tests/app/test_app_run.c` (Windows only).
 
 ## History
 | Version | Date | Change |
@@ -158,5 +159,6 @@ rb_arena_destroy(&engine);
 | v0.1.0 | 2026-11-15 | Logging of failures, window creation/destruction and queue overflow; NULL pointers asserted |
 | v0.1.0 | 2026-11-15 | Window lifecycle: resize, focus, minimize events and queries; merged resizes |
 | v0.1.0 | 2026-11-16 | Keyboard and mouse events and state ([input.md](input.md)) |
+| v0.1.0 | 2026-11-16 | Owned by the application layer; `platform.h` stays public ([app.md](app.md)) |
 | v0.1.0 | 2026-11-16 | Window position: `RB_EVENT_WINDOW_MOVED`, `rb_window_get_position` |
 | v0.1.0 | 2026-11-16 | Startup takes an `rb_allocator` and returns the state; `rb_platform_state_size` removed |
