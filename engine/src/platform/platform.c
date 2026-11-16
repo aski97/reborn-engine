@@ -1,11 +1,14 @@
 /*
  * OS-independent part of the platform layer: event queue, window handle
- * validation and window state. Must not include any OS header (ADR 0006).
+ * validation and window state. Input state is in input.c. Must not include any
+ * OS header (ADR 0006).
  */
 #include "platform/platform_internal.h"
 
 #include <reborn/assert.h>
 #include <reborn/log.h>
+
+#include <string.h>
 
 /* ============================================================================
  * Shared state
@@ -19,6 +22,7 @@ bool rb_platform_common_init(rb_platform_common *common) {
     rb_ring_init(&common->event_ring, RB_EVENT_QUEUE_CAPACITY);
     common->dropped_events = 0;
     common->dropping_events = false;
+    common->input = (rb_input_state){0};
     return true;
 }
 
@@ -27,12 +31,15 @@ bool rb_platform_common_init(rb_platform_common *common) {
  * ========================================================================== */
 
 /*
- * A resize replaces a resize of the same window that is still the newest queued
- * event: a drag sends one per mouse move and only the final size matters. Only
- * the newest is checked, so the order of different events never changes.
+ * Merges `event` into the newest queued event when that has the same type and
+ * window: a resize or a mouse move replaces it (a drag sends one per mouse
+ * move and only the final value matters), a wheel event adds to it (summing
+ * loses nothing). Only the newest is checked, so the order of different events
+ * never changes.
  */
 static bool rb_platform_common_merge_event(rb_platform_common *common, const rb_event *event) {
-    if (event->type != RB_EVENT_WINDOW_RESIZED) {
+    if (event->type != RB_EVENT_WINDOW_RESIZED && event->type != RB_EVENT_MOUSE_MOVED &&
+        event->type != RB_EVENT_MOUSE_WHEEL) {
         return false;
     }
     u32 index;
@@ -43,7 +50,12 @@ static bool rb_platform_common_merge_event(rb_platform_common *common, const rb_
     if (newest->type != event->type || newest->window.id != event->window.id) {
         return false;
     }
-    *newest = *event;
+    if (event->type == RB_EVENT_MOUSE_WHEEL) {
+        newest->wheel.x += event->wheel.x;
+        newest->wheel.y += event->wheel.y;
+    } else {
+        *newest = *event;
+    }
     return true;
 }
 
@@ -148,6 +160,22 @@ void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_win
     *rb_platform_common_live_state(common, id) = (rb_window_state){.size = size};
 }
 
+void rb_platform_common_window_closed(rb_platform_common *common, u32 id) {
+    const rb_window_state *ws = rb_platform_common_live_state(common, id);
+    rb_input_state        *input = &common->input;
+    /* Only the down state: the edges still tell what happened during the last pump. */
+    if (ws->focused) {
+        memset(input->keys_down, 0, sizeof(input->keys_down));
+        memset(input->buttons_down, 0, sizeof(input->buttons_down));
+    }
+    /* A held button keeps the mouse in its window even without focus. */
+    if (input->mouse_window == id) {
+        memset(input->buttons_down, 0, sizeof(input->buttons_down));
+        input->mouse_window = RB_HANDLE_INVALID;
+        input->mouse_position = (rb_mouse_position){0};
+    }
+}
+
 void rb_platform_common_window_resized(rb_platform_common *common, u32 id, rb_window_size size) {
     rb_window_state *ws = rb_platform_common_live_state(common, id);
     /* Field by field, not memcmp: memcmp would also compare padding bytes. */
@@ -166,6 +194,10 @@ void rb_platform_common_window_focused(rb_platform_common *common, u32 id, bool 
         return;
     }
     ws->focused = focused;
+    if (!focused) {
+        /* Before FOCUS_LOST: the releases of held keys will reach another window. */
+        rb_platform_common_release_input(common, id);
+    }
     rb_platform_common_push_window_event(
         common, id, focused ? RB_EVENT_WINDOW_FOCUS_GAINED : RB_EVENT_WINDOW_FOCUS_LOST);
 }

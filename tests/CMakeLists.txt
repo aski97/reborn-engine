@@ -14,8 +14,16 @@ add_executable(reborn_tests
     core/test_assert_disabled.c
     core/test_log.c
     core/test_version.c
+    platform/test_input.c
     platform/test_platform.c
 )
+
+# Backend tests: only the backend of the target OS is in the engine (ADR 0006).
+if(WIN32)
+    target_sources(reborn_tests PRIVATE platform/win32/test_win32_input.c)
+elseif(LINUX)
+    target_sources(reborn_tests PRIVATE platform/linux/test_xlib_input.c)
+endif()
 
 target_include_directories(reborn_tests PRIVATE
     framework

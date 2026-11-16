@@ -40,5 +40,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   resizes merge in the queue. Queries `rb_window_get_size`, `rb_window_is_focused`,
   `rb_window_is_minimized`. Win32 and Xlib backends; the sandbox logs every event.
   `rb_ring_newest_index` in the ring buffer.
+- Keyboard and mouse input (ADR 0006, F1 and O–U): `reborn/input.h` with physical keys (`rb_key`,
+  USB HID values, US QWERTY names), mouse buttons and modifier flags; events `KEY_PRESSED` /
+  `KEY_RELEASED` (with repeat flag and modifiers), `MOUSE_BUTTON_PRESSED` / `RELEASED`,
+  `MOUSE_MOVED` and `MOUSE_WHEEL` (merged in the queue); per-pump state queries (`rb_key_is_down`,
+  `rb_key_was_pressed`, `rb_mouse_get_position`...). Held keys and buttons are released on focus
+  loss. Win32 (scancodes, mouse capture, AltGr / Shift / Print Screen quirks, no window menu mode
+  on Alt) and Xlib (evdev keycodes, detectable auto-repeat) backends; the sandbox logs input.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

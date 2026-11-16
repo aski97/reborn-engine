@@ -106,8 +106,45 @@ swapchain)
 2. EWMH `_NET_WM_STATE_HIDDEN` — newer; a list of atoms to parse.
 3. `UnmapNotify`/`MapNotify` — compositing window managers may keep minimized windows mapped.
 
+**O. Values of the key enum** (F1: keys are physical positions; which numbers name them)
+1. USB HID usage IDs (keyboard page, as SDL) — a published standard gives the key list and names;
+   one `bool[256]` covers every key; values are sparse.
+2. Own dense enum (0, 1, 2…) — smaller arrays; an arbitrary order to maintain by hand.
+
+**P. Linux: X11 keycode to key**
+1. Fixed table: on Xorg, XWayland, Xvfb and WSLg a keycode is the kernel's evdev code + 8 —
+   one array; wrong on servers with another numbering (some VNC servers, XQuartz).
+2. XKB key names read at startup (`AC01` is the QWERTY "A" position; XKB ships in `libX11`) —
+   works with any numbering; more code and another API.
+
+**Q. Auto-repeat** (held keys are re-sent by the OS after a delay)
+1. `KEY_PRESSED` with a `repeat` flag — games skip repeats, menus use them. X11 needs
+   `XkbSetDetectableAutoRepeat`, otherwise every repeat is a fake release + press pair.
+2. Repeats dropped — simpler; menus would reimplement them.
+
+**R. Modifiers in events**
+1. Bit mask (Shift, Ctrl, Alt, Super) in key and button events, as at that event — shortcuts
+   (Ctrl+S) read it directly.
+2. None: query the key state — the state is as of the last pump, possibly newer than the event.
+
+**S. Units of the mouse position**
+1. Pixels of the client area, as the renderer draws — picking compares against what is drawn.
+2. Logical units, as `rb_window_desc`.
+3. Both, as `rb_window_size`.
+
+**T. Focus lost while keys are held** (Alt+Tab: Alt's release goes to the other window)
+1. Synthesized `KEY_RELEASED` / `MOUSE_BUTTON_RELEASED` for everything held, then `FOCUS_LOST` —
+   event consumers see the release too.
+2. State cleared silently — event consumers keep a stuck key.
+
+**U. Input state queries**
+1. `is_down` (now), `was_pressed` / `was_released` (during the last pump), counting transitions:
+   a press and release within one pump gives both — the flaw that rejected D3.
+2. `is_down` only.
+
 ## Decision
-**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1.**
+**A1, B2 (then B3 with §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1;
+input: O1, P1, Q1, R1, S1, T1, U1.**
 - **A1:** the public API is one header; CMake compiles `platform/win32/` or `platform/linux/`.
   If Linux ever needs two backends, the vtable lives inside the Linux backend only (A3 locally).
 - **B2:** systems never allocate their own state; `rb_engine` owns every system's memory.
@@ -178,13 +215,58 @@ Window lifecycle:
   window as active). Messages sent while a window is being created or destroyed produce no events:
   the application already knows.
 
+Input:
+- **O1:** `rb_key` values are HID usages below 256. Names follow the US QWERTY label at that
+  position (`RB_KEY_W` is where QWERTY prints W), as SDL, GLFW and most engines do. Keys outside
+  the enum (media keys, Japanese and Korean keys) produce no events. On ISO keyboards the key left
+  of Enter shares the US backslash scancode, so it is `RB_KEY_BACKSLASH` (HID's `NON_US_HASH` is
+  never reported by the OS); the key between Left Shift and Z is `RB_KEY_NON_US_BACKSLASH`.
+- **P1:** the evdev numbering is what every current Linux X server uses; P2 waits for a server
+  that differs. Win32 needs no choice: the scancode, with its extended bit, is in the `lParam` of
+  `WM_KEYDOWN`.
+- **Q1:** repeat is decided by the common code: a press of a key already down. Both OSes then
+  agree, and a key held before the window got focus starts as a press.
+- **R1:** modifiers come from the engine's own key state after the event (a Shift press carries
+  `RB_KEY_MOD_SHIFT`), not from the OS: the same on both backends and unit-testable.
+- **S1:** on Linux pixels and logical units are equal anyway.
+- **T1:** the releases go to the window losing focus, before its `FOCUS_LOST`. On X11 a keyboard
+  grab (`FocusOut` with `NotifyGrab`, e.g. the window manager's Alt+Tab) also releases everything
+  without a focus event: the releases go to the grabbing client.
+- **U1:** "the last pump" is the frame: `rb_platform_pump` clears the edges and the wheel first.
+  The state is global (one keyboard, one mouse); events name their window. A destroyed window
+  that had focus clears the input state without events.
+- **Event types** (one per transition, H1): `KEY_PRESSED` / `KEY_RELEASED` (`ev.key`),
+  `MOUSE_BUTTON_PRESSED` / `RELEASED` (`ev.button`: button, position, modifiers), `MOUSE_MOVED`
+  (`ev.move`), `MOUSE_WHEEL` (`ev.wheel`). Buttons: left, right, middle, X1, X2 (back, forward).
+- **Merging** (L1 extended): a move replaces a move of the same window that is the newest queued
+  event, a wheel event adds to such a wheel event. A move to the same position sends nothing.
+- **Capture:** while any button is held the window keeps receiving the mouse outside its client
+  area, or a release outside would be lost and the button stuck. Win32: `SetCapture` /
+  `ReleaseCapture`; X11 grabs the pointer implicitly on a button press. Positions can then be
+  negative or beyond the size.
+- **Wheel** in notches as `f32`, positive up (away from the user) and right. Win32 divides by
+  `WHEEL_DELTA` (120), so high-resolution wheels give fractions; X11 core buttons 4–7 are one
+  notch each.
+- **Win32 quirks**, handled in the backend: AltGr arrives as a fake Left Ctrl plus Right Alt with
+  the same timestamp (the Ctrl is dropped); with both Shifts held, releasing one sends no key-up
+  (the pump checks `GetKeyState`); Print Screen sends only a key-up (a press is synthesized
+  first); synthetic messages may carry scancode 0 (mapped back from the virtual key); Alt and
+  F10 alone enter the window menu mode, which swallows the next key press (`SC_KEYMENU` is
+  swallowed instead, so Alt+Space does not open the system menu).
+- Rejected for now: relative mouse motion with a locked cursor (raw input / XInput2), key labels
+  of the current layout, mouse enter/leave events, cursor shape, gamepads (backlog).
+
 ### File layout
 ```
 engine/include/reborn/platform.h          public API
+engine/include/reborn/input.h             key, mouse button and modifier enums (included by platform.h)
 engine/src/platform/platform_internal.h   rb_platform_common + helpers shared by backends
-engine/src/platform/platform.c            OS-independent: event queue, key state, window pool
+engine/src/platform/platform.c            OS-independent: event queue, window pool and state
+engine/src/platform/input.c               OS-independent: input state, queries, key names
 engine/src/platform/win32/win32_platform.c
+engine/src/platform/win32/win32_input.c   scancode -> rb_key (no OS header: unit-tested)
 engine/src/platform/linux/xlib_platform.c
+engine/src/platform/linux/xlib_input.c    keycode -> rb_key (no OS header: unit-tested)
 ```
 Stateless OS services used by the logger (console, debugger detection) live next to the backends
 in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
@@ -202,7 +284,7 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
   surface (`VK_KHR_win32_surface` / `VK_KHR_xlib_surface`).
 - Using a destroyed window is a detectable error instead of undefined behaviour.
 - The maximum number of windows is a compile-time constant.
-- Pure parts (ring buffer, handle pool, key mapping, window state and event merging) are
+- Pure parts (ring buffer, handle pool, key mapping, window and input state, event merging) are
   unit-tested; windows and events are
   tested once logging and the game lifecycle exist (§4, §5).
 - Linux needs `libx11-dev` in `docker/linux.Dockerfile`. The container has no X server, so the
@@ -221,4 +303,7 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 | Fullscreen, video options | Window commands (G3), maximized as a state | Additions only |
 | A window manager without `WM_STATE` | Also read `_NET_WM_STATE_HIDDEN` (N2) | Linux backend only |
 | Events lost in bursts | Grow the ring buffer or change the overflow policy | None for users |
+| An X server without evdev keycodes (VNC, XQuartz) | Map keycodes through XKB key names (P2) | Linux backend only |
+| First-person camera, cursor lock | Relative mouse motion (raw input / XInput2) | New event type; XInput2 is `libXi` (new approval) |
+| Prompts must show the layout's label ("press Z" on AZERTY) | Key label query (`ToUnicode` / `XLookupKeysym`) | Addition only |
 | Another OS | New `platform/<os>/` directory | None for users |

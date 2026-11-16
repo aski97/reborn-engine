@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-15) |
+| **Updated** | v0.1.0 (2026-11-16) |
 | **Code** | `engine/include/reborn/platform.h`, `engine/src/platform/` |
 | **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md) |
 
@@ -37,7 +37,8 @@ header; each OS has its own backend, chosen by CMake.
 - Pointer parameters (`state`, `desc`, `out`) must not be NULL: asserted in debug builds.
 - Failures are logged with their reason (Win32: `GetLastError` text); startup, window creation
   (with the measured pixel size and DPI) and destruction are logged too.
-- Not yet: keyboard and mouse events; window commands (set size, minimize, fullscreen).
+- Keyboard and mouse events and state: see [input.md](input.md).
+- Not yet: window commands (set size, minimize, fullscreen).
 - Known limits: while a window is dragged or resized, Windows runs its own loop and
   `rb_platform_pump` does not return. On Linux, an X protocol error or a lost connection ends the
   process (Xlib's default error handlers).
@@ -83,6 +84,9 @@ becomes minimized, the size is kept), `WM_SETFOCUS` / `WM_KILLFOCUS`. Xlib: `Con
 `FocusIn` / `FocusOut` (grab-induced ones ignored), `PropertyNotify` on ICCCM `WM_STATE`
 (`IconicState`).
 
+Input (keys, buttons, mouse moves, wheel) follows the same pattern in `platform/input.c`, with the
+OS code mapping in `win32_input.c` / `xlib_input.c`: see [input.md](input.md).
+
 ## API
 ```c
 rb_platform_state *platform = malloc(rb_platform_state_size());
@@ -124,7 +128,6 @@ free(platform);
   as `UTF8_STRING` (`XStoreName` would type them Latin-1). No custom X error handlers yet.
 
 ## Future work
-- Keyboard and mouse, input state, merging consecutive mouse moves.
 - Vulkan surface for the renderer.
 - Window commands (set size, minimize, fullscreen); maximized as a state.
 - Win32 modal loop: the game freezes while a window is dragged (revisit with the game loop, §4).
@@ -138,3 +141,4 @@ free(platform);
 | v0.1.0 | 2026-11-15 | Xlib backend (create, close request, UTF-8 titles); sandbox opens a window on Linux |
 | v0.1.0 | 2026-11-15 | Logging of failures, window creation/destruction and queue overflow; NULL pointers asserted |
 | v0.1.0 | 2026-11-15 | Window lifecycle: resize, focus, minimize events and queries; merged resizes |
+| v0.1.0 | 2026-11-16 | Keyboard and mouse events and state ([input.md](input.md)) |

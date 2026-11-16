@@ -34,6 +34,23 @@ typedef struct rb_window_state {
     bool           minimized;
 } rb_window_state;
 
+/*
+ * Keyboard and mouse as of the last pump (ADR 0006, U1). Global: one keyboard
+ * and one mouse, whichever window has them. The edge arrays and the wheel are
+ * cleared at the start of every pump.
+ */
+typedef struct rb_input_state {
+    bool              keys_down[RB_KEY_COUNT];
+    bool              keys_pressed[RB_KEY_COUNT];  /* went down during the last pump */
+    bool              keys_released[RB_KEY_COUNT]; /* went up during the last pump */
+    bool              buttons_down[RB_MOUSE_BUTTON_COUNT];
+    bool              buttons_pressed[RB_MOUSE_BUTTON_COUNT];
+    bool              buttons_released[RB_MOUSE_BUTTON_COUNT];
+    u32               mouse_window; /* handle of the window of the last mouse event, 0 if none */
+    rb_mouse_position mouse_position;
+    rb_mouse_wheel    wheel; /* sum of the last pump */
+} rb_input_state;
+
 typedef struct rb_platform_common {
     rb_handle_pool  window_pool;
     u16             window_generations[RB_MAX_WINDOWS];
@@ -46,6 +63,8 @@ typedef struct rb_platform_common {
     u32 dropped_events;
     /* The last push was dropped: a burst of drops logs one warning, not one per event. */
     bool dropping_events;
+
+    rb_input_state input;
 } rb_platform_common;
 
 RB_INLINE rb_platform_common *rb_platform_common_of(rb_platform_state *state) {
@@ -76,11 +95,49 @@ bool rb_platform_common_poll_event(rb_platform_common *common, rb_event *out);
 /* Initial state of a new window: `size`, not focused, not minimized. No event. */
 void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size);
 
+/*
+ * Called before the window's slot is freed. If the window had the keyboard,
+ * the input state is cleared without events: the application destroyed it and
+ * needs no releases for a window that no longer exists.
+ */
+void rb_platform_common_window_closed(rb_platform_common *common, u32 id);
+
 void rb_platform_common_window_resized(rb_platform_common *common, u32 id, rb_window_size size);
+/* Losing focus first releases every held key and button (rb_platform_common_release_input). */
 void rb_platform_common_window_focused(rb_platform_common *common, u32 id, bool focused);
 void rb_platform_common_window_minimized(rb_platform_common *common, u32 id, bool minimized);
 
 /* NULL for stale or zero handles. */
 const rb_window_state *rb_platform_common_window_state(const rb_platform_common *common, u32 id);
+
+/* ============================================================================
+ * Input (platform/input.c)
+ *
+ * Backends report what the OS says, already mapped to engine values; the
+ * common code keeps the state, decides what is a repeat and which events to
+ * queue (ADR 0006, Q1-U1). `id` must be a live window handle.
+ * ========================================================================== */
+
+/* Start of a pump: clears the edges (pressed / released) and the wheel sum. */
+void rb_platform_common_begin_pump(rb_platform_common *common);
+
+/*
+ * A press of a key already down is a repeat; a release of a key not down (it
+ * went down before the window had focus) sends nothing. `key` must be a named
+ * key: backends drop RB_KEY_UNKNOWN.
+ */
+void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool down);
+
+void rb_platform_common_mouse_button(rb_platform_common *common, u32 id, rb_mouse_button button,
+                                     bool down, rb_mouse_position position);
+/* Sends nothing when neither the window nor the position changed. */
+void rb_platform_common_mouse_moved(rb_platform_common *common, u32 id, rb_mouse_position position);
+void rb_platform_common_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse_wheel delta);
+
+/*
+ * Releases every held key and button, with events to window `id`: the
+ * releases will reach another window or client, never this one.
+ */
+void rb_platform_common_release_input(rb_platform_common *common, u32 id);
 
 #endif /* RB_PLATFORM_INTERNAL_H */

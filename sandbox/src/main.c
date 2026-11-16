@@ -4,7 +4,7 @@
 #include <reborn/platform.h>
 #include <reborn/version.h>
 
-/* Logs every event, so window lifecycle can be checked by hand. False to quit. */
+/* Logs every event, so window lifecycle and input can be checked by hand. False to quit. */
 static bool handle_event(const rb_event *ev) {
     u32 id = ev->window.id;
     switch (ev->type) {
@@ -26,6 +26,27 @@ static bool handle_event(const rb_event *ev) {
         return true;
     case RB_EVENT_WINDOW_RESTORED:
         RB_LOG_DEBUG("Window 0x%08x: restored", id);
+        return true;
+    case RB_EVENT_KEY_PRESSED:
+    case RB_EVENT_KEY_RELEASED:
+        RB_LOG_DEBUG("Window 0x%08x: key %s %s%s (mods 0x%x)", id, rb_key_name(ev->key.key),
+                     ev->type == RB_EVENT_KEY_PRESSED ? "pressed" : "released",
+                     ev->key.repeat ? " (repeat)" : "", ev->key.mods);
+        return true;
+    case RB_EVENT_MOUSE_BUTTON_PRESSED:
+    case RB_EVENT_MOUSE_BUTTON_RELEASED:
+        RB_LOG_DEBUG("Window 0x%08x: mouse %s %s at %d,%d (mods 0x%x)", id,
+                     rb_mouse_button_name(ev->button.button),
+                     ev->type == RB_EVENT_MOUSE_BUTTON_PRESSED ? "pressed" : "released",
+                     ev->button.x, ev->button.y, ev->button.mods);
+        return true;
+    case RB_EVENT_MOUSE_MOVED:
+        /* TRACE: one per pump while the mouse moves. */
+        RB_LOG_TRACE("Window 0x%08x: mouse moved to %d,%d", id, ev->move.x, ev->move.y);
+        return true;
+    case RB_EVENT_MOUSE_WHEEL:
+        RB_LOG_DEBUG("Window 0x%08x: wheel %.2f,%.2f", id, (double)ev->wheel.x,
+                     (double)ev->wheel.y);
         return true;
     default:
         return true;
@@ -62,6 +83,15 @@ static int run_window(void) {
             if (!handle_event(&ev)) {
                 running = false;
             }
+        }
+        /* The queries, next to the events: a tap within one pump shows both edges. */
+        if (rb_key_was_pressed(platform, RB_KEY_SPACE)) {
+            RB_LOG_DEBUG("Query: Space was pressed this pump (down: %d)",
+                         rb_key_is_down(platform, RB_KEY_SPACE));
+        }
+        if (rb_key_was_released(platform, RB_KEY_SPACE)) {
+            RB_LOG_DEBUG("Query: Space was released this pump (down: %d)",
+                         rb_key_is_down(platform, RB_KEY_SPACE));
         }
     }
 

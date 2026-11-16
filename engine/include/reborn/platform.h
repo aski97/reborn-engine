@@ -11,6 +11,7 @@
  *       while (rb_platform_poll_event(platform, &ev)) {
  *           if (ev.type == RB_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
  *       }
+ *       if (rb_key_is_down(platform, RB_KEY_W)) { ... }
  *   }
  *
  *   rb_window_destroy(platform, win);
@@ -24,6 +25,7 @@
 #define RB_PLATFORM_H
 
 #include <reborn/defines.h>
+#include <reborn/input.h>
 
 /* ============================================================================
  * System
@@ -113,7 +115,50 @@ typedef enum rb_event_type {
     /* Restored means "no longer minimized"; maximizing is just a resize. */
     RB_EVENT_WINDOW_MINIMIZED,
     RB_EVENT_WINDOW_RESTORED,
+    /*
+     * A key went down or up (`key`). Held keys are re-sent as KEY_PRESSED with
+     * `repeat` set. When the window loses focus, every held key and button gets
+     * a release before RB_EVENT_WINDOW_FOCUS_LOST: nothing stays stuck.
+     */
+    RB_EVENT_KEY_PRESSED,
+    RB_EVENT_KEY_RELEASED,
+    /* `button`. While a button is held the window keeps the mouse, even outside it. */
+    RB_EVENT_MOUSE_BUTTON_PRESSED,
+    RB_EVENT_MOUSE_BUTTON_RELEASED,
+    /* `move`. Consecutive moves of one window are merged into the newest. */
+    RB_EVENT_MOUSE_MOVED,
+    /* `wheel`. Consecutive wheel events of one window are summed. */
+    RB_EVENT_MOUSE_WHEEL,
 } rb_event_type;
+
+typedef struct rb_key_event {
+    rb_key key;
+    u32    mods;   /* rb_key_mod bits after this event: a Shift press includes SHIFT */
+    bool   repeat; /* auto-repeat of a held key: games usually skip these */
+} rb_key_event;
+
+/*
+ * Client area pixels (what the renderer draws, not logical units), origin top
+ * left. Negative or beyond the size while a held button keeps the mouse
+ * outside the window.
+ */
+typedef struct rb_mouse_position {
+    i32 x;
+    i32 y;
+} rb_mouse_position;
+
+typedef struct rb_mouse_button_event {
+    rb_mouse_button button;
+    i32             x; /* where it happened, as rb_mouse_position */
+    i32             y;
+    u32             mods; /* rb_key_mod bits */
+} rb_mouse_button_event;
+
+/* In notches: one click of a classic wheel is 1; high-resolution wheels give fractions. */
+typedef struct rb_mouse_wheel {
+    f32 x; /* positive: right */
+    f32 y; /* positive: up, away from the user */
+} rb_mouse_wheel;
 
 /*
  * Every event names its window: the OS delivers one stream for all windows
@@ -124,7 +169,11 @@ typedef struct rb_event {
     rb_event_type type;
     rb_window     window;
     union {
-        rb_window_size resize; /* RB_EVENT_WINDOW_RESIZED: the new size */
+        rb_window_size        resize; /* RB_EVENT_WINDOW_RESIZED: the new size */
+        rb_key_event          key;    /* RB_EVENT_KEY_* */
+        rb_mouse_button_event button; /* RB_EVENT_MOUSE_BUTTON_* */
+        rb_mouse_position     move;   /* RB_EVENT_MOUSE_MOVED: the new position */
+        rb_mouse_wheel        wheel;  /* RB_EVENT_MOUSE_WHEEL */
     };
 } rb_event;
 
@@ -139,5 +188,35 @@ RB_API void rb_platform_pump(rb_platform_state *state);
 
 /* Pops the oldest queued event into *out. False when the queue is empty. */
 RB_API bool rb_platform_poll_event(rb_platform_state *state, rb_event *out);
+
+/* ============================================================================
+ * Input state
+ *
+ * Derived from the events, as of the last rb_platform_pump: the pump is the
+ * frame. One keyboard and one mouse for all windows. `was_pressed` and
+ * `was_released` count transitions during the last pump, so a key pressed and
+ * released within it reports both while `is_down` is already false. Repeats are
+ * not presses. Values outside the enums give false.
+ * ========================================================================== */
+
+RB_API bool rb_key_is_down(const rb_platform_state *state, rb_key key);
+RB_API bool rb_key_was_pressed(const rb_platform_state *state, rb_key key);
+RB_API bool rb_key_was_released(const rb_platform_state *state, rb_key key);
+/* rb_key_mod bits of the modifier keys down now. */
+RB_API u32 rb_key_mods(const rb_platform_state *state);
+
+RB_API bool rb_mouse_button_is_down(const rb_platform_state *state, rb_mouse_button button);
+RB_API bool rb_mouse_button_was_pressed(const rb_platform_state *state, rb_mouse_button button);
+RB_API bool rb_mouse_button_was_released(const rb_platform_state *state, rb_mouse_button button);
+
+/*
+ * Window of the last mouse event, and the position inside it. The mouse
+ * leaving a window sends nothing: both keep their last value. A zero handle
+ * and (0, 0) before the first mouse event or after that window is destroyed.
+ */
+RB_API rb_window         rb_mouse_get_window(const rb_platform_state *state);
+RB_API rb_mouse_position rb_mouse_get_position(const rb_platform_state *state);
+/* Sum of the wheel events during the last pump. */
+RB_API rb_mouse_wheel rb_mouse_get_wheel(const rb_platform_state *state);
 
 #endif /* RB_PLATFORM_H */

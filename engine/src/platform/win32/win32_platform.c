@@ -6,6 +6,7 @@
  * and queues them, so engine code never runs inside an OS callback.
  */
 #include "platform/platform_internal.h"
+#include "platform/win32/win32_input.h"
 
 #include <reborn/assert.h>
 #include <reborn/log.h>
@@ -19,6 +20,7 @@
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
+#include <windowsx.h> /* GET_X_LPARAM / GET_Y_LPARAM */
 
 /* ============================================================================
  * State
@@ -127,6 +129,123 @@ static void win32_handle_size(rb_platform_state *state, u32 id, HWND hwnd, WPARA
 }
 
 /* ============================================================================
+ * Keyboard
+ * ========================================================================== */
+
+static bool win32_is_key_message(UINT msg) {
+    return msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
+}
+
+/* lParam bits 16-23 (scancode) and 24 (extended), as win32_key_from_scancode wants them. */
+static u32 win32_scancode(WPARAM wparam, LPARAM lparam) {
+    u32 scancode = HIWORD(lparam) & (KF_EXTENDED | 0xFF);
+    if (scancode == 0) {
+        /*
+         * Messages synthesized by other programs may carry no scancode: map the
+         * virtual key back. The _EX variant returns extended keys as 0xE0xx.
+         */
+        UINT mapped = MapVirtualKeyW((UINT)wparam, MAPVK_VK_TO_VSC_EX);
+        scancode = (mapped & 0xFF) | ((mapped & 0xFF00) == 0xE000 ? KF_EXTENDED : 0);
+    }
+    return scancode;
+}
+
+/*
+ * On layouts with AltGr (Italian, German...) Windows sends Right Alt as a fake
+ * Left Ctrl followed by Right Alt with the same timestamp. The fake Ctrl must
+ * not reach the game: a real Left Ctrl is never followed by Right Alt with the
+ * same time. Peeking does not remove the message.
+ */
+static bool win32_is_altgr_ctrl(void) {
+    MSG  next;
+    LONG time = GetMessageTime();
+    if (!PeekMessageW(&next, NULL, 0, 0, PM_NOREMOVE) || !win32_is_key_message(next.message)) {
+        return false;
+    }
+    return win32_key_from_scancode(win32_scancode(next.wParam, next.lParam)) == RB_KEY_RIGHT_ALT &&
+           next.time == (DWORD)time;
+}
+
+static void win32_handle_key(rb_platform_state *state, u32 id, WPARAM wparam, LPARAM lparam) {
+    u32    scancode = win32_scancode(wparam, lparam);
+    rb_key key = win32_key_from_scancode(scancode);
+    if (key == RB_KEY_UNKNOWN) {
+        RB_LOG_TRACE("Unmapped key: scancode 0x%03x, virtual key 0x%02x", scancode,
+                     (unsigned)wparam);
+        return;
+    }
+    if (key == RB_KEY_LEFT_CTRL && win32_is_altgr_ctrl()) {
+        return;
+    }
+    bool down = (HIWORD(lparam) & KF_UP) == 0;
+    if (key == RB_KEY_PRINT_SCREEN && !down) {
+        /* Windows keeps the press for its screenshot hotkey and sends only the release. */
+        rb_platform_common_key(&state->common, id, key, true);
+    }
+    rb_platform_common_key(&state->common, id, key, down);
+}
+
+/*
+ * With both Shift keys held, releasing one sends no key-up: only the second
+ * release does, for the key released last. GetKeyState tells the truth as of
+ * the last message read, so after the pump it can correct the state.
+ */
+static void win32_release_stuck_shifts(rb_platform_state *state) {
+    HWND focus = GetFocus();
+    if (focus == NULL) {
+        return; /* win32_find_window(NULL) would match a free slot */
+    }
+    const win32_window *window = win32_find_window(state, focus);
+    if (window == NULL) {
+        return;
+    }
+    static const struct {
+        rb_key key;
+        int    vk;
+    } shifts[] = {{RB_KEY_LEFT_SHIFT, VK_LSHIFT}, {RB_KEY_RIGHT_SHIFT, VK_RSHIFT}};
+    for (u32 i = 0; i < RB_ARRAY_COUNT(shifts); ++i) {
+        /* The high bit of GetKeyState's result is set while the key is down. */
+        if (state->common.input.keys_down[shifts[i].key] &&
+            (GetKeyState(shifts[i].vk) & 0x8000) == 0) {
+            rb_platform_common_key(&state->common, window->id, shifts[i].key, false);
+        }
+    }
+}
+
+/* ============================================================================
+ * Mouse
+ * ========================================================================== */
+
+/*
+ * Client area pixels. GET_X_LPARAM, not LOWORD: the coordinates are signed
+ * 16-bit values, negative left of or above the window while it has the capture.
+ */
+static rb_mouse_position win32_mouse_position(LPARAM lparam) {
+    return (rb_mouse_position){GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+}
+
+static void win32_handle_button(rb_platform_state *state, u32 id, HWND hwnd, rb_mouse_button button,
+                                bool down, WPARAM wparam, LPARAM lparam) {
+    /*
+     * The capture keeps the mouse messages coming while a button is held
+     * outside the window, so the release is never lost (ADR 0006). The low
+     * word of wparam lists the buttons still down after this message.
+     */
+    const WPARAM all_buttons = MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2;
+    if (down) {
+        SetCapture(hwnd);
+    } else if ((GET_KEYSTATE_WPARAM(wparam) & all_buttons) == 0) {
+        ReleaseCapture();
+    }
+    rb_platform_common_mouse_button(&state->common, id, button, down, win32_mouse_position(lparam));
+}
+
+/* WHEEL_DELTA (120) is one notch; high-resolution wheels send smaller steps. */
+static f32 win32_wheel_notches(WPARAM wparam) {
+    return (f32)GET_WHEEL_DELTA_WPARAM(wparam) / (f32)WHEEL_DELTA;
+}
+
+/* ============================================================================
  * Window procedure
  * ========================================================================== */
 
@@ -181,6 +300,83 @@ static LRESULT CALLBACK win32_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LP
             rb_platform_common_window_focused(&state->common, window->id, msg == WM_SETFOCUS);
         }
         return DefWindowProcW(hwnd, msg, wparam, lparam);
+
+    /*
+     * The SYS variants are sent while Alt is held and for F10. They also go to
+     * DefWindowProcW, which turns Alt+F4 into WM_CLOSE.
+     */
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+        if (window != NULL) {
+            win32_handle_key(state, window->id, wparam, lparam);
+        }
+        if (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) {
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+        }
+        return 0;
+
+    case WM_SYSCOMMAND:
+        /*
+         * Alt or F10 pressed alone would enter the window menu mode, which
+         * swallows the next key press. Games do not want it; the cost is that
+         * Alt+Space no longer opens the system menu.
+         */
+        if ((wparam & 0xFFF0) == SC_KEYMENU) {
+            return 0;
+        }
+        return DefWindowProcW(hwnd, msg, wparam, lparam);
+
+    case WM_MOUSEMOVE:
+        if (window != NULL) {
+            rb_platform_common_mouse_moved(&state->common, window->id,
+                                           win32_mouse_position(lparam));
+        }
+        return 0;
+
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+        if (window != NULL) {
+            win32_handle_button(state, window->id, hwnd, RB_MOUSE_BUTTON_LEFT,
+                                msg == WM_LBUTTONDOWN, wparam, lparam);
+        }
+        return 0;
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+        if (window != NULL) {
+            win32_handle_button(state, window->id, hwnd, RB_MOUSE_BUTTON_RIGHT,
+                                msg == WM_RBUTTONDOWN, wparam, lparam);
+        }
+        return 0;
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+        if (window != NULL) {
+            win32_handle_button(state, window->id, hwnd, RB_MOUSE_BUTTON_MIDDLE,
+                                msg == WM_MBUTTONDOWN, wparam, lparam);
+        }
+        return 0;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+        if (window != NULL) {
+            rb_mouse_button button =
+                GET_XBUTTON_WPARAM(wparam) == XBUTTON1 ? RB_MOUSE_BUTTON_X1 : RB_MOUSE_BUTTON_X2;
+            win32_handle_button(state, window->id, hwnd, button, msg == WM_XBUTTONDOWN, wparam,
+                                lparam);
+        }
+        /* The documentation asks for TRUE here, unlike the other button messages. */
+        return TRUE;
+
+    /* Sent to the focused window; lparam holds screen coordinates, which are not needed. */
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+        if (window != NULL) {
+            f32            notches = win32_wheel_notches(wparam);
+            rb_mouse_wheel delta = msg == WM_MOUSEWHEEL ? (rb_mouse_wheel){0.0f, notches}
+                                                        : (rb_mouse_wheel){notches, 0.0f};
+            rb_platform_common_mouse_wheel(&state->common, window->id, delta);
+        }
+        return 0;
 
     case WM_DPICHANGED: {
         /* Moved to a monitor with another scale: the suggested rect keeps the logical size. */
@@ -335,6 +531,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
      * events about it.
      */
     HWND hwnd = slot->hwnd;
+    rb_platform_common_window_closed(&state->common, window.id);
     *slot = (win32_window){0};
     DestroyWindow(hwnd);
     rb_handle_pool_free(&state->common.window_pool, window.id);
@@ -346,7 +543,9 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
  * ========================================================================== */
 
 void rb_platform_pump(rb_platform_state *state) {
-    RB_UNUSED(state); /* messages reach the state through each window's user data */
+    RB_ASSERT(state != NULL);
+    /* Messages reach the state through each window's user data. */
+    rb_platform_common_begin_pump(&state->common);
 
     MSG msg;
     /*
@@ -358,4 +557,5 @@ void rb_platform_pump(rb_platform_state *state) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    win32_release_stuck_shifts(state);
 }

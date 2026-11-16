@@ -12,6 +12,7 @@
  * engine reacts to them is still to be decided.
  */
 #include "platform/platform_internal.h"
+#include "platform/linux/xlib_input.h"
 
 #include <reborn/assert.h>
 #include <reborn/log.h>
@@ -19,6 +20,7 @@
 #include <string.h>
 
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h> /* XkbSetDetectableAutoRepeat: XKB ships inside libX11 */
 #include <X11/Xatom.h>
 #include <X11/Xutil.h> /* IconicState */
 
@@ -57,8 +59,20 @@ _Static_assert(offsetof(struct rb_platform_state, common) == 0,
  * Events each window subscribes to; XSelectInput replaces the whole mask, so it
  * is set once here. StructureNotify: ConfigureNotify (size). FocusChange:
  * FocusIn/FocusOut. PropertyChange: PropertyNotify, for WM_STATE (minimized).
+ * KeyPress/KeyRelease, ButtonPress/ButtonRelease (the wheel too), and
+ * PointerMotion: MotionNotify, with or without a button held.
  */
-#define XLIB_EVENT_MASK (StructureNotifyMask | FocusChangeMask | PropertyChangeMask)
+#define XLIB_EVENT_MASK                                                                            \
+    (StructureNotifyMask | FocusChangeMask | PropertyChangeMask | KeyPressMask | KeyReleaseMask |  \
+     ButtonPressMask | ButtonReleaseMask | PointerMotionMask)
+
+/* X11 core protocol mouse buttons: 4-7 are the wheel, 8-9 the side buttons. */
+#define XLIB_BUTTON_WHEEL_UP    4
+#define XLIB_BUTTON_WHEEL_DOWN  5
+#define XLIB_BUTTON_WHEEL_LEFT  6
+#define XLIB_BUTTON_WHEEL_RIGHT 7
+#define XLIB_BUTTON_BACK        8
+#define XLIB_BUTTON_FORWARD     9
 
 /* ============================================================================
  * Helpers
@@ -111,19 +125,104 @@ static void xlib_handle_configure(rb_platform_state *state, const XConfigureEven
 }
 
 static void xlib_handle_focus(rb_platform_state *state, const XFocusChangeEvent *ev) {
-    /*
-     * A keyboard grab (the window manager during Alt+Tab or a drag) moves the
-     * focus away and back without the user changing window: those come with mode
-     * NotifyGrab / NotifyUngrab and are ignored.
-     */
-    if (ev->mode == NotifyGrab || ev->mode == NotifyUngrab) {
-        return;
-    }
     const xlib_window *window = xlib_find_window(state, ev->window);
     if (window == NULL) {
         return;
     }
+    /*
+     * A keyboard grab (the window manager during Alt+Tab or a drag) moves the
+     * focus away and back without the user changing window: those come with mode
+     * NotifyGrab / NotifyUngrab and are not focus changes. While the grab lasts,
+     * key releases go to the grabbing client, so held keys are released now or
+     * they would stay stuck (ADR 0006, T1).
+     */
+    if (ev->mode == NotifyGrab || ev->mode == NotifyUngrab) {
+        if (ev->type == FocusOut && ev->mode == NotifyGrab) {
+            rb_platform_common_release_input(&state->common, window->id);
+        }
+        return;
+    }
     rb_platform_common_window_focused(&state->common, window->id, ev->type == FocusIn);
+}
+
+static void xlib_handle_key(rb_platform_state *state, const XKeyEvent *ev) {
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+    rb_key key = xlib_key_from_keycode(ev->keycode);
+    if (key == RB_KEY_UNKNOWN) {
+        RB_LOG_TRACE("Unmapped key: keycode %u", ev->keycode);
+        return;
+    }
+    rb_platform_common_key(&state->common, window->id, key, ev->type == KeyPress);
+}
+
+/*
+ * The core protocol reports the wheel as buttons 4-7, one press and release
+ * per notch; only the press is used. Smooth scrolling needs XInput2.
+ */
+static void xlib_handle_button(rb_platform_state *state, const XButtonEvent *ev) {
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+    bool down = ev->type == ButtonPress;
+    switch (ev->button) {
+    case XLIB_BUTTON_WHEEL_UP:
+    case XLIB_BUTTON_WHEEL_DOWN:
+    case XLIB_BUTTON_WHEEL_LEFT:
+    case XLIB_BUTTON_WHEEL_RIGHT:
+        if (down) {
+            rb_mouse_wheel wheel = {
+                .x = ev->button == XLIB_BUTTON_WHEEL_RIGHT  ? 1.0f
+                     : ev->button == XLIB_BUTTON_WHEEL_LEFT ? -1.0f
+                                                            : 0.0f,
+                .y = ev->button == XLIB_BUTTON_WHEEL_UP     ? 1.0f
+                     : ev->button == XLIB_BUTTON_WHEEL_DOWN ? -1.0f
+                                                            : 0.0f,
+            };
+            rb_platform_common_mouse_wheel(&state->common, window->id, wheel);
+        }
+        return;
+    default:
+        break;
+    }
+
+    rb_mouse_button button;
+    switch (ev->button) {
+    case Button1:
+        button = RB_MOUSE_BUTTON_LEFT;
+        break;
+    case Button2:
+        button = RB_MOUSE_BUTTON_MIDDLE;
+        break;
+    case Button3:
+        button = RB_MOUSE_BUTTON_RIGHT;
+        break;
+    case XLIB_BUTTON_BACK:
+        button = RB_MOUSE_BUTTON_X1;
+        break;
+    case XLIB_BUTTON_FORWARD:
+        button = RB_MOUSE_BUTTON_X2;
+        break;
+    default:
+        return; /* buttons 10+: extra buttons the enum does not name */
+    }
+    /*
+     * No capture call needed: a button press makes the server grab the pointer
+     * for this window until every button is up, so the release always arrives.
+     */
+    rb_platform_common_mouse_button(&state->common, window->id, button, down,
+                                    (rb_mouse_position){ev->x, ev->y});
+}
+
+static void xlib_handle_motion(rb_platform_state *state, const XMotionEvent *ev) {
+    const xlib_window *window = xlib_find_window(state, ev->window);
+    if (window == NULL) {
+        return;
+    }
+    rb_platform_common_mouse_moved(&state->common, window->id, (rb_mouse_position){ev->x, ev->y});
 }
 
 /*
@@ -213,6 +312,17 @@ bool rb_platform_startup(rb_platform_state *state) {
     state->wm_state = XInternAtom(state->display, "WM_STATE", False);
     state->net_wm_name = XInternAtom(state->display, "_NET_WM_NAME", False);
     state->utf8_string = XInternAtom(state->display, "UTF8_STRING", False);
+
+    /*
+     * By default a held key repeats as a fake KeyRelease + KeyPress pair, which
+     * would look like the user tapping it. Detectable auto-repeat sends only
+     * KeyPress events, which the common code reports as repeats (ADR 0006, Q1).
+     */
+    Bool detectable = False;
+    XkbSetDetectableAutoRepeat(state->display, True, &detectable);
+    if (!detectable) {
+        RB_LOG_WARN("X server lacks detectable auto-repeat: held keys look like repeated taps");
+    }
     RB_LOG_DEBUG("Xlib platform started on display \"%s\"", DisplayString(state->display));
     return true;
 }
@@ -318,6 +428,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
         return;
     }
     xlib_window *slot = &state->windows[rb_handle_index(window.id)];
+    rb_platform_common_window_closed(&state->common, window.id);
     XDestroyWindow(state->display, slot->xid);
     /* Without it the window would stay on screen until the next pump. */
     XFlush(state->display);
@@ -332,6 +443,7 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
 
 void rb_platform_pump(rb_platform_state *state) {
     RB_ASSERT(state != NULL);
+    rb_platform_common_begin_pump(&state->common);
     /*
      * XPending returns how many events are queued; when none are, it first
      * flushes our requests and reads what the server has sent, without
@@ -356,6 +468,17 @@ void rb_platform_pump(rb_platform_state *state) {
             break;
         case PropertyNotify:
             xlib_handle_property(state, &event.xproperty);
+            break;
+        case KeyPress:
+        case KeyRelease:
+            xlib_handle_key(state, &event.xkey);
+            break;
+        case ButtonPress:
+        case ButtonRelease:
+            xlib_handle_button(state, &event.xbutton);
+            break;
+        case MotionNotify:
+            xlib_handle_motion(state, &event.xmotion);
             break;
         default:
             break;

@@ -23,7 +23,7 @@
 - [x] Linux build scripts gate on `ctest`; the sandbox runs on a Linux desktop
 - [x] Window lifecycle: resize, focus, minimize (events + queries, ADR 0006)
 - [x] Event queue (fixed-size ring buffer, ADR 0006)
-- [ ] Basic keyboard/mouse input by physical key position
+- [x] Basic keyboard/mouse input by physical key position (ADR 0006)
 
 ### 4. Game lifecycle
 - [ ] Application interface (init / update / render / shutdown)
@@ -79,6 +79,11 @@
 - [ ] More platforms
 - [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
 - [ ] Text input events (Unicode), separate from key events
+- [ ] Relative mouse motion with a locked, hidden cursor (raw input / XInput2), for first-person cameras
+- [ ] Key labels of the current layout, for prompts ("press Z" on AZERTY)
+- [ ] Mouse enter/leave events, cursor shape
+- [ ] Gamepads
+- [ ] Input action mapping (bindings to actions), after the game lifecycle (§4)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
 - [ ] Win32 modal loop: the game freezes while a window is dragged or resized (with §4)
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
