@@ -1,10 +1,12 @@
 /*
- * Virtual memory, Linux (ADR 0010, A1). POSIX mmap, not X11-specific.
+ * Virtual memory and aligned heap, Linux (ADR 0010, A1, J1). POSIX mmap and
+ * posix_memalign, not X11-specific.
  */
 
 /*
  * MAP_ANONYMOUS is not in POSIX 2008: glibc shows it only with
- * _DEFAULT_SOURCE, which also enables POSIX 2008 (sysconf, mprotect).
+ * _DEFAULT_SOURCE, which also enables POSIX 2008 (sysconf, mprotect,
+ * posix_memalign).
  */
 #define _DEFAULT_SOURCE
 
@@ -14,6 +16,9 @@
 #include <reborn/log.h>
 
 #include <errno.h>
+#include <stdalign.h>
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -77,4 +82,47 @@ void rb_platform_memory_release(void *ptr, usize size) {
     if (munmap(ptr, size) != 0) {
         LINUX_LOG_ERRNO("munmap");
     }
+}
+
+/* ============================================================================
+ * Aligned heap
+ *
+ * posix_memalign, not C11 aligned_alloc: C11 wants the size to be a multiple
+ * of the alignment (ASan enforces it), which would waste most of a page on a
+ * small page-aligned block. glibc's free() and realloc() accept its blocks,
+ * but realloc only guarantees malloc's alignment (alignof(max_align_t), 16 on
+ * x64): above it, resize allocates, copies and frees by hand.
+ * ========================================================================== */
+
+void *rb_platform_heap_alloc(usize size, usize align) {
+    RB_ASSERT(size > 0 && align > 0 && (align & (align - 1)) == 0);
+    /* posix_memalign also wants a multiple of sizeof(void *): a stricter alignment is fine. */
+    if (align < sizeof(void *)) {
+        align = sizeof(void *);
+    }
+    void *ptr = NULL;
+    /* Returns the error instead of setting errno; the only possible one here is ENOMEM. */
+    if (posix_memalign(&ptr, align, size) != 0) {
+        return NULL;
+    }
+    return ptr;
+}
+
+void *rb_platform_heap_resize(void *ptr, usize old_size, usize new_size, usize align) {
+    RB_ASSERT(ptr != NULL && new_size > 0 && align > 0 && (align & (align - 1)) == 0);
+    if (align <= alignof(max_align_t)) {
+        return realloc(ptr, new_size);
+    }
+    void *moved = rb_platform_heap_alloc(new_size, align);
+    if (moved == NULL) {
+        return NULL;
+    }
+    memcpy(moved, ptr, old_size < new_size ? old_size : new_size);
+    free(ptr);
+    return moved;
+}
+
+void rb_platform_heap_free(void *ptr) {
+    RB_ASSERT(ptr != NULL);
+    free(ptr);
 }

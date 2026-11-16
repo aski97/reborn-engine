@@ -11,6 +11,6 @@
 | Logging & asserts | [logging.md](logging.md) | Stable | v0.1.0 | 2026-11-16 |
 | Memory | [memory.md](memory.md) | In progress | v0.1.0 | 2026-11-16 |
 | Vulkan renderer | — | Planned | v0.1.0 | — |
-| Unit testing | [unit-testing.md](unit-testing.md) | Stable | v0.1.0 | 2026-11-15 |
+| Unit testing | [unit-testing.md](unit-testing.md) | Stable | v0.1.0 | 2026-11-16 |
 
 Status: Planned → In progress → Stable → Deprecated. New pages start from [`_template.md`](_template.md).

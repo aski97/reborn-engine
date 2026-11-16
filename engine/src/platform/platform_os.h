@@ -2,7 +2,8 @@
  * Stateless OS services (ADR 0008): usable before rb_platform_startup and
  * without a platform state, because the logger and asserts need them from the
  * first line of main(). Implemented by win32/win32_os.c and linux/linux_os.c,
- * virtual memory by win32/win32_memory.c and linux/linux_memory.c.
+ * virtual memory and the aligned heap by win32/win32_memory.c and
+ * linux/linux_memory.c.
  */
 #ifndef RB_PLATFORM_OS_H
 #define RB_PLATFORM_OS_H
@@ -55,5 +56,27 @@ void rb_platform_memory_decommit(void *ptr, usize size);
 
 /* `ptr` and `size` exactly as reserved: the whole range is freed, committed or not. */
 void rb_platform_memory_release(void *ptr, usize size);
+
+/* ============================================================================
+ * Aligned heap (ADR 0010, J1)
+ *
+ * The C runtime's heap with any power-of-two alignment: _aligned_malloc on
+ * Windows (the UCRT lacks C11 aligned_alloc, as its aligned blocks cannot be
+ * freed with plain free()), posix_memalign on Linux. Sizes are > 0: what
+ * malloc does with 0 differs between runtimes. Failures are not logged here:
+ * the allocator knows what was asked.
+ * ========================================================================== */
+
+/* NULL when the heap has no memory left. */
+void *rb_platform_heap_alloc(usize size, usize align);
+
+/*
+ * Keeps the first min(old, new) bytes, may move. `align` as allocated. NULL on
+ * failure, the old block still valid.
+ */
+void *rb_platform_heap_resize(void *ptr, usize old_size, usize new_size, usize align);
+
+/* A block from rb_platform_heap_alloc or _resize, never NULL. */
+void rb_platform_heap_free(void *ptr);
 
 #endif /* RB_PLATFORM_OS_H */

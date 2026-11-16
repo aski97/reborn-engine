@@ -90,11 +90,46 @@ see overflows inside custom allocators. Targets are 64-bit only (`defines.h`). N
   `_release`. Whole pages only (asserted). Linux reserves without `MAP_NORESERVE`, so the commit
   charge is taken (and can fail) at commit as on Windows, and decommits by mapping a fresh
   `PROT_NONE` range over the pages, which drops the charge too.
-- Remaining details (arena names, commit granularity, red zone size) are filled in during
-  implementation.
+- **Arena** (`reborn/memory.h`, `memory/arena.c`): a caller-owned `rb_arena` value;
+  `rb_arena_create` (reservation rounded up to the granularity) / `_create_from_buffer` (B1) /
+  `_destroy`; `rb_arena_push` (zeroed, H1), `_push_uninit`, `_push_array` (fails on a size that
+  overflows), `RB_ARENA_PUSH_TYPE` / `_ARRAY` (`_Alignof`, E1); `rb_arena_reset` keeps memory
+  committed; temp scopes `rb_arena_temp_begin` / `_end` (F1). Alignment applies to the address, so
+  a buffer may start anywhere. Commit in 64 KiB steps, clamped to the reservation.
+- **ASan** (`memory/asan.h`, I2): committed free memory is poisoned and unpoisoned as it is handed
+  out; reset and temp end poison again. ASan builds add a 16-byte poisoned red zone before every
+  allocation and align starts to ASan's 8-byte granule. Only committed memory is ever poisoned
+  (poisoning a 64 GiB reservation would commit 8 GiB of shadow); destroy unpoisons, since the
+  shadow outlives the range. Verified: a one-byte overflow into the next allocation is reported as
+  `use-after-poison`, and goes silently into the neighbour without ASan.
+- **Allocator interface** (`reborn/memory.h`, `memory/allocator.c`): `rb_allocator_vtable` with
+  `alloc` (uninitialized), `resize` (keeps min(old, new) bytes, may move) and `free`, each taking
+  `ctx` plus the block's size and alignment; `rb_allocator` = `{ctx, vtable}`, by value. Free takes
+  the alignment too, so an allocator may bucket by it. Helpers do what each allocator would repeat:
+  `rb_alloc` (zeroed), `_uninit`, `rb_alloc_array` (overflow check), `rb_resize` (grown bytes
+  zeroed, H1) / `_uninit`, `rb_free`; `RB_ALLOC_TYPE` / `_ARRAY`, `RB_FREE_TYPE` / `_ARRAY`. Freeing
+  `NULL` does nothing, resizing `NULL` allocates (as `realloc`), size 0 is an ordinary block.
+- **Arena adapter** (`rb_arena_allocator`): free pops the block only when it is the last one (back
+  to its start minus the red zone), resize shrinks in place, grows in place when the block is the
+  last one and fits, and otherwise copies. Neither moves the position below the innermost open temp
+  scope's start (`rb_arena.floor`, saved and restored by temp scopes, cleared by reset): popping a
+  block allocated before the scope would make its end look out of order. ASan builds poison freed
+  and shrunk bytes, freed blocks that stay in place included (use after free is reported).
+- **Heap allocator** (`rb_heap_allocator`, `memory/heap_allocator.c`) over
+  `rb_platform_heap_alloc` / `_resize` / `_free` (`platform_os.h`): `_aligned_malloc` /
+  `_aligned_realloc` / `_aligned_free` on Windows; `posix_memalign` on Linux, because C11
+  `aligned_alloc` wants the size to be a multiple of the alignment (ASan enforces it), and resize
+  through `realloc` up to 16-byte alignment, allocate-copy-free above. Size 0 takes 1 byte (runtimes
+  disagree on 0, and `_aligned_realloc(p, 0)` frees). Failures logged by the allocator.
+- **Failing allocator** (`tests/support/failing_allocator.h`): `rb_failing_allocator` wraps a
+  parent and fails its N-th allocation (1-based; 0 never fails). Growing resizes count as
+  allocations, shrinking ones and frees do not. Counters: `allocation_count`, `failure_count`,
+  `free_count`, `live_bytes` (for leak checks on error paths).
 
 ## Consequences
 - Every system and container takes an `rb_allocator`; tests can inject failures anywhere.
 - Per-frame memory costs one pointer bump and one reset.
 - Arena memory cannot be freed object by object (only the last allocation can be popped).
+- Through an arena, a block resized inside a temp scope moves into the scope and dies at its end,
+  even if it was allocated before it.
 - No thread safety: an arena or allocator is used by one thread at a time until threading exists.

@@ -61,5 +61,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   decommit pages of it, release it (`VirtualAlloc` / `mmap`). Reserving costs no RAM nor commit
   charge; out-of-memory is reported at commit on both platforms. Win32 `GetLastError` logging is
   shared by the backend files (`win32_error.c`).
+- Arena (ADR 0010): `reborn/memory.h` with `rb_arena` over a virtual memory reservation (64 KiB
+  commit steps, never moves) or a caller's buffer; zeroed `rb_arena_push`, `_push_uninit`,
+  overflow-checked `_push_array`, `RB_ARENA_PUSH_TYPE` / `_ARRAY`; `rb_arena_reset` and nested temp
+  scopes. ASan builds poison free memory and a 16-byte red zone before each allocation, so
+  overflows between allocations and use after reset are reported.
+- Allocator interface (ADR 0010): `rb_allocator` (context + vtable, by value) with sized
+  `rb_alloc` (zeroed) / `_uninit` / `_array`, `rb_resize` / `_uninit`, `rb_free` and
+  `RB_ALLOC_TYPE` / `_ARRAY`, `RB_FREE_TYPE` / `_ARRAY`; `rb_arena_allocator` (frees and grows the
+  last block in place, never below an open temp scope) and `rb_heap_allocator` (`_aligned_malloc` /
+  `posix_memalign`). Failing allocator for tests in `tests/support/`.
 - `RB_PRINTF_FORMAT` in `defines.h`; `-fmacro-prefix-map` makes `__FILE__` relative to the
   repository; `_CRT_SECURE_NO_WARNINGS` on Windows.

@@ -44,11 +44,12 @@ Section numbers stay fixed: ADRs and code refer to them.
 
 ### 6. Memory
 - [x] OS allocation: reserve / commit / decommit / release (VirtualAlloc / mmap, ADR 0010)
-- [ ] Arena allocator
-- [ ] Allocator interface; system startup takes an allocator instead of a size query (ADR 0006, B3)
-- [ ] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
+- [x] Arena allocator: virtual memory or caller buffer, temp scopes (ADR 0010)
+- [ ] Allocator interface (done: arena, heap) — remaining: system startup takes an allocator
+      instead of a size query (ADR 0006, B3; ADR 0010, K1)
+- [x] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
       otherwise overflows between objects inside an arena go undetected
-- [ ] Failing test allocator (fails at the N-th allocation) to cover error paths
+- [x] Failing test allocator (fails at the N-th allocation) to cover error paths
 - [ ] Allocation tracking by tag, leak report (after the rest of §4)
 
 ### 7. Rendering (Vulkan)

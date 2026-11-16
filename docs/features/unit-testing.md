@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-15) |
+| **Updated** | v0.1.0 (2026-11-16) |
 | **Code** | `tests/`, `cmake/RebornDiscoverTests.cmake`, `CMakePresets.json` (`testPresets`) |
 | **ADRs** | [0004](../adr/0004-unit-testing.md) |
 
@@ -38,6 +38,8 @@ flowchart LR
   constructor order across files is unspecified.
 - `stdout` is unbuffered so the output of a crashing test is not lost.
 - `tests/` mirrors `engine/src/`; tests may include internal headers from `engine/src/`.
+- Test helpers live in `tests/support/` (on the include path) with their own tests: the failing
+  allocator walks error paths by failing the N-th allocation (see [memory.md](memory.md)).
 
 ## API
 
@@ -45,9 +47,12 @@ flowchart LR
 #include "rb_test.h"
 
 RB_TEST(arena, push_returns_aligned_memory) {
-    void *p = rb_arena_push(&arena, 24);
+    rb_arena arena;
+    RB_REQUIRE(rb_arena_create(&arena, RB_MIB(1)));
+    void *p = rb_arena_push(&arena, 24, 16);
     RB_REQUIRE(p != NULL);
     RB_EXPECT_EQ_UINT((usize)p % 16, 0);
+    rb_arena_destroy(&arena);
 }
 ```
 
@@ -78,10 +83,11 @@ All in [ADR 0004](../adr/0004-unit-testing.md):
   type on Linux, which would make a `_Generic` list fail to compile.
 
 ## Future work
-`longjmp`-based `REQUIRE` and an `RB_ASSERT` handler hook (death tests), fixtures, failing
-allocator for error paths, ULP float comparisons, fuzzing (libFuzzer), coverage (`llvm-cov`).
+`longjmp`-based `REQUIRE` and an `RB_ASSERT` handler hook (death tests), fixtures, ULP float
+comparisons, fuzzing (libFuzzer), coverage (`llvm-cov`).
 
 ## History
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-15 | First version |
+| v0.1.0 | 2026-11-16 | `tests/support/`: failing allocator |

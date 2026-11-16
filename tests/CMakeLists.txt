@@ -14,10 +14,16 @@ add_executable(reborn_tests
     core/test_assert_disabled.c
     core/test_log.c
     core/test_version.c
+    memory/test_allocator.c
+    memory/test_arena.c
+    memory/test_heap_allocator.c
     platform/test_clock.c
     platform/test_input.c
     platform/test_memory.c
     platform/test_platform.c
+    # Test helpers (ADR 0004) and their own tests.
+    support/failing_allocator.c
+    support/test_failing_allocator.c
 )
 
 # Backend tests: only the backend of the target OS is in the engine (ADR 0006).
@@ -29,6 +35,7 @@ endif()
 
 target_include_directories(reborn_tests PRIVATE
     framework
+    support
     # Tests may exercise internal headers, not just the public API (ADR 0004).
     ${PROJECT_SOURCE_DIR}/engine/src
 )

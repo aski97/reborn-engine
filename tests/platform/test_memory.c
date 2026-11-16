@@ -103,3 +103,42 @@ RB_TEST(memory, huge_reservation_commits_only_what_is_used) {
     RB_EXPECT(pages_hold(base + size - page, page, 0x22));
     rb_platform_memory_release(base, size);
 }
+
+/* ============================================================================
+ * Aligned heap
+ * ========================================================================== */
+
+RB_TEST(memory, heap_alloc_respects_alignment) {
+    static const usize aligns[] = {1, 8, 16, 32, 64, 4096, 65536};
+    for (usize i = 0; i < RB_ARRAY_COUNT(aligns); ++i) {
+        u8 *ptr = rb_platform_heap_alloc(100, aligns[i]);
+        RB_REQUIRE(ptr != NULL);
+        RB_EXPECT_EQ_UINT((usize)ptr % aligns[i], 0);
+        ptr[0] = 1;
+        ptr[99] = 2;
+        rb_platform_heap_free(ptr);
+    }
+}
+
+/* 16 is realloc's own alignment on Linux; 4096 takes the allocate-and-copy path. */
+RB_TEST(memory, heap_resize_keeps_contents_and_alignment) {
+    static const usize aligns[] = {16, 4096};
+    for (usize i = 0; i < RB_ARRAY_COUNT(aligns); ++i) {
+        u8 *ptr = rb_platform_heap_alloc(8, aligns[i]);
+        RB_REQUIRE(ptr != NULL);
+        for (u8 b = 0; b < 8; ++b) {
+            ptr[b] = b;
+        }
+        u8 *grown = rb_platform_heap_resize(ptr, 8, RB_MIB(1), aligns[i]);
+        RB_REQUIRE(grown != NULL);
+        RB_EXPECT_EQ_UINT((usize)grown % aligns[i], 0);
+        RB_EXPECT_EQ_UINT(grown[0], 0);
+        RB_EXPECT_EQ_UINT(grown[7], 7);
+        grown[RB_MIB(1) - 1] = 1;
+        u8 *shrunk = rb_platform_heap_resize(grown, RB_MIB(1), 4, aligns[i]);
+        RB_REQUIRE(shrunk != NULL);
+        RB_EXPECT_EQ_UINT((usize)shrunk % aligns[i], 0);
+        RB_EXPECT_EQ_UINT(shrunk[3], 3);
+        rb_platform_heap_free(shrunk);
+    }
+}
