@@ -17,6 +17,11 @@
  */
 static void renderer_destroy_objects(rb_renderer *renderer) {
     if (renderer->device.handle != VK_NULL_HANDLE) {
+        /* Frames still on the GPU use the frame objects and the swapchain's images. */
+        renderer->device.vk.vkDeviceWaitIdle(renderer->device.handle);
+        for (u32 i = 0; i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
+            rb_vk_frame_destroy(&renderer->frames[i], &renderer->device);
+        }
         rb_vk_swapchain_destroy(&renderer->swapchain, &renderer->device);
     }
     rb_vk_device_destroy(&renderer->device);
@@ -42,6 +47,8 @@ rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_confi
     renderer->platform = platform;
     renderer->window = window;
     renderer->vsync = config->vsync;
+    /* Dark gray, not black: a window showing the clear differs from one that shows nothing. */
+    renderer->clear_color = rb_color_srgb(0.1f, 0.1f, 0.1f, 1.0f);
     rb_window_size size = rb_window_get_size(platform, window);
     renderer->built_width = size.pixel_width;
     renderer->built_height = size.pixel_height;
@@ -60,6 +67,9 @@ rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_confi
     ok = ok && rb_vk_swapchain_create(&renderer->swapchain, &renderer->instance, &renderer->device,
                                       renderer->surface, allocator, size.pixel_width,
                                       size.pixel_height, renderer->vsync);
+    for (u32 i = 0; ok && i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
+        ok = rb_vk_frame_create(&renderer->frames[i], &renderer->device);
+    }
     if (ok) {
         return renderer;
     }
@@ -105,8 +115,25 @@ rb_renderer_validation_stats rb_renderer_get_validation_stats(const rb_renderer 
  * Frames
  * ========================================================================== */
 
-bool rb_renderer_prepare_frame(rb_renderer *renderer) {
+void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color) {
     RB_ASSERT(renderer != NULL);
+    renderer->clear_color = color;
+}
+
+/*
+ * An error no rebuild can fix: logged once, then every begin returns false.
+ * Out of date and suboptimal never get here.
+ */
+static void renderer_fail(rb_renderer *renderer, const char *call, VkResult result) {
+    RB_LOG_ERROR("%s failed: %s; the renderer stops drawing", call, rb_vk_result_name(result));
+    renderer->failed = true;
+}
+
+/*
+ * The swapchain fits the window, or the window cannot have one. False when
+ * there is nothing to draw into: minimized, no pixels, a failed rebuild.
+ */
+static bool renderer_fit_swapchain(rb_renderer *renderer) {
     /*
      * Windows reports a minimized window's surface as 0x0: rebuilding now would
      * drop the swapchain, only to build it again on restore at the same size.
@@ -116,13 +143,221 @@ bool rb_renderer_prepare_frame(rb_renderer *renderer) {
     }
     /* As of the last pump: a resize whose event was dropped from the queue is still seen. */
     rb_window_size size = rb_window_get_size(renderer->platform, renderer->window);
-    if (size.pixel_width != renderer->built_width || size.pixel_height != renderer->built_height) {
+    bool           resized =
+        size.pixel_width != renderer->built_width || size.pixel_height != renderer->built_height;
+    if (resized || renderer->swapchain_stale) {
         renderer->built_width = size.pixel_width;
         renderer->built_height = size.pixel_height;
+        renderer->swapchain_stale = false;
         /* A failure is logged and leaves no swapchain: checked below. */
         (void)rb_vk_swapchain_create(&renderer->swapchain, &renderer->instance, &renderer->device,
                                      renderer->surface, renderer->allocator, size.pixel_width,
                                      size.pixel_height, renderer->vsync);
     }
     return renderer->swapchain.handle != VK_NULL_HANDLE;
+}
+
+/*
+ * A layout transition of the acquired image (synchronization2). The layout is
+ * how the GPU arranges the pixels in memory: drawing and showing want
+ * different ones. The barrier also orders the writes before it and the
+ * accesses after it.
+ */
+static void renderer_transition_image(const rb_renderer *renderer, VkCommandBuffer commands,
+                                      VkImageLayout old_layout, VkImageLayout new_layout,
+                                      VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+                                      VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access) {
+    VkImageMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = src_stage,
+        .srcAccessMask = src_access,
+        .dstStageMask = dst_stage,
+        .dstAccessMask = dst_access,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        /* One queue family (N1): no ownership transfer. */
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = renderer->swapchain.images[renderer->image_index],
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .levelCount = 1,
+                .layerCount = 1,
+            },
+    };
+    VkDependencyInfo dependency = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &barrier,
+    };
+    renderer->device.vk.vkCmdPipelineBarrier2(commands, &dependency);
+}
+
+/* The image is acquired: from here on the frame must reach the present (ADR 0013, V1). */
+static bool renderer_record_begin(rb_renderer *renderer, const rb_vk_frame *frame) {
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    VkCommandBufferBeginInfo      begin = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        /* Recorded every frame, submitted once: lets the driver skip reuse bookkeeping. */
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    VkResult result = vk->vkBeginCommandBuffer(frame->commands, &begin);
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkBeginCommandBuffer", result);
+        return false;
+    }
+    /*
+     * UNDEFINED: the old content is not needed, the clear overwrites it. The
+     * source stage is the one the submit waits for the acquire semaphore at:
+     * the transition happens only once the presentation engine let go of the
+     * image.
+     */
+    renderer_transition_image(renderer, frame->commands, VK_IMAGE_LAYOUT_UNDEFINED,
+                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+
+    rb_color                  c = renderer->clear_color;
+    VkRenderingAttachmentInfo color = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = renderer->swapchain.views[renderer->image_index],
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        /* Linear values: the sRGB image encodes them on write (ADR 0013, P1). */
+        .clearValue = {.color = {.float32 = {c.r, c.g, c.b, c.a}}},
+    };
+    VkRenderingInfo rendering = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {.offset = {0, 0}, .extent = renderer->swapchain.extent},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color,
+    };
+    vk->vkCmdBeginRendering(frame->commands, &rendering);
+    return true;
+}
+
+bool rb_renderer_begin_frame(rb_renderer *renderer) {
+    RB_ASSERT(renderer != NULL);
+    RB_ASSERT(!renderer->in_frame);
+    if (renderer->failed || !renderer_fit_swapchain(renderer)) {
+        return false;
+    }
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    VkDevice                      device = renderer->device.handle;
+    rb_vk_frame                  *frame = &renderer->frames[renderer->frame_index];
+
+    /* The GPU must be done with this copy's last submit before it is reused. */
+    VkResult result = vk->vkWaitForFences(device, 1, &frame->done, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkWaitForFences", result);
+        return false;
+    }
+
+    /* Blocks while every image is taken: with FIFO, this is where vsync paces the loop. */
+    result =
+        vk->vkAcquireNextImageKHR(device, renderer->swapchain.handle, UINT64_MAX,
+                                  frame->image_acquired, VK_NULL_HANDLE, &renderer->image_index);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        /* No image and the semaphore stays unsignaled: skip, the next begin rebuilds. */
+        renderer->swapchain_stale = true;
+        return false;
+    }
+    if (result == VK_SUBOPTIMAL_KHR) {
+        /* Usable, but no longer a perfect fit: show this one, rebuild at the next begin. */
+        renderer->swapchain_stale = true;
+    } else if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkAcquireNextImageKHR", result);
+        return false;
+    }
+
+    /*
+     * Reset only now that a submit will follow: resetting before an acquire
+     * that fails would leave a fence nobody signals, and the next wait on it
+     * would never return.
+     */
+    result = vk->vkResetFences(device, 1, &frame->done);
+    if (result == VK_SUCCESS) {
+        result = vk->vkResetCommandPool(device, frame->command_pool, 0);
+    }
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "Resetting the frame", result);
+        return false;
+    }
+    if (!renderer_record_begin(renderer, frame)) {
+        return false;
+    }
+    renderer->in_frame = true;
+    return true;
+}
+
+void rb_renderer_end_frame(rb_renderer *renderer) {
+    RB_ASSERT(renderer != NULL);
+    RB_ASSERT(renderer->in_frame);
+    renderer->in_frame = false;
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    rb_vk_frame                  *frame = &renderer->frames[renderer->frame_index];
+    VkSemaphore                   rendered = renderer->swapchain.rendered[renderer->image_index];
+    renderer->frame_index = (renderer->frame_index + 1) % RB_VK_FRAMES_IN_FLIGHT;
+
+    vk->vkCmdEndRendering(frame->commands);
+    /* Destination NONE: the present waits on the semaphore, which orders it after this. */
+    renderer_transition_image(
+        renderer, frame->commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
+    VkResult result = vk->vkEndCommandBuffer(frame->commands);
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkEndCommandBuffer", result);
+        return;
+    }
+
+    VkSemaphoreSubmitInfo wait = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = frame->image_acquired,
+        /* Only color output waits for the image: earlier stages may start at once. */
+        .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+    VkSemaphoreSubmitInfo signal = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = rendered,
+        /* Everything, the final layout transition included, before the present. */
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+    };
+    VkCommandBufferSubmitInfo commands = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = frame->commands,
+    };
+    VkSubmitInfo2 submit = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &wait,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &commands,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signal,
+    };
+    result = vk->vkQueueSubmit2(renderer->device.queue, 1, &submit, frame->done);
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkQueueSubmit2", result);
+        return;
+    }
+
+    VkPresentInfoKHR present = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &rendered,
+        .swapchainCount = 1,
+        .pSwapchains = &renderer->swapchain.handle,
+        .pImageIndices = &renderer->image_index,
+    };
+    result = vk->vkQueuePresentKHR(renderer->device.queue, &present);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        renderer->swapchain_stale = true;
+    } else if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkQueuePresentKHR", result);
+    }
 }

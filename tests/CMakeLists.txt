@@ -14,6 +14,7 @@ add_executable(reborn_tests
     containers/test_ring.c
     core/test_assert.c
     core/test_assert_disabled.c
+    core/test_color.c
     core/test_log.c
     core/test_version.c
     memory/test_allocator.c

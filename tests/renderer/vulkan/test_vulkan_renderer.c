@@ -1,5 +1,5 @@
 /*
- * Device and swapchain on a real window (ADR 0013, J–Q). Built on Windows
+ * Device, swapchain and frames on a real window (ADR 0013, J–W). Built on Windows
  * only, like test_renderer.c: the Linux container has no X server.
  */
 #include "rb_test.h"
@@ -37,6 +37,9 @@ static void stop(rb_renderer *renderer) {
     rb_window_destroy(platform, window);
     rb_platform_shutdown(platform);
 }
+
+/* RB_EXPECT_NEAR compares f64: the casts make the promotion of f32 explicit. */
+#define EXPECT_F32_NEAR(a, b, eps) RB_EXPECT_NEAR((f64)(a), (f64)(b), (f64)(eps))
 
 static void expect_no_validation_messages(const rb_renderer *renderer) {
     rb_renderer_validation_stats stats = rb_renderer_get_validation_stats(renderer);
@@ -91,26 +94,108 @@ RB_TEST(vulkan_renderer, recreating_replaces_the_swapchain) {
     stop(renderer);
 }
 
-RB_TEST(vulkan_renderer, prepare_frame_shows_a_visible_window) {
+RB_TEST(vulkan_renderer, frames_in_flight_are_created) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    for (u32 i = 0; i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
+        const rb_vk_frame *frame = &renderer->frames[i];
+        RB_EXPECT(frame->command_pool != VK_NULL_HANDLE);
+        RB_EXPECT(frame->commands != VK_NULL_HANDLE);
+        RB_EXPECT(frame->image_acquired != VK_NULL_HANDLE);
+        RB_EXPECT(frame->done != VK_NULL_HANDLE);
+    }
+    for (u32 i = 0; i < renderer->swapchain.image_count; ++i) {
+        RB_EXPECT(renderer->swapchain.rendered[i] != VK_NULL_HANDLE);
+    }
+    stop(renderer);
+}
+
+RB_TEST(vulkan_renderer, begin_frame_shows_a_visible_window) {
     rb_renderer *renderer = start(true);
     RB_REQUIRE(renderer != NULL);
     VkSwapchainKHR first = renderer->swapchain.handle;
-    RB_EXPECT(rb_renderer_prepare_frame(renderer));
+    RB_EXPECT(rb_renderer_begin_frame(renderer));
+    RB_EXPECT(renderer->in_frame);
     /* Same size: nothing to rebuild. */
     RB_EXPECT(renderer->swapchain.handle == first);
+    rb_renderer_end_frame(renderer);
+    RB_EXPECT(!renderer->in_frame);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/*
+ * More frames than copies and than images: every copy and every image is
+ * reused, the case where a missing wait or a shared semaphore shows up in
+ * the validation layers.
+ */
+RB_TEST(vulkan_renderer, frames_cycle_through_their_copies) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    for (u32 i = 0; i < 3 * RB_VK_SWAPCHAIN_MAX_IMAGES; ++i) {
+        RB_EXPECT_EQ_UINT(renderer->frame_index, i % RB_VK_FRAMES_IN_FLIGHT);
+        if (!rb_renderer_begin_frame(renderer)) {
+            RB_EXPECT(false);
+            break;
+        }
+        RB_EXPECT(renderer->image_index < renderer->swapchain.image_count);
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(!renderer->failed);
+    expect_no_validation_messages(renderer);
     stop(renderer);
 }
 
 /* Pretends the swapchain was built for another size, as after a resize. */
-RB_TEST(vulkan_renderer, prepare_frame_rebuilds_when_the_size_changed) {
+RB_TEST(vulkan_renderer, begin_frame_rebuilds_when_the_size_changed) {
     rb_renderer *renderer = start(true);
     RB_REQUIRE(renderer != NULL);
+    /* A frame first: the rebuild must also wait for frames still on the GPU. */
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_end_frame(renderer);
     VkSwapchainKHR first = renderer->swapchain.handle;
     renderer->built_width += 1;
-    RB_EXPECT(rb_renderer_prepare_frame(renderer));
+    RB_EXPECT(rb_renderer_begin_frame(renderer));
     RB_EXPECT(renderer->swapchain.handle != first);
     rb_window_size size = rb_window_get_size(platform, window);
     RB_EXPECT_EQ_UINT(renderer->built_width, size.pixel_width);
+    rb_renderer_end_frame(renderer);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/* As after VK_ERROR_OUT_OF_DATE_KHR or VK_SUBOPTIMAL_KHR, at the same size. */
+RB_TEST(vulkan_renderer, begin_frame_rebuilds_a_stale_swapchain) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    VkSwapchainKHR first = renderer->swapchain.handle;
+    renderer->swapchain_stale = true;
+    RB_EXPECT(rb_renderer_begin_frame(renderer));
+    RB_EXPECT(renderer->swapchain.handle != first);
+    RB_EXPECT(!renderer->swapchain_stale);
+    rb_renderer_end_frame(renderer);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+RB_TEST(vulkan_renderer, a_failed_renderer_shows_nothing) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    renderer->failed = true;
+    RB_EXPECT(!rb_renderer_begin_frame(renderer));
+    RB_EXPECT(!renderer->in_frame);
+    stop(renderer);
+}
+
+RB_TEST(vulkan_renderer, clear_color_is_kept_linear) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_renderer_set_clear_color(renderer, rb_color_srgb(0.5f, 0.0f, 1.0f, 1.0f));
+    EXPECT_F32_NEAR(renderer->clear_color.r, 0.214041f, 1e-5f);
+    EXPECT_F32_NEAR(renderer->clear_color.g, 0.0f, 1e-7f);
+    EXPECT_F32_NEAR(renderer->clear_color.b, 1.0f, 1e-6f);
+    RB_EXPECT(rb_renderer_begin_frame(renderer));
+    rb_renderer_end_frame(renderer);
     expect_no_validation_messages(renderer);
     stop(renderer);
 }

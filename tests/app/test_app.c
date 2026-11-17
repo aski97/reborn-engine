@@ -17,7 +17,7 @@ RB_TEST(app, default_config_is_valid) {
     rb_app_config config = rb_app_default_config();
     RB_EXPECT(rb_app_config_validate(&config));
     RB_EXPECT_EQ_UINT(config.update_rate, 60);
-    RB_EXPECT_EQ_UINT(config.max_fps, 60);
+    RB_EXPECT_EQ_UINT(config.max_fps, RB_APP_FPS_UNCAPPED);
     RB_EXPECT_EQ_UINT(config.state_size, 0);
     RB_EXPECT_EQ_INT(config.log.console_level, RB_LOG_LEVEL_INFO);
     RB_EXPECT(config.log.file_path == NULL);

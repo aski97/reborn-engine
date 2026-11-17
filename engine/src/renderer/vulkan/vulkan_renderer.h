@@ -5,12 +5,14 @@
 #ifndef RB_VULKAN_RENDERER_H
 #define RB_VULKAN_RENDERER_H
 
+#include <reborn/color.h>
 #include <reborn/memory.h>
 #include <reborn/platform.h>
 #include <reborn/renderer.h>
 
 #include "renderer/vulkan/vulkan_debug.h"
 #include "renderer/vulkan/vulkan_device.h"
+#include "renderer/vulkan/vulkan_frame.h"
 #include "renderer/vulkan/vulkan_instance.h"
 #include "renderer/vulkan/vulkan_loader.h"
 #include "renderer/vulkan/vulkan_swapchain.h"
@@ -34,6 +36,20 @@ struct rb_renderer {
      */
     u32 built_width;
     u32 built_height;
+    /* Acquire or present said out of date or suboptimal: rebuild at the next begin. */
+    bool swapchain_stale;
+
+    rb_vk_frame frames[RB_VK_FRAMES_IN_FLIGHT];
+    u32         frame_index; /* the copy the current or next frame uses */
+    u32         image_index; /* the swapchain image acquired by the current frame */
+    /* Between a successful begin and its end: an image is acquired and must be presented. */
+    bool in_frame;
+    /*
+     * A Vulkan call failed in a way a rebuild cannot fix (device lost, out of
+     * memory): logged once, nothing is drawn any more.
+     */
+    bool     failed;
+    rb_color clear_color; /* linear */
 
     /* The messenger's user data: its address must not change while the instance lives. */
     rb_vk_debug debug;

@@ -58,8 +58,10 @@ code refer to them.
 - [x] Surface (created by the platform), GPU ranked by type with lavapipe as last resort, device
       with one graphics + present queue, swapchain (sRGB, vsync option) recreated when the window's
       pixel size changes; `rb_renderer_startup` takes the platform and window (ADR 0013, J–Q)
-- [ ] Pipeline, command buffers, synchronization
-- [ ] First triangle → 2D quad
+- [x] Command buffers, synchronization, two frames in flight; each frame cleared and presented,
+      clear color set by the game (`reborn/color.h`); no frame cap by default (ADR 0013, R–Z)
+- [ ] Shaders and pipeline, first triangle → 2D quad (shader language, compiler, files or embedded:
+      to decide)
 
 ## Backlog
 
@@ -135,6 +137,9 @@ code refer to them.
 - [ ] Screenshots: copy the presented image to a file (also for golden-image tests)
 - [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
+- [ ] Device lost: today the renderer logs it and stops drawing (ADR 0013); recreate the device
+      and every GPU resource if a real driver reset shows up
+- [ ] Math library (vectors, matrices, colors on top of it) when the renderer needs transforms
 - [ ] 3D
 
 ### Assets

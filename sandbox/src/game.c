@@ -8,8 +8,10 @@
 
 #include <reborn/clock.h>
 #include <reborn/log.h>
+#include <reborn/renderer.h>
 
 typedef struct sandbox_state {
+    u64 start; /* the clear color's animation runs from here */
     /* Rates over the last second, logged once per second. */
     u64 window_start;
     u32 steps;
@@ -122,7 +124,8 @@ static bool game_configure(rb_app_config *config) {
 static bool game_init(void *state, rb_app *app) {
     (void)app;
     sandbox_state *game = state;
-    game->window_start = rb_time_now();
+    game->start = rb_time_now();
+    game->window_start = game->start;
     return true;
 }
 
@@ -152,12 +155,53 @@ static void game_update(void *state, rb_app *app, f64 dt) {
     }
 }
 
-/* Nothing to draw before the renderer (roadmap §7): only counts frames. */
+/* ============================================================================
+ * Rendering
+ * ========================================================================== */
+
+/* One turn of the hue wheel: slow enough to be calm, fast enough to see it move. */
+#define SANDBOX_HUE_PERIOD_NS (12 * RB_NS_PER_S)
+
+/*
+ * Hue, saturation, value in [0, 1] to sRGB: the hue wheel is six sectors,
+ * each fading one channel between the other two. In sRGB, like a color picker.
+ */
+static rb_color hsv_to_srgb(f32 h, f32 s, f32 v) {
+    f32 h6 = h * 6.0f;
+    u32 sector = (u32)h6;
+    f32 f = h6 - (f32)sector; /* how far into the sector */
+    f32 p = v * (1.0f - s);
+    f32 q = v * (1.0f - s * f);
+    f32 t = v * (1.0f - s * (1.0f - f));
+    switch (sector % 6) {
+    case 0:
+        return rb_color_srgb(v, t, p, 1.0f);
+    case 1:
+        return rb_color_srgb(q, v, p, 1.0f);
+    case 2:
+        return rb_color_srgb(p, v, t, 1.0f);
+    case 3:
+        return rb_color_srgb(p, q, v, 1.0f);
+    case 4:
+        return rb_color_srgb(t, p, v, 1.0f);
+    default:
+        return rb_color_srgb(v, p, q, 1.0f);
+    }
+}
+
+/*
+ * Nothing to draw yet (roadmap §7): the clear color turns around the hue
+ * wheel, which shows that frames keep reaching the screen. Muted (low
+ * saturation and value) so it stays easy on the eyes. Shows from the next frame.
+ */
 static void game_render(void *state, rb_app *app, f64 alpha) {
-    (void)app;
     (void)alpha;
     sandbox_state *game = state;
     ++game->frames;
+    /* Integer modulo first: the elapsed nanoseconds would lose precision as a float. */
+    u64 phase = (rb_time_now() - game->start) % SANDBOX_HUE_PERIOD_NS;
+    f32 hue = (f32)((f64)phase / (f64)SANDBOX_HUE_PERIOD_NS);
+    rb_renderer_set_clear_color(rb_app_renderer(app), hsv_to_srgb(hue, 0.5f, 0.45f));
 }
 
 const rb_app_callbacks sandbox_game = {

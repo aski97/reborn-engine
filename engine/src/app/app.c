@@ -62,7 +62,8 @@ rb_app_config rb_app_default_config(void) {
         .renderer = {.validation = false, .vsync = true},
 #endif
         .update_rate = 60,
-        .max_fps = 60,
+        /* The present paces frames with vsync (ADR 0013, X2). */
+        .max_fps = RB_APP_FPS_UNCAPPED,
         .state_size = 0,
         .state_align = _Alignof(max_align_t),
         .persistent_reserve = RB_MIB(256),
@@ -276,10 +277,14 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
         /*
          * Nothing to show while minimized or without a swapchain: the
          * simulation keeps going. Also rebuilds the swapchain after a resize.
+         * With vsync, begin waits for a free image: that paces the loop.
          */
-        bool visible = rb_renderer_prepare_frame(app->renderer);
-        if (visible && app->callbacks->render != NULL) {
-            app->callbacks->render(app->state, app, rb_step_clock_alpha(&clock));
+        bool visible = rb_renderer_begin_frame(app->renderer);
+        if (visible) {
+            if (app->callbacks->render != NULL) {
+                app->callbacks->render(app->state, app, rb_step_clock_alpha(&clock));
+            }
+            rb_renderer_end_frame(app->renderer);
         }
         ++app->frame_count;
 

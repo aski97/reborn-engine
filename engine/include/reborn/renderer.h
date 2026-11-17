@@ -12,13 +12,14 @@
  *   ...
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
- * Work in progress (roadmap §7): it creates the device and the window's
- * swapchain, nothing is drawn yet. Pointer parameters must not be NULL
+ * Work in progress (roadmap §7): every frame shows the window cleared to the
+ * clear color, nothing is drawn yet. Pointer parameters must not be NULL
  * (RB_ASSERT in debug builds).
  */
 #ifndef RB_RENDERER_H
 #define RB_RENDERER_H
 
+#include <reborn/color.h>
 #include <reborn/defines.h>
 #include <reborn/memory.h>
 #include <reborn/platform.h>
@@ -55,6 +56,13 @@ RB_API rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_rendere
 
 /* Logs the validation totals, destroys every Vulkan object, frees `renderer`. */
 RB_API void rb_renderer_shutdown(rb_renderer *renderer);
+
+/*
+ * What every frame starts from, before anything is drawn; dark gray until set.
+ * Used from the next frame begun: the current one, if any, has already been
+ * cleared (under the application layer, rendering begins before `render`).
+ */
+RB_API void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color);
 
 /* Counted since startup. Only messages from the validation layers count, not driver notes. */
 typedef struct rb_renderer_validation_stats {

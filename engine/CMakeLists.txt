@@ -17,6 +17,7 @@ set(REBORN_SOURCES
     src/containers/handle_pool.c
     src/containers/ring.c
     src/core/assert.c
+    src/core/color.c
     src/core/log.c
     src/core/version.c
     src/memory/allocator.c
@@ -28,6 +29,7 @@ set(REBORN_SOURCES
     src/platform/platform.c
     src/renderer/vulkan/vulkan_debug.c
     src/renderer/vulkan/vulkan_device.c
+    src/renderer/vulkan/vulkan_frame.c
     src/renderer/vulkan/vulkan_instance.c
     src/renderer/vulkan/vulkan_loader.c
     src/renderer/vulkan/vulkan_renderer.c
@@ -93,7 +95,8 @@ elseif(LINUX)
     # configure time with a clear message when it is missing, instead of a compile error later.
     find_package(X11 REQUIRED)
     # dlopen lives in libc since glibc 2.34; CMAKE_DL_LIBS names libdl for older ones (ADR 0013).
-    target_link_libraries(reborn PRIVATE X11::X11 ${CMAKE_DL_LIBS})
+    # glibc keeps the C math functions in a separate libm (powf: reborn/color.h, ADR 0013).
+    target_link_libraries(reborn PRIVATE X11::X11 ${CMAKE_DL_LIBS} m)
 endif()
 
 # Headers only (ADR 0013, A1): from the Vulkan SDK on Windows (VULKAN_SDK), from

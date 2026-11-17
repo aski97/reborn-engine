@@ -33,17 +33,19 @@ and shuts everything down. Timing, frame memory and event handling are written o
 - **Step = pump + events + update:** each step pumps the platform, gives every event to
   `on_event`, then updates. `rb_key_was_pressed` covers exactly the time since the previous step.
   Events and input reach the game only at step boundaries.
-- **Render:** once per frame, with `alpha` in [0, 1) = leftover time / step. Each frame first asks
-  the renderer whether it can be shown (which also rebuilds the swapchain after a resize); it
-  cannot while the main window is minimized or has no pixels: render is skipped and the loop
-  sleeps until the next step is due.
+- **Render:** once per frame, with `alpha` in [0, 1) = leftover time / step, inside a renderer
+  frame: `rb_renderer_begin_frame` before (which also rebuilds the swapchain after a resize),
+  `rb_renderer_end_frame` after (submit and present). When begin says nothing can be shown
+  (main window minimized or without pixels), render is skipped and the loop sleeps until the next
+  step is due.
 - **Quit:** a close request on the main window (after `on_event` saw it) or `rb_app_quit`. The
   loop ends after the current step's events, or after the current frame.
 - **Logging:** each phase once, never per frame. INFO: the configuration as received (`Config:`
   lines, before validation), `App started`, the quit reason (`Quit: main window close requested` /
   `Quit: requested by the game`), the run's totals. DEBUG: `Game init`, `Loop started`,
   `Game shutdown`.
-- **Frame cap:** `max_fps` (default 60, `RB_APP_FPS_UNCAPPED` for none), paced on absolute
+- **Frame cap:** `max_fps` (default `RB_APP_FPS_UNCAPPED`: with vsync the present paces frames,
+  ADR 0013, X2; a number sets a cap on top), paced on absolute
   deadlines: sleep overshoot does not lower the average rate. A frame late by a period or more
   restarts the schedule.
 - **Memory:** a persistent arena (platform state, game state, game data for the whole run; 256 MiB
@@ -65,7 +67,7 @@ flowchart TD
     I --> F[frame: advance clock, reset frame arena]
     F --> Q{full step in accumulator?}
     Q -- yes --> P[pump] --> E[on_event for each event] --> U["update(dt)"] --> Q
-    Q -- no --> R["render(alpha), unless nothing can be shown"] --> W[sleep to the frame deadline] --> F
+    Q -- no --> R["begin frame, render(alpha), end frame; skipped when nothing can be shown"] --> W[sleep to the frame deadline] --> F
     E -. close / quit .-> D[shutdown] --> T[tear down systems, logger last]
 ```
 `frame_timing.c` holds the accumulator (`rb_step_clock`) and the pacer (`rb_frame_pacer`). Both are
@@ -119,7 +121,6 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 
 ## Future work
 - Veto on close; variable `update` for camera/UI if needed (ADR 0011, C4).
-- Vsync from the swapchain (§7) replaces the cap as the pacer.
 - Hot-reload of game code as a DLL; LLM debug API stepping the simulation.
 - Engine-provided entry point `reborn/entry.h` (`main` / `WinMain`), the game only returns its
   callbacks (ADR 0011, H3).
@@ -132,3 +133,4 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 | v0.1.0 | 2026-11-16 | `rb_app_allocator`; memory report (leaks, arena peaks) at the end of the run |
 | v0.1.0 | 2026-11-17 | Starts the renderer (`config.renderer`, `rb_app_renderer`) |
 | v0.1.0 | 2026-11-17 | The renderer gets the main window; render skipped when the renderer cannot show a frame |
+| v0.1.0 | 2026-11-17 | Render inside a renderer frame (begin / end); no frame cap by default, vsync paces |

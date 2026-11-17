@@ -81,13 +81,31 @@ typedef struct rb_vk_instance_functions {
     X(vkDeviceWaitIdle)                                                                            \
     X(vkGetDeviceQueue)                                                                            \
     X(vkCreateImageView)                                                                           \
-    X(vkDestroyImageView)
+    X(vkDestroyImageView)                                                                          \
+    X(vkCreateCommandPool)                                                                         \
+    X(vkDestroyCommandPool)                                                                        \
+    X(vkResetCommandPool)                                                                          \
+    X(vkAllocateCommandBuffers)                                                                    \
+    X(vkBeginCommandBuffer)                                                                        \
+    X(vkEndCommandBuffer)                                                                          \
+    X(vkCreateSemaphore)                                                                           \
+    X(vkDestroySemaphore)                                                                          \
+    X(vkCreateFence)                                                                               \
+    X(vkDestroyFence)                                                                              \
+    X(vkWaitForFences)                                                                             \
+    X(vkResetFences)                                                                               \
+    X(vkQueueSubmit2)                                                                              \
+    X(vkCmdPipelineBarrier2)                                                                       \
+    X(vkCmdBeginRendering)                                                                         \
+    X(vkCmdEndRendering)
 
 /* VK_KHR_swapchain: always enabled, the renderer always presents to a window (ADR 0013, K2). */
 #define RB_VK_SWAPCHAIN_FUNCTIONS(X)                                                               \
     X(vkCreateSwapchainKHR)                                                                        \
     X(vkDestroySwapchainKHR)                                                                       \
-    X(vkGetSwapchainImagesKHR)
+    X(vkGetSwapchainImagesKHR)                                                                     \
+    X(vkAcquireNextImageKHR)                                                                       \
+    X(vkQueuePresentKHR)
 
 typedef struct rb_vk_device_functions {
     RB_VK_DEVICE_FUNCTIONS(RB_VK_DECLARE_FUNCTION)

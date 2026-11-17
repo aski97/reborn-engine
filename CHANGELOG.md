@@ -79,7 +79,8 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   loop and calls the game's `configure` (before any system), `init`, `on_event`, `update`,
   `render` and `shutdown`. Fixed timestep (60 updates/s by default) with an integer nanosecond
   accumulator, deltas clamped to 250 ms, `render(alpha)` for interpolation; one pump per step, so
-  input edges are exact per update. Frame cap (60 fps by default) paced on absolute deadlines;
+  input edges are exact per update. Optional frame cap (none by default: vsync paces frames) paced
+  on absolute deadlines;
   render skipped while minimized. The engine allocates the game's state (`RB_APP_STATE`) from a
   persistent arena and resets a frame arena every frame. `rb_app_run` also checks the game's header
   version against the library and starts the logger with `config.log`: a game's `main` is one line.
@@ -89,10 +90,12 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
 - Sandbox: a game under the application layer (`main.c` is the one-line entry point, `game.c`
   holds the callbacks). It logs every window and input event (modifiers by name:
   `key S pressed [Ctrl]`) and the steps and frames of each second, to the console and to
-  `reborn.log.jsonl`.
+  `reborn.log.jsonl`. The clear color turns slowly around the hue wheel, showing that frames reach the
+  screen.
 - Vulkan renderer (ADR 0013), `reborn/renderer.h`: `rb_renderer_startup(allocator, config,
   platform, window)` / `rb_renderer_shutdown` create and destroy a Vulkan 1.3 instance, the
-  window's surface, a device and a swapchain; state tagged `RB_MEMORY_TAG_RENDERER`. The engine opens `vulkan-1.dll` / `libvulkan.so.1` at run time instead
+  window's surface, a device and a swapchain, and present a frame each loop iteration; state
+  tagged `RB_MEMORY_TAG_RENDERER`. The engine opens `vulkan-1.dll` / `libvulkan.so.1` at run time instead
   of linking it, so a machine without Vulkan (or below 1.3) gets a logged error; functions are
   loaded into per-object tables (X-macro lists, `VK_NO_PROTOTYPES`). Headers come from the Vulkan
   SDK on Windows and `libvulkan-dev` on Linux.
@@ -110,11 +113,21 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   each; `rb_renderer_config.vsync` picks FIFO, or MAILBOX / IMMEDIATE when off. Rebuilt when the
   window's pixel size changes, checked at the start of each frame; none while the window has no
   pixels.
+- Frames (ADR 0013, R–X): two frames in flight, each with a command pool reset whole every frame,
+  its command buffer, an acquire semaphore and a fence; one presentation semaphore per swapchain
+  image. Each frame waits for its fence, acquires an image, clears it with dynamic rendering,
+  submits with synchronization2 barriers and presents. Out-of-date or suboptimal swapchains are
+  rebuilt at the next frame; an unrecoverable error (device lost) is logged once and stops drawing.
+- `rb_renderer_set_clear_color`: the color every frame starts from (dark gray by default).
+- Colors (ADR 0013, Y3 and Z2), `reborn/color.h`: `rb_color` holds linear RGB with straight alpha;
+  `rb_color_srgb` converts from sRGB (the exact curve, clamped, alpha untouched), `rb_color_linear`
+  takes values as they are, `rb_color_srgb_to_linear` converts one channel. The engine links libm
+  on Linux.
 - Vulkan surfaces created by the platform backends (internal `platform/platform_vulkan.h`:
   `VK_KHR_win32_surface`, `VK_KHR_xlib_surface`), so native window handles stay in the platform.
 - Application layer starts the renderer on the main window (`rb_app_config.renderer`, vsync on by
-  default, `rb_app_renderer`); each frame asks it whether the frame can be shown, and skips render
-  when not (minimized, no pixels).
+  default, `rb_app_renderer`); each frame begins a renderer frame, calls `render` inside it and
+  ends it; render is skipped when no frame can be shown (minimized, no pixels).
 - Linux build container: `libvulkan-dev`, `mesa-vulkan-drivers` (lavapipe, Vulkan on the CPU) and
   `vulkan-validationlayers`, so renderer tests run without a GPU.
 - Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the

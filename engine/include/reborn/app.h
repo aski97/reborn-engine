@@ -56,7 +56,7 @@ typedef struct rb_app_config {
     rb_window_desc     window;      /* main window; "Reborn", 1280x720 */
     rb_renderer_config renderer;    /* validation on in debug builds of the engine, vsync on */
     u32                update_rate; /* fixed steps per second, 1..1000; 60 */
-    u32                max_fps;     /* frame cap until vsync; 60 */
+    u32                max_fps;     /* frame cap on top of vsync; uncapped */
     usize              state_size;  /* game state; 0 */
     usize              state_align; /* power of two; the platform's maximum fundamental alignment */
     usize              persistent_reserve; /* address space of the persistent arena; 256 MiB */

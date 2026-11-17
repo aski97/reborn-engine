@@ -247,7 +247,22 @@ static bool swapchain_create_views(rb_vk_swapchain *swapchain, const rb_vk_devic
     return true;
 }
 
-/* The handle exists: fetch its images (fixed array) and make their views. */
+/* One per image (ADR 0013, T2). */
+static bool swapchain_create_semaphores(rb_vk_swapchain *swapchain, const rb_vk_device *device) {
+    VkSemaphoreCreateInfo info = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    for (u32 i = 0; i < swapchain->image_count; ++i) {
+        VkResult result =
+            device->vk.vkCreateSemaphore(device->handle, &info, NULL, &swapchain->rendered[i]);
+        if (result != VK_SUCCESS) {
+            RB_LOG_ERROR("vkCreateSemaphore failed: %s", rb_vk_result_name(result));
+            swapchain->rendered[i] = VK_NULL_HANDLE;
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The handle exists: fetch its images (fixed array), make their views and semaphores. */
 static bool swapchain_finish(rb_vk_swapchain *swapchain, const rb_vk_device *device) {
     u32      count = 0;
     VkResult result =
@@ -269,7 +284,8 @@ static bool swapchain_finish(rb_vk_swapchain *swapchain, const rb_vk_device *dev
         return false;
     }
     swapchain->image_count = count;
-    return swapchain_create_views(swapchain, device);
+    return swapchain_create_views(swapchain, device) &&
+           swapchain_create_semaphores(swapchain, device);
 }
 
 bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *instance,
@@ -366,9 +382,15 @@ bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *in
 void rb_vk_swapchain_destroy(rb_vk_swapchain *swapchain, const rb_vk_device *device) {
     RB_ASSERT(swapchain != NULL && device != NULL);
     if (swapchain->handle != VK_NULL_HANDLE) {
-        /* Images may still be in use by work in flight: wait before freeing anything. */
+        /*
+         * Images and semaphores may still be in use by work in flight: wait
+         * before freeing anything. Idle also covers the presents queued so far.
+         */
         device->vk.vkDeviceWaitIdle(device->handle);
         for (u32 i = 0; i < swapchain->image_count; ++i) {
+            if (swapchain->rendered[i] != VK_NULL_HANDLE) {
+                device->vk.vkDestroySemaphore(device->handle, swapchain->rendered[i], NULL);
+            }
             if (swapchain->views[i] != VK_NULL_HANDLE) {
                 device->vk.vkDestroyImageView(device->handle, swapchain->views[i], NULL);
             }

@@ -25,6 +25,13 @@ typedef struct rb_vk_swapchain {
     u32                image_count;
     VkImage            images[RB_VK_SWAPCHAIN_MAX_IMAGES]; /* owned by the swapchain */
     VkImageView        views[RB_VK_SWAPCHAIN_MAX_IMAGES];  /* ours: one per image */
+    /*
+     * Signaled when drawing into image i is done; its present waits on it. One
+     * per image, not per frame in flight (ADR 0013, T2): present signals
+     * nothing back, and the image coming back from acquire is the only proof
+     * that the present waiting on this semaphore is over.
+     */
+    VkSemaphore rendered[RB_VK_SWAPCHAIN_MAX_IMAGES];
 } rb_vk_swapchain;
 
 /*
@@ -39,7 +46,10 @@ bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *in
                             const rb_vk_device *device, VkSurfaceKHR surface,
                             rb_allocator allocator, u32 width, u32 height, bool vsync);
 
-/* Views, then the swapchain; zeroes *swapchain. A zeroed swapchain is ignored. */
+/*
+ * Waits for the device to go idle, then destroys semaphores, views and the
+ * swapchain; zeroes *swapchain. A zeroed swapchain is ignored.
+ */
 void rb_vk_swapchain_destroy(rb_vk_swapchain *swapchain, const rb_vk_device *device);
 
 /* ============================================================================

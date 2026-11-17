@@ -131,8 +131,66 @@ cannot have one)
 3. Only on Vulkan's out-of-date errors — least code; drivers are not required to report them (some
    X11 drivers do not): a stretched image.
 
+**R. What step 4 covers** (roadmap: pipeline, command buffers, synchronization)
+1. All three: the first visible result is a triangle.
+2. Command buffers, synchronization and a cleared screen presented every frame; shaders and the
+   pipeline move to step 5 with the triangle — synchronization is checked on its own, and the
+   shader choices (language, compiler, files or embedded) come with the step that uses them.
+
+**S. Frames in flight** (frames the CPU records while the GPU still works on earlier ones; each
+needs its own command buffer, semaphores and fence)
+1. One — the CPU waits for the GPU every frame: they never work in parallel.
+2. Two, an internal constant — the usual choice.
+3. Three — more slack for spikes; more input latency and memory.
+
+**T. Presentation semaphores** (acquire signals A when the image is ready; the submit waits on A
+and signals B; present waits on B. Present signals nothing back, so nothing says when B is free)
+1. A and B per frame in flight — B may be reused while a present still waits on it; recent
+   validation layers report it.
+2. A per frame in flight, B per swapchain image — B is reused only when its image comes back from
+   acquire, which means its present is over; core 1.3, no extension.
+3. `VK_EXT_swapchain_maintenance1` present fences — exact; an extension not every driver has,
+   so two paths.
+
+**U. Command buffers**
+1. One pool per frame in flight, reset whole at the start of the frame (`vkResetCommandPool`) —
+   the cheapest reset, like the frame arena.
+2. One pool, buffers reset one by one — one object fewer; more work for the driver.
+
+**V. How the app drives a frame**
+1. Internal `rb_renderer_begin_frame` / `rb_renderer_end_frame` around the game's `render`; later
+   public draw calls record into the current command buffer — extends Q1.
+2. One `rb_renderer_draw_frame` at the end, recording what the game queued during `render` — the
+   renderer owns the whole frame; that is the batched 2D renderer's design (backlog).
+
+**W. Clear color** (until the game draws, the only thing on screen)
+1. An internal constant — no API.
+2. A field of `rb_renderer_config` — set once in configure.
+3. Public `rb_renderer_set_clear_color`, callable any time — the sandbox can animate it, which
+   shows frames are presented.
+
+**X. Frame cap with vsync** (ADR 0011, G: the cap stood in for vsync)
+1. Keep `max_fps` 60 by default — two pacers: 60 fps on a 144 Hz monitor, and the sleep and the
+   wait for the vertical blank can drift apart into stutter.
+2. `max_fps` uncapped by default — the present paces frames; the cap stays for vsync off or to
+   save power.
+
+**Y. Color space of the game's colors** (the swapchain is sRGB, P1: shaders and clears write
+linear values, the GPU encodes them; color pickers and CSS give sRGB values)
+1. Linear — what Vulkan takes; a picked color must be converted by hand, and forgetting gives a
+   washed-out color with no warning.
+2. sRGB, converted by the renderer — what you write is what the picker shows; every color entering
+   the renderer is converted.
+3. Two constructors, `rb_color_srgb` and `rb_color_linear`; the value inside is always linear —
+   the caller states where the color comes from; one more concept.
+
+**Z. Where the color type lives**
+1. `reborn/renderer.h` — its only user today.
+2. Its own `reborn/color.h` — sprites, UI and text will use it without depending on the renderer.
+
 ## Decision
-**A1, B2, C2, D3, E2, F3, G2, H1, I1, J1, K2, L2, M1, N1, O2, P1, Q1.**
+**A1, B2, C2, D3, E2, F3, G2, H1, I1, J1, K2, L2, M1, N1, O2, P1, Q1, R2, S2, T2, U1, V1, W3, X2,
+Y3, Z2.**
 - **Version:** Vulkan 1.3, for instance and device: less code (no render passes) and the modern
   synchronization API, on every GPU we target. A loader offering less fails the startup (logged).
 - **Public API** (`reborn/renderer.h`): opaque `rb_renderer`, `rb_renderer_startup(allocator,
@@ -186,6 +244,29 @@ cannot have one)
   When the window's pixel size differs from the one the swapchain was built for, it waits for the
   device to go idle and recreates it, passing the old one as `oldSwapchain`. A failure is logged
   once: no swapchain until the size changes again.
+- **Frame:** `rb_renderer_begin_frame` replaces `rb_renderer_prepare_frame`; when it returns true
+  the app calls the game's `render`, then `rb_renderer_end_frame`. Begin: the checks above, wait
+  for the frame's fence, acquire an image, reset the fence and the frame's command pool, record a
+  barrier to `COLOR_ATTACHMENT_OPTIMAL` and begin dynamic rendering, which clears to the clear
+  color. End: end rendering, barrier to `PRESENT_SRC_KHR`, `vkQueueSubmit2` (waits on the
+  acquire semaphore at the color output stage, signals the image's semaphore and the fence),
+  present. Barriers and the submit use synchronization2. Begin checks everything that can fail
+  before acquiring: once an image is acquired, the frame is always submitted and presented.
+- **Frames in flight:** `RB_VK_FRAMES_IN_FLIGHT` 2, each with a command pool, its command buffer,
+  the acquire semaphore and a fence created signaled (the first wait returns at once). The
+  presentation semaphore is one per swapchain image, created and destroyed with the swapchain.
+- **Out of date:** `VK_ERROR_OUT_OF_DATE_KHR` from acquire skips the frame, `VK_SUBOPTIMAL_KHR`
+  goes on. Either, from acquire or from present, marks the swapchain stale: the next begin
+  rebuilds it, as for a size change. Any other error (device lost,
+  out of memory) is logged and stops drawing for good: nothing more is presented.
+- **Clear color:** `rb_renderer_set_clear_color(renderer, color)`, used from the next frame begun
+  (rendering begins before the game's `render`); a dark gray until set.
+- **Frame cap:** the app's `max_fps` defaults to `RB_APP_FPS_UNCAPPED` (ADR 0011, G1 stays: the
+  cap is still applied when set).
+- **Color** (`reborn/color.h`): `rb_color {f32 r, g, b, a}`, always linear with straight alpha.
+  `rb_color_srgb` converts each channel with the exact sRGB curve (clamped to [0, 1]); alpha is
+  never converted (it is coverage, not light). `rb_color_linear` takes the values as they are.
+  The engine links the C math library (`-lm` on Linux) for `powf`.
 
 ## Consequences
 - The executable starts without Vulkan; the renderer reports it and the engine decides what to do.
@@ -198,3 +279,9 @@ cannot have one)
 - The platform layer depends on the Vulkan headers (internal header and backends only).
 - Tests that start the renderer need a window: they are built on Windows only, like the
   application runs; Linux checks them through the sandbox under Xvfb.
+- A clear color set during `render` shows one frame later; with draws (step 5) the game will
+  record into the frame begun before `render`.
+- A swapchain rebuild waits for the device to go idle, so a drag stalls the GPU at every size;
+  acceptable for resizes.
+- Where FIFO does not wait for the refresh, frames are unbounded unless `max_fps` is set: Mesa's
+  lavapipe on X11 (Xvfb, WSLg) runs the sandbox at hundreds of frames per second.
