@@ -91,7 +91,10 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   holds the callbacks). It logs every window and input event (modifiers by name:
   `key S pressed [Ctrl]`) and the steps and frames of each second, to the console and to
   `reborn.log.jsonl`. The clear color turns slowly around the hue wheel, showing that frames reach the
-  screen.
+  screen; on top, a row of colored squares, one sliding across the window and a translucent one
+  under the mouse. A frame-time graph (bottom left, toggled with L) draws the interval between
+  the last 120 frames as bars, green within a 60 Hz frame, yellow up to two, red beyond, with
+  lines at 60 and 30 fps.
 - Vulkan renderer (ADR 0013), `reborn/renderer.h`: `rb_renderer_startup(allocator, config,
   platform, window)` / `rb_renderer_shutdown` create and destroy a Vulkan 1.3 instance, the
   window's surface, a device and a swapchain, and present a frame each loop iteration; state
@@ -119,6 +122,14 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   submits with synchronization2 barriers and presents. Out-of-date or suboptimal swapchains are
   rebuilt at the next frame; an unrecoverable error (device lost) is logged once and stops drawing.
 - `rb_renderer_set_clear_color`: the color every frame starts from (dark gray by default).
+- Quads (ADR 0015): `rb_renderer_draw_quad(renderer, x, y, width, height, color)` draws a filled
+  rectangle from the game's `render`, in window pixels (origin top left, like the mouse), in call
+  order, with straight alpha blending. One graphics pipeline, built at startup for the swapchain's
+  format; the vertex shader makes the corners from the vertex index and the quad's push constants,
+  so no GPU memory is allocated.
+- Shaders: GLSL in `engine/src/renderer/vulkan/shaders/`, compiled to SPIR-V by `glslc` at build
+  time (`find_package(Vulkan COMPONENTS glslc)`, a depfile tracks `#include`s) and embedded in the
+  engine as C arrays: a shader error fails the build, nothing is loaded at run time.
 - Colors (ADR 0013, Y3 and Z2), `reborn/color.h`: `rb_color` holds linear RGB with straight alpha;
   `rb_color_srgb` converts from sRGB (the exact curve, clamped, alpha untouched), `rb_color_linear`
   takes values as they are, `rb_color_srgb_to_linear` converts one channel. The engine links libm
@@ -129,6 +140,6 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   default, `rb_app_renderer`); each frame begins a renderer frame, calls `render` inside it and
   ends it; render is skipped when no frame can be shown (minimized, no pixels).
 - Linux build container: `libvulkan-dev`, `mesa-vulkan-drivers` (lavapipe, Vulkan on the CPU) and
-  `vulkan-validationlayers`, so renderer tests run without a GPU.
+  `vulkan-validationlayers`, so renderer tests run without a GPU; `glslc` for the shaders.
 - Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the
   application folder and System32, `dlopen`).

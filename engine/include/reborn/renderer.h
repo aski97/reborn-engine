@@ -12,9 +12,9 @@
  *   ...
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
- * Work in progress: every frame shows the window cleared to the
- * clear color, nothing is drawn yet. Pointer parameters must not be NULL
- * (RB_ASSERT in debug builds).
+ * Each frame starts cleared to the clear color; the game's `render` draws
+ * colored quads on top. Pointer parameters must not be NULL (RB_ASSERT in
+ * debug builds).
  */
 #ifndef RB_RENDERER_H
 #define RB_RENDERER_H
@@ -63,6 +63,18 @@ RB_API void rb_renderer_shutdown(rb_renderer *renderer);
  * cleared (under the application layer, rendering begins before `render`).
  */
 RB_API void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color);
+
+/*
+ * Draws a filled rectangle into the current frame, on top of what was drawn
+ * before it (ADR 0015). In pixels of the window's client area, origin at the
+ * top left and y pointing down, like rb_mouse_position; fractions are allowed.
+ * Alpha blends with what is underneath: 1 covers, 0 leaves it untouched.
+ * Only inside the game's `render` (a frame begun by the application layer).
+ *
+ *   rb_renderer_draw_quad(renderer, 100, 50, 200, 100, rb_color_srgb(1, 0, 0, 1));
+ */
+RB_API void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                                  rb_color color);
 
 /* Counted since startup. Only messages from the validation layers count, not driver notes. */
 typedef struct rb_renderer_validation_stats {

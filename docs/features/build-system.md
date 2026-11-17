@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-15) |
+| **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `CMakeLists.txt`, `CMakePresets.json`, `cmake/`, `engine/CMakeLists.txt`, `engine/include/reborn/defines.h`, `docker/`, `scripts/linux-build.*` |
-| **ADRs** | [0001](../adr/0001-build-system-compiler-standard.md), [0002](../adr/0002-static-engine-library.md), [0003](../adr/0003-versioning-and-repo-layout.md), [0005](../adr/0005-linux-build-container.md) |
+| **ADRs** | [0001](../adr/0001-build-system-compiler-standard.md), [0002](../adr/0002-static-engine-library.md), [0003](../adr/0003-versioning-and-repo-layout.md), [0005](../adr/0005-linux-build-container.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md) |
 
 ## Summary
 CMake + Ninja + Clang, C17. The engine is the static library `reborn`, used by the `sandbox`
@@ -19,7 +19,11 @@ executable. Provides the shared foundations (`defines.h`) and a single-source ve
 - Version declared once, available at compile time and at runtime.
 - Consumers only see `<reborn/...>`, never engine internals.
 - Linux build verifiable from Windows through Docker (see below).
-- Not yet: shader compilation, packaging, CI.
+- Shaders: `glslc` (Vulkan SDK on Windows, `glslc` package on Linux) compiles each GLSL file in
+  `engine/src/renderer/vulkan/shaders/` to SPIR-V at build time, written as a C initializer list
+  (`generated/shaders/<name>.inc`) and embedded in the engine. A shader error fails the build;
+  editing an included file recompiles the shaders that include it (depfile).
+- Not yet: packaging, CI.
 
 ## Design
 
@@ -96,7 +100,7 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 - Linux verified in a Docker container, Clang pinned to the Windows major → [ADR 0005](../adr/0005-linux-build-container.md).
 
 ## Future work
-- Integrate `glslc` with the renderer. CI (reusing `docker/linux.Dockerfile`).
+- CI (reusing `docker/linux.Dockerfile`).
 
 ## History
 | Version | Date | Change |
@@ -106,3 +110,4 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 | v0.1.0 | 2026-11-15 | `tests/` target, test presets; Linux scripts also run `ctest` |
 | v0.1.0 | 2026-11-15 | `libx11-dev` in the Linux container; the sandbox there needs an X server |
 | v0.1.0 | 2026-11-15 | Linux scripts gate on `ctest` only; the sandbox runs on a Linux desktop |
+| v0.1.0 | 2026-11-17 | Shaders compiled by `glslc` at build time and embedded; `glslc` in the Linux container |

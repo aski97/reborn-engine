@@ -57,8 +57,8 @@
       pixel size changes; `rb_renderer_startup` takes the platform and window (ADR 0013, J–Q)
 - [x] Command buffers, synchronization, two frames in flight; each frame cleared and presented,
       clear color set by the game (`reborn/color.h`); no frame cap by default (ADR 0013, R–Z)
-- [ ] Shaders and pipeline, first triangle → 2D quad (shader language, compiler, files or embedded:
-      to decide; files need whole-file reads from the file system layer first)
+- [x] Shaders and pipeline: first triangle, then `rb_renderer_draw_quad` in window pixels; GLSL
+      compiled by `glslc` at build time and embedded; quad data as push constants (ADR 0015)
 
 ## Games
 
@@ -78,6 +78,22 @@ random number generator, mouse position in world coordinates.
 ring shrinks.
 Likely needs: circle vs arc collisions, sound effects (audio backend, mixer, WAV), text for score
 and game over (fonts), pause and game states.
+
+**Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
+these steps put numbers next to it). In order: each needs the one before. The text work is the
+same Orbit needs for its score. No batching yet: a few hundred glyphs fit one draw each.
+- [ ] GPU memory and textures: allocate device memory, create an image, upload pixels through a
+      staging buffer, a sampler and a descriptor so the fragment shader can read it (allocation
+      strategy and descriptor model: to decide). The quad shader samples a texture, a 1x1 white
+      one for plain quads
+- [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
+      pre-baked bitmap font: to decide)
+- [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment
+- [ ] Numbers in the overlay: frames per second, average and worst frame time, steps per second,
+      memory per tag, validation counts, GPU, vsync and swapchain size
+- [ ] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
+      toggle (the profiling overlay in the backlog): then the engine needs a place to draw after
+      the game's `render` and a way to expose frame timing
 
 **Continuous integration**
 - [ ] GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
@@ -191,8 +207,18 @@ In order; each gets a version when it starts.
       baking, thumbnails), golden-image tests and CI machines without a display
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
-- [ ] Batched 2D renderer (sprites, textures)
-- [ ] 2D camera: position, zoom, world-to-screen conversion (needs the math library)
+- [ ] Batched 2D renderer (sprites, textures): the frame's quads collected into a vertex buffer and
+      drawn with few draw calls instead of one per quad (ADR 0015, F1); brings GPU memory
+      allocation. `quad.vert` reads vertices instead of push constants; `rb_renderer_draw_quad`
+      keeps its signature. A colored quad becomes a sprite with a 1x1 white texture tinted by its
+      color, so one shader serves both
+- [ ] 2D camera: draws in world units instead of window pixels (ADR 0015, B3), independent of the
+      window's resolution; position, zoom, orthographic projection (a matrix replaces the quad's
+      `target`), world-to-screen and screen-to-world conversion (the mouse). Needs the math
+      library. Decide with it how UI and debug drawing stay in screen pixels next to the world
+      (two cameras, a screen-space mode...)
+- [ ] Rotated quads: an angle (or a 2D transform) in the quad's data, when a game turns objects
+      (Orbit's arc may be the first)
 - [ ] Screenshots: copy the presented image to a file (also for golden-image tests)
 - [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
@@ -209,7 +235,8 @@ In order; each gets a version when it starts.
 - [ ] Image decoding (PNG at least) for textures and the icon (own decoder vs external library:
       to decide)
 - [ ] Asynchronous loading on the job system (see Threading)
-- [ ] Hot reload: watch asset files and reload them while the game runs (shaders first)
+- [ ] Hot reload: watch asset files and reload them while the game runs (shaders first: embedded in
+      the engine today, they become `.spv` files next to the executable, ADR 0015, E2)
 - [ ] Asset baking: convert source files into engine-ready formats at build time, packed into
       one archive for release builds (format to decide)
 
@@ -221,9 +248,6 @@ In order; each gets a version when it starts.
       formats later (own decoder vs external library: to decide)
 
 ### Text and UI
-- [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
-      pre-baked bitmap font: to decide)
-- [ ] Text rendering on the 2D renderer: UTF-8 strings, measuring, alignment
 - [ ] Debug UI, immediate mode (rebuilt every frame): panels, buttons, sliders, value inspection.
       Base for the in-game console and the profiler overlay
 

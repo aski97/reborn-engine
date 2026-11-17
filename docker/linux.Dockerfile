@@ -22,12 +22,13 @@ ARG LLVM_VERSION=23
 # the engine opens at run time (ADR 0013). There is no GPU here: mesa-vulkan-drivers
 # brings lavapipe, a Vulkan 1.3+ driver running on the CPU, so renderer tests can
 # create instances; vulkan-validationlayers lets them run with validation.
+# glslc compiles the engine's shaders to SPIR-V at build time (ADR 0015).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         cmake ninja-build libc6-dev binutils \
         libx11-dev \
-        libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers \
+        libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc \
     && . /etc/os-release \
     && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
         | gpg --dearmor -o /usr/share/keyrings/llvm.gpg \

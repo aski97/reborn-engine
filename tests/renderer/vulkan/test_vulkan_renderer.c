@@ -1,6 +1,7 @@
 /*
- * Device, swapchain and frames on a real window (ADR 0013, J–W). Built on Windows
- * only, like test_renderer.c: the Linux container has no X server.
+ * Device, swapchain, frames and the quad pipeline on a real window (ADR 0013,
+ * J–W; ADR 0015). Built on Windows only, like test_renderer.c: the Linux
+ * container has no X server.
  */
 #include "rb_test.h"
 
@@ -196,6 +197,63 @@ RB_TEST(vulkan_renderer, clear_color_is_kept_linear) {
     EXPECT_F32_NEAR(renderer->clear_color.b, 1.0f, 1e-6f);
     RB_EXPECT(rb_renderer_begin_frame(renderer));
     rb_renderer_end_frame(renderer);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/* ============================================================================
+ * Pipeline and quads (ADR 0015)
+ * ========================================================================== */
+
+RB_TEST(vulkan_renderer, pipeline_is_built_for_the_swapchain_format) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    RB_EXPECT(renderer->pipeline.layout != VK_NULL_HANDLE);
+    RB_EXPECT(renderer->pipeline.handle != VK_NULL_HANDLE);
+    RB_EXPECT_EQ_INT(renderer->pipeline.color_format, renderer->swapchain.format.format);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/* As if a rebuilt swapchain came with another format: the pipeline follows it. */
+RB_TEST(vulkan_renderer, a_new_swapchain_format_rebuilds_the_pipeline) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    VkPipeline first = renderer->pipeline.handle;
+    renderer->pipeline.color_format = VK_FORMAT_R8G8B8A8_UNORM;
+    renderer->swapchain_stale = true;
+    RB_EXPECT(rb_renderer_begin_frame(renderer));
+    RB_EXPECT(renderer->pipeline.handle != VK_NULL_HANDLE);
+    RB_EXPECT(renderer->pipeline.handle != first);
+    RB_EXPECT_EQ_INT(renderer->pipeline.color_format, renderer->swapchain.format.format);
+    rb_renderer_end_frame(renderer);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/*
+ * Every kind of quad a game may send, over more frames than copies: partly or
+ * wholly outside the window, empty, fractional, translucent. Validation would
+ * report a draw without a pipeline, viewport or push constants.
+ */
+RB_TEST(vulkan_renderer, quads_are_drawn_without_validation_messages) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_color red = rb_color_srgb(1.0f, 0.0f, 0.0f, 1.0f);
+    for (u32 i = 0; i < 2 * RB_VK_FRAMES_IN_FLIGHT + 1; ++i) {
+        if (!rb_renderer_begin_frame(renderer)) {
+            RB_EXPECT(false);
+            break;
+        }
+        rb_renderer_draw_quad(renderer, 10.0f, 10.0f, 50.0f, 50.0f, red);
+        rb_renderer_draw_quad(renderer, -20.0f, -20.0f, 40.0f, 40.0f, red);
+        rb_renderer_draw_quad(renderer, 1000.0f, 1000.0f, 40.0f, 40.0f, red);
+        rb_renderer_draw_quad(renderer, 30.0f, 30.0f, 0.0f, 0.0f, red);
+        rb_renderer_draw_quad(renderer, 12.25f, 7.5f, 33.75f, 20.5f,
+                              rb_color_srgb(0.0f, 0.5f, 1.0f, 0.5f));
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(!renderer->failed);
     expect_no_validation_messages(renderer);
     stop(renderer);
 }

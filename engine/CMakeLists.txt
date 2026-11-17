@@ -32,6 +32,7 @@ set(REBORN_SOURCES
     src/renderer/vulkan/vulkan_frame.c
     src/renderer/vulkan/vulkan_instance.c
     src/renderer/vulkan/vulkan_loader.c
+    src/renderer/vulkan/vulkan_pipeline.c
     src/renderer/vulkan/vulkan_renderer.c
     src/renderer/vulkan/vulkan_result.c
     src/renderer/vulkan/vulkan_swapchain.c
@@ -60,11 +61,45 @@ elseif(LINUX)
 endif()
 
 # -----------------------------------------------------------------------------
+# Shaders
+# -----------------------------------------------------------------------------
+
+# GLSL compiled to SPIR-V at build time by glslc (ADR 0015, C1 and D1): from the Vulkan SDK on
+# Windows, from the `glslc` package on Linux. REQUIRED stops at configure time when it is missing.
+find_package(Vulkan REQUIRED COMPONENTS glslc)
+
+set(REBORN_SHADERS
+    src/renderer/vulkan/shaders/quad.vert
+    src/renderer/vulkan/shaders/quad.frag
+)
+
+# Each shader becomes `<name>.inc`, the SPIR-V words as a C initializer list (-mfmt=c), included
+# by the renderer (E1): no file to find at run time. The depfile lists the files a shader
+# #includes (quad.glsl), so editing one recompiles every shader that includes it.
+set(REBORN_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/shaders)
+set(REBORN_SHADER_OUTPUTS)
+foreach(shader IN LISTS REBORN_SHADERS)
+    get_filename_component(shader_name ${shader} NAME)
+    set(shader_output ${REBORN_SHADER_DIR}/${shader_name}.inc)
+    add_custom_command(
+        OUTPUT ${shader_output}
+        COMMAND Vulkan::glslc --target-env=vulkan1.3 -Werror -mfmt=c
+            -MD -MF ${shader_output}.d
+            -o ${shader_output} ${CMAKE_CURRENT_SOURCE_DIR}/${shader}
+        DEPENDS ${shader}
+        DEPFILE ${shader_output}.d
+        COMMENT "Compiling shader ${shader_name}"
+        VERBATIM
+    )
+    list(APPEND REBORN_SHADER_OUTPUTS ${shader_output})
+endforeach()
+
+# -----------------------------------------------------------------------------
 # Library
 # -----------------------------------------------------------------------------
 
 if(REBORN_SHARED)
-    add_library(reborn SHARED ${REBORN_SOURCES})
+    add_library(reborn SHARED ${REBORN_SOURCES} ${REBORN_SHADER_OUTPUTS})
     # RB_SHARED is PUBLIC so consumers see `dllimport`; RB_BUILD_DLL is PRIVATE
     # so only the engine's own translation units see `dllexport`.
     target_compile_definitions(reborn PUBLIC RB_SHARED=1 PRIVATE RB_BUILD_DLL=1)
@@ -72,7 +107,7 @@ if(REBORN_SHARED)
     # exported, matching Windows DLL semantics.
     set_target_properties(reborn PROPERTIES C_VISIBILITY_PRESET hidden)
 else()
-    add_library(reborn STATIC ${REBORN_SOURCES})
+    add_library(reborn STATIC ${REBORN_SOURCES} ${REBORN_SHADER_OUTPUTS})
 endif()
 
 add_library(Reborn::Engine ALIAS reborn)
@@ -84,6 +119,8 @@ target_include_directories(reborn
     PRIVATE
         # Internal headers: reachable by engine sources, invisible to consumers.
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # Compiled shaders, included by the renderer only.
+        ${REBORN_SHADER_DIR}
 )
 
 if(WIN32)

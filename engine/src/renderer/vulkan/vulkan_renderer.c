@@ -22,6 +22,7 @@ static void renderer_destroy_objects(rb_renderer *renderer) {
         for (u32 i = 0; i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
             rb_vk_frame_destroy(&renderer->frames[i], &renderer->device);
         }
+        rb_vk_pipeline_destroy(&renderer->pipeline, &renderer->device);
         rb_vk_swapchain_destroy(&renderer->swapchain, &renderer->device);
     }
     rb_vk_device_destroy(&renderer->device);
@@ -31,6 +32,24 @@ static void renderer_destroy_objects(rb_renderer *renderer) {
         renderer->surface = VK_NULL_HANDLE;
     }
     rb_vk_instance_destroy(&renderer->instance);
+}
+
+/*
+ * The pipeline bakes in the format of the images it draws into: built with the
+ * first swapchain, rebuilt only if a later one comes with another format. True
+ * while there is no swapchain (nothing to draw into, nothing to build for).
+ */
+static bool renderer_fit_pipeline(rb_renderer *renderer) {
+    VkFormat format = renderer->swapchain.format.format;
+    if (renderer->swapchain.handle == VK_NULL_HANDLE || format == renderer->pipeline.color_format) {
+        return true;
+    }
+    if (renderer->pipeline.handle != VK_NULL_HANDLE) {
+        /* Frames still on the GPU may use it. Rare: a driver changing formats. */
+        renderer->device.vk.vkDeviceWaitIdle(renderer->device.handle);
+        rb_vk_pipeline_destroy(&renderer->pipeline, &renderer->device);
+    }
+    return rb_vk_pipeline_create(&renderer->pipeline, &renderer->device, format);
 }
 
 rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_config *config,
@@ -67,6 +86,7 @@ rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_confi
     ok = ok && rb_vk_swapchain_create(&renderer->swapchain, &renderer->instance, &renderer->device,
                                       renderer->surface, allocator, size.pixel_width,
                                       size.pixel_height, renderer->vsync);
+    ok = ok && renderer_fit_pipeline(renderer);
     for (u32 i = 0; ok && i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
         ok = rb_vk_frame_create(&renderer->frames[i], &renderer->device);
     }
@@ -120,6 +140,25 @@ void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color) {
     renderer->clear_color = color;
 }
 
+void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                           rb_color color) {
+    RB_ASSERT(renderer != NULL);
+    /* Outside a frame there is no command buffer to record into: a bug in the caller. */
+    RB_ASSERT(renderer->in_frame);
+    VkExtent2D      extent = renderer->swapchain.extent;
+    rb_vk_quad_push quad = {
+        .position = {x, y},
+        .size = {width, height},
+        .color = {color.r, color.g, color.b, color.a},
+        .target = {(f32)extent.width, (f32)extent.height},
+    };
+    VkCommandBuffer commands = renderer->frames[renderer->frame_index].commands;
+    renderer->device.vk.vkCmdPushConstants(commands, renderer->pipeline.layout,
+                                           RB_VK_QUAD_PUSH_STAGES, 0, sizeof(quad), &quad);
+    /* Six vertices, two triangles: the vertex shader builds them from the quad (F1). */
+    renderer->device.vk.vkCmdDraw(commands, 6, 1, 0, 0);
+}
+
 /*
  * An error no rebuild can fix: logged once, then every begin returns false.
  * Out of date and suboptimal never get here.
@@ -153,6 +192,11 @@ static bool renderer_fit_swapchain(rb_renderer *renderer) {
         (void)rb_vk_swapchain_create(&renderer->swapchain, &renderer->instance, &renderer->device,
                                      renderer->surface, renderer->allocator, size.pixel_width,
                                      size.pixel_height, renderer->vsync);
+        if (!renderer_fit_pipeline(renderer)) {
+            RB_LOG_ERROR("No pipeline for the new swapchain; the renderer stops drawing");
+            renderer->failed = true;
+            return false;
+        }
     }
     return renderer->swapchain.handle != VK_NULL_HANDLE;
 }
@@ -237,6 +281,19 @@ static bool renderer_record_begin(rb_renderer *renderer, const rb_vk_frame *fram
         .pColorAttachments = &color,
     };
     vk->vkCmdBeginRendering(frame->commands, &rendering);
+
+    /* Every draw of the frame uses the one pipeline: bound once, with the frame's rectangles. */
+    vk->vkCmdBindPipeline(frame->commands, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          renderer->pipeline.handle);
+    VkExtent2D extent = renderer->swapchain.extent;
+    VkViewport viewport = {
+        .width = (f32)extent.width,
+        .height = (f32)extent.height,
+        .maxDepth = 1.0f,
+    };
+    VkRect2D scissor = {.extent = extent};
+    vk->vkCmdSetViewport(frame->commands, 0, 1, &viewport);
+    vk->vkCmdSetScissor(frame->commands, 0, 1, &scissor);
     return true;
 }
 

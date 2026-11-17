@@ -1,6 +1,6 @@
 /*
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
- * input and timing can be checked by hand.
+ * input and timing can be checked by hand, and draws a few quads.
  */
 #include "game.h"
 
@@ -10,12 +10,24 @@
 #include <reborn/log.h>
 #include <reborn/renderer.h>
 
+/* Frames shown by the frame-time graph: two seconds at 60 fps. */
+#define SANDBOX_GRAPH_FRAMES 120u
+
 typedef struct sandbox_state {
     u64 start; /* the clear color's animation runs from here */
     /* Rates over the last second, logged once per second. */
     u64 window_start;
     u32 steps;
     u32 frames;
+    /*
+     * Frame-time graph, toggled with L: the time between the starts of the
+     * last frames, in milliseconds, in a ring (the oldest is overwritten; 0:
+     * not measured yet).
+     */
+    bool graph_visible;
+    u64  last_render; /* 0 before the first frame */
+    f32  frame_ms[SANDBOX_GRAPH_FRAMES];
+    u32  frame_next; /* where the next interval goes */
 } sandbox_state;
 
 /* ============================================================================
@@ -126,6 +138,7 @@ static bool game_init(void *state, rb_app *app) {
     sandbox_state *game = state;
     game->start = rb_time_now();
     game->window_start = game->start;
+    game->graph_visible = true;
     return true;
 }
 
@@ -142,6 +155,10 @@ static void game_update(void *state, rb_app *app, f64 dt) {
     if (rb_key_was_released(platform, RB_KEY_SPACE)) {
         RB_LOG_DEBUG("Query: Space was released this step (down: %d)",
                      rb_key_is_down(platform, RB_KEY_SPACE));
+    }
+    if (rb_key_was_pressed(platform, RB_KEY_L)) {
+        game->graph_visible = !game->graph_visible;
+        RB_LOG_INFO("Frame-time graph %s (L)", game->graph_visible ? "shown" : "hidden");
     }
 
     ++game->steps;
@@ -189,19 +206,142 @@ static rb_color hsv_to_srgb(f32 h, f32 s, f32 v) {
     }
 }
 
+/* One trip across the window and back for the sliding square. */
+#define SANDBOX_SLIDE_PERIOD_NS (4 * RB_NS_PER_S)
+
+#define SANDBOX_QUAD_SIDE 64.0f
+
+/* Where `period` has got to since `start`, in [0, 1). */
+static f32 sandbox_phase(u64 start, u64 period) {
+    /* Integer modulo first: the elapsed nanoseconds would lose precision as a float. */
+    u64 phase = (rb_time_now() - start) % period;
+    return (f32)((f64)phase / (f64)period);
+}
+
 /*
- * Nothing to draw yet: the clear color turns around the hue
- * wheel, which shows that frames keep reaching the screen. Muted (low
- * saturation and value) so it stays easy on the eyes. Shows from the next frame.
+ * Quads (ADR 0015): a row of opaque squares around the hue wheel; one sliding
+ * across the window by fractions of a pixel, so its motion stays smooth; a
+ * translucent one under the mouse, blending with whatever it covers.
+ */
+static void sandbox_draw_quads(rb_app *app, f32 hue, f32 slide) {
+    rb_renderer       *renderer = rb_app_renderer(app);
+    rb_platform_state *platform = rb_app_platform(app);
+    rb_window_size     size = rb_window_get_size(platform, rb_app_window(app));
+    const f32          side = SANDBOX_QUAD_SIDE;
+
+    for (u32 i = 0; i < 6; ++i) {
+        f32 h = hue + (f32)i / 6.0f;
+        h = h >= 1.0f ? h - 1.0f : h;
+        rb_renderer_draw_quad(renderer, 32.0f + (f32)i * (side + 16.0f), 32.0f, side, side,
+                              hsv_to_srgb(h, 0.7f, 0.9f));
+    }
+
+    /* There and back: 0 to 1 in the first half of the period, 1 to 0 in the second. */
+    f32 there_and_back = slide < 0.5f ? slide * 2.0f : 2.0f - slide * 2.0f;
+    f32 travel = (f32)size.pixel_width - side;
+    rb_renderer_draw_quad(renderer, there_and_back * travel, ((f32)size.pixel_height - side) * 0.5f,
+                          side, side, rb_color_srgb(0.95f, 0.95f, 0.95f, 1.0f));
+
+    /* Drawn last: on top of the others, which show through at half opacity. */
+    rb_mouse_position mouse = rb_mouse_get_position(platform);
+    f32               big = side * 1.5f;
+    rb_renderer_draw_quad(renderer, (f32)mouse.x - big * 0.5f, (f32)mouse.y - big * 0.5f, big, big,
+                          rb_color_srgb(1.0f, 0.85f, 0.2f, 0.5f));
+}
+
+/* ============================================================================
+ * Frame-time graph
+ * ========================================================================== */
+
+#define SANDBOX_GRAPH_BAR_WIDTH 3.0f /* plus a 1-pixel gap */
+#define SANDBOX_GRAPH_MAX_MS    40.0f
+#define SANDBOX_GRAPH_PX_PER_MS 4.0f /* 40 ms fill 160 pixels */
+#define SANDBOX_GRAPH_MARGIN    16.0f
+#define SANDBOX_GRAPH_PADDING   8.0f
+
+/*
+ * The time since the previous frame started. It includes the wait for vsync,
+ * so it is the interval the player sees: a stutter is one tall bar, which an
+ * average over a second would hide.
+ */
+static void sandbox_record_frame_time(sandbox_state *game) {
+    u64 now = rb_time_now();
+    if (game->last_render != 0) {
+        game->frame_ms[game->frame_next] =
+            (f32)(rb_time_to_seconds(now - game->last_render) * 1000.0);
+        game->frame_next = (game->frame_next + 1) % SANDBOX_GRAPH_FRAMES;
+    }
+    game->last_render = now;
+}
+
+/* A frame within the budget of a 60 Hz monitor is green; up to two frames' time, yellow; red. */
+static rb_color sandbox_frame_color(f32 ms) {
+    if (ms <= 1000.0f / 60.0f + 1.0f) {
+        return rb_color_srgb(0.3f, 0.85f, 0.4f, 1.0f);
+    }
+    if (ms <= 2000.0f / 60.0f + 1.0f) {
+        return rb_color_srgb(0.95f, 0.8f, 0.2f, 1.0f);
+    }
+    return rb_color_srgb(0.95f, 0.3f, 0.25f, 1.0f);
+}
+
+/*
+ * Bottom left, on a translucent panel: one bar per frame, oldest on the left,
+ * clipped at SANDBOX_GRAPH_MAX_MS, with lines at 60 and 30 fps. Drawn last, on
+ * top of everything.
+ */
+static void sandbox_draw_frame_graph(const sandbox_state *game, rb_app *app) {
+    rb_renderer   *renderer = rb_app_renderer(app);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    const f32      width = (f32)SANDBOX_GRAPH_FRAMES * (SANDBOX_GRAPH_BAR_WIDTH + 1.0f);
+    const f32      height = SANDBOX_GRAPH_MAX_MS * SANDBOX_GRAPH_PX_PER_MS;
+    const f32      left = SANDBOX_GRAPH_MARGIN + SANDBOX_GRAPH_PADDING;
+    const f32      bottom = (f32)size.pixel_height - SANDBOX_GRAPH_MARGIN - SANDBOX_GRAPH_PADDING;
+
+    rb_renderer_draw_quad(renderer, SANDBOX_GRAPH_MARGIN, bottom - height - SANDBOX_GRAPH_PADDING,
+                          width + 2.0f * SANDBOX_GRAPH_PADDING,
+                          height + 2.0f * SANDBOX_GRAPH_PADDING,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+
+    for (u32 i = 0; i < SANDBOX_GRAPH_FRAMES; ++i) {
+        /* frame_next is the oldest slot: start there and wrap around. */
+        f32 ms = game->frame_ms[(game->frame_next + i) % SANDBOX_GRAPH_FRAMES];
+        if (ms <= 0.0f) {
+            continue;
+        }
+        f32 bar = (ms < SANDBOX_GRAPH_MAX_MS ? ms : SANDBOX_GRAPH_MAX_MS) * SANDBOX_GRAPH_PX_PER_MS;
+        rb_renderer_draw_quad(renderer, left + (f32)i * (SANDBOX_GRAPH_BAR_WIDTH + 1.0f),
+                              bottom - bar, SANDBOX_GRAPH_BAR_WIDTH, bar, sandbox_frame_color(ms));
+    }
+
+    /* Over the bars, so a bar crossing a line still shows where the budget ends. */
+    rb_color line = rb_color_srgb(1.0f, 1.0f, 1.0f, 0.4f);
+    rb_renderer_draw_quad(renderer, left, bottom - (1000.0f / 60.0f) * SANDBOX_GRAPH_PX_PER_MS,
+                          width, 1.0f, line);
+    rb_renderer_draw_quad(renderer, left, bottom - (1000.0f / 30.0f) * SANDBOX_GRAPH_PX_PER_MS,
+                          width, 1.0f, line);
+}
+
+/* ============================================================================
+ * Render
+ * ========================================================================== */
+
+/*
+ * The clear color turns around the hue wheel, which shows that frames keep
+ * reaching the screen. Muted (low saturation and value) so it stays easy on
+ * the eyes and the quads stand out. Shows from the next frame.
  */
 static void game_render(void *state, rb_app *app, f64 alpha) {
     (void)alpha;
     sandbox_state *game = state;
     ++game->frames;
-    /* Integer modulo first: the elapsed nanoseconds would lose precision as a float. */
-    u64 phase = (rb_time_now() - game->start) % SANDBOX_HUE_PERIOD_NS;
-    f32 hue = (f32)((f64)phase / (f64)SANDBOX_HUE_PERIOD_NS);
+    sandbox_record_frame_time(game);
+    f32 hue = sandbox_phase(game->start, SANDBOX_HUE_PERIOD_NS);
     rb_renderer_set_clear_color(rb_app_renderer(app), hsv_to_srgb(hue, 0.5f, 0.45f));
+    sandbox_draw_quads(app, hue, sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS));
+    if (game->graph_visible) {
+        sandbox_draw_frame_graph(game, app);
+    }
 }
 
 const rb_app_callbacks sandbox_game = {

@@ -30,5 +30,6 @@ its implementation.
 | 0012 | [Allocation tracking](0012-allocation-tracking.md) | Accepted |
 | 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Proposed |
 | 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Proposed |
+| 0015 | [Shaders and graphics pipeline](0015-shaders-and-graphics-pipeline.md) | Accepted |
 
 Template: [`template.md`](template.md).

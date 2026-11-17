@@ -15,6 +15,7 @@
 #include "renderer/vulkan/vulkan_frame.h"
 #include "renderer/vulkan/vulkan_instance.h"
 #include "renderer/vulkan/vulkan_loader.h"
+#include "renderer/vulkan/vulkan_pipeline.h"
 #include "renderer/vulkan/vulkan_swapchain.h"
 
 struct rb_renderer {
@@ -38,6 +39,9 @@ struct rb_renderer {
     u32 built_height;
     /* Acquire or present said out of date or suboptimal: rebuild at the next begin. */
     bool swapchain_stale;
+
+    /* Built for the swapchain's format once a swapchain exists (ADR 0015). */
+    rb_vk_pipeline pipeline;
 
     rb_vk_frame frames[RB_VK_FRAMES_IN_FLIGHT];
     u32         frame_index; /* the copy the current or next frame uses */

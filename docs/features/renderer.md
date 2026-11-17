@@ -6,13 +6,14 @@
 | **Since** | v0.1.0 (2026-11-17) |
 | **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
 far it opens the Vulkan loader at run time, creates an instance with validation layers reporting
 to the engine's log, picks a GPU, opens a device, keeps a swapchain sized to the window and
-presents a frame cleared to a color the game sets, with two frames in flight.
+presents a frame cleared to a color the game sets, with two frames in flight. The game draws
+colored quads in window pixels through one graphics pipeline, its shaders compiled at build time.
 
 ## Spec
 - `rb_renderer_startup(allocator, config, platform, window)` returns an opaque `rb_renderer`, or
@@ -36,6 +37,17 @@ presents a frame cleared to a color the game sets, with two frames in flight.
   draws the other. With FIFO, waiting for a free image paces the loop to the monitor's refresh.
 - **Clear color:** `rb_renderer_set_clear_color(renderer, rb_color)`, dark gray by default, used
   from the next frame begun (the current one is already cleared).
+- **Quads:** `rb_renderer_draw_quad(renderer, x, y, width, height, color)` from the game's
+  `render`: a filled rectangle in `f32` pixels of the client area, origin top left, y down (the
+  coordinates of `rb_mouse_position`), fractions allowed. Drawn in call order, each on top of the
+  previous ones; alpha blends with what is underneath (straight alpha). Outside a frame:
+  `RB_ASSERT`. One draw call per quad.
+- **Pipeline:** one, built at startup for the swapchain's format (a failure fails the startup),
+  rebuilt only if a new swapchain comes with another format (a failure then stops drawing). No
+  vertex buffers, no culling, viewport and scissor set every frame.
+- **Shaders:** GLSL in `engine/src/renderer/vulkan/shaders/`, compiled to SPIR-V by `glslc` at
+  build time and embedded in the engine (see the build system page): nothing to load at run
+  time, a shader error fails the build.
 - **Colors** (`reborn/color.h`): `rb_color` is linear RGB with straight alpha. `rb_color_srgb`
   takes color-picker values and converts them with the exact sRGB curve (clamped to [0, 1], alpha
   untouched); `rb_color_linear` takes linear values as they are (above 1 allowed).
@@ -62,7 +74,6 @@ presents a frame cleared to a color the game sets, with two frames in flight.
   Vulkan 1.3 driver and the validation layers (lavapipe and `vulkan-validationlayers` in the Linux
   container). Tests that start the renderer open a window: Windows only; the Linux container runs
   the instance tests and the pure ones (GPU ranking, swapchain choices).
-- Not yet: shaders, pipelines, drawing.
 - Mesa's CPU driver (lavapipe) on X11 does not wait for the refresh with FIFO: the frame rate is
   unbounded there (Xvfb and WSLg included) unless `max_fps` is set.
 
@@ -77,6 +88,8 @@ flowchart LR
     R --> DEV["vulkan_device.c<br/>GPU choice, vkCreateDevice,<br/>device table, queue"]
     R --> SC["vulkan_swapchain.c<br/>format, mode, extent,<br/>images, views, present semaphores"]
     R --> FR["vulkan_frame.c<br/>per frame in flight: command pool,<br/>command buffer, semaphore, fence"]
+    R --> PL["vulkan_pipeline.c<br/>shader modules, layout,<br/>quad pipeline"]
+    SH["shaders/*.vert, *.frag<br/>glslc → generated/shaders/*.inc"] --> PL
     L --> P["platform_os.h<br/>rb_platform_library_*"]
     F["vulkan_functions.h<br/>X-macro lists"] --> L
     F --> I
@@ -84,7 +97,18 @@ flowchart LR
 ```
 
 Startup order (shutdown is the reverse): loader → instance (+ messenger) → surface → device →
-swapchain → frames in flight.
+swapchain → pipeline → frames in flight.
+
+A quad through the pipeline (window 800x600, `draw_quad(100, 50, 200, 100, red)`):
+
+```mermaid
+flowchart LR
+    C["draw_quad: push constants<br/>{100,50} {200,100} red {800,600}<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → pixel → -1..1"]
+    V --> RS["rasterizer<br/>pixels 100..299 x 50..149"]
+    RS --> FS["quad.frag x20000<br/>out = color"]
+    FS --> B["blend: src·a + dst·(1−a)"]
+    B --> IMG["swapchain image"]
+```
 
 A frame, over time (two frames in flight, F0 and F1):
 
@@ -95,7 +119,7 @@ sequenceDiagram
     participant PE as Presentation
     CPU->>CPU: begin F0: wait fence F0 (free: created signaled)
     CPU->>PE: acquire image i (signals acquired F0)
-    CPU->>CPU: reset fence and pool F0, record: barrier, clear, game render, barrier
+    CPU->>CPU: reset fence and pool F0, record: barrier, clear, bind pipeline, game render (quads), barrier
     CPU->>GPU: submit F0 (waits acquired F0, signals rendered[i] + fence F0)
     CPU->>PE: present i (waits rendered[i])
     CPU->>CPU: begin F1 while the GPU works on F0
@@ -124,6 +148,12 @@ sequenceDiagram
 - The presentation semaphore is per swapchain image, not per frame in flight: present signals
   nothing back, and the image returning from acquire is the only sign that its present is over.
 - Barriers and the submit use synchronization2 (`vkCmdPipelineBarrier2`, `vkQueueSubmit2`).
+- A quad needs no GPU memory: the vertex shader picks one of six corners with `gl_VertexIndex`
+  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` mirrors
+  the block in `shaders/quad.glsl`, shared by both shaders; `_Static_assert`s check offsets and
+  size.
+- Dynamic rendering bakes the image format into the pipeline: `rb_vk_pipeline.color_format`
+  records it, so a swapchain with another format triggers a rebuild.
 
 ## API
 ```c
@@ -133,7 +163,11 @@ static bool game_configure(rb_app_config *config) {
     return true;
 }
 static void game_render(void *state, rb_app *app, f64 alpha) {
-    rb_renderer_set_clear_color(rb_app_renderer(app), rb_color_srgb(1.0f, 0.5f, 0.0f, 1.0f));
+    rb_renderer *renderer = rb_app_renderer(app);
+    rb_renderer_set_clear_color(renderer, rb_color_srgb(1.0f, 0.5f, 0.0f, 1.0f));
+    /* 200x100 pixels, top-left corner at (100, 50); then a translucent one on top. */
+    rb_renderer_draw_quad(renderer, 100, 50, 200, 100, rb_color_srgb(1.0f, 0.0f, 0.0f, 1.0f));
+    rb_renderer_draw_quad(renderer, 150, 80, 100, 100, rb_color_srgb(0.0f, 0.0f, 1.0f, 0.5f));
 }
 
 /* Tools and tests drive it directly. */
@@ -162,9 +196,15 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 - The app brackets `render` with begin / end frame (V1); public clear color setter (W3); no frame
   cap by default (X2).
 - Colors: linear inside, sRGB and linear constructors (Y3), in their own header (Z2).
+- A public `rb_renderer_draw_quad` after a first triangle (ADR 0015, A3), in window pixels (B1).
+- GLSL (C1) compiled by `glslc` at build time (D1), embedded for the engine's own shaders (E3).
+- Corners in the shader, quad data as push constants (F1); dynamic viewport and scissor (G1);
+  straight alpha blending (H2).
 
 ## Future work
-- Shaders and pipeline, first triangle, then a 2D quad.
+- Batched 2D renderer with vertex buffers and textures, when a game draws many sprites.
+- World units through a 2D camera instead of window pixels (ADR 0015, B3; backlog).
+- Shaders as files next to the executable, with hot reload (ADR 0015, E2).
 - Recovering from a lost device instead of stopping.
 - Rendering without a window; choosing the GPU by name or index (backlog).
 - The game's name in `VkApplicationInfo` (drivers use it for per-game profiles).
@@ -177,3 +217,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.1.0 | 2026-11-17 | Public `rb_renderer`, Vulkan 1.3 instance, validation with log, counters and debugger stop; started by the app |
 | v0.1.0 | 2026-11-17 | Surface from the platform, GPU choice, device, swapchain rebuilt on resize; startup takes the window |
 | v0.1.0 | 2026-11-17 | Frames: two in flight, cleared and presented each loop iteration; `rb_renderer_set_clear_color`, `reborn/color.h` |
+| v0.1.0 | 2026-11-17 | Shaders compiled at build time and embedded, quad pipeline, `rb_renderer_draw_quad` |

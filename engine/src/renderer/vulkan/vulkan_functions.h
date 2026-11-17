@@ -97,7 +97,18 @@ typedef struct rb_vk_instance_functions {
     X(vkQueueSubmit2)                                                                              \
     X(vkCmdPipelineBarrier2)                                                                       \
     X(vkCmdBeginRendering)                                                                         \
-    X(vkCmdEndRendering)
+    X(vkCmdEndRendering)                                                                           \
+    X(vkCreateShaderModule)                                                                        \
+    X(vkDestroyShaderModule)                                                                       \
+    X(vkCreatePipelineLayout)                                                                      \
+    X(vkDestroyPipelineLayout)                                                                     \
+    X(vkCreateGraphicsPipelines)                                                                   \
+    X(vkDestroyPipeline)                                                                           \
+    X(vkCmdBindPipeline)                                                                           \
+    X(vkCmdSetViewport)                                                                            \
+    X(vkCmdSetScissor)                                                                             \
+    X(vkCmdPushConstants)                                                                          \
+    X(vkCmdDraw)
 
 /* VK_KHR_swapchain: always enabled, the renderer always presents to a window (ADR 0013, K2). */
 #define RB_VK_SWAPCHAIN_FUNCTIONS(X)                                                               \
