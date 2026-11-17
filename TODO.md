@@ -55,7 +55,7 @@ code refer to them.
 - [x] Vulkan loading: loader opened at run time, function tables (ADR 0013)
 - [x] Instance (Vulkan 1.3), validation layers, debug messenger; public `rb_renderer` started
       by the app (ADR 0013)
-- [ ] Surface (created by the platform), GPU ranked by type with lavapipe as last resort, device
+- [x] Surface (created by the platform), GPU ranked by type with lavapipe as last resort, device
       with one graphics + present queue, swapchain (sRGB, vsync option) recreated when the window's
       pixel size changes; `rb_renderer_startup` takes the platform and window (ADR 0013, J–Q)
 - [ ] Pipeline, command buffers, synchronization
@@ -87,6 +87,14 @@ code refer to them.
       Windows job objects); many small short-lived arenas (per asset, per entity), better carved
       from a parent allocator than each reserving address space; a target without virtual memory
       control (WebAssembly, some consoles)
+- [ ] Random number generator with an explicit seed (reproducible runs, replays, tests)
+- [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide)
+- [ ] Error handling: public functions return `bool` and log today; decide whether callers need
+      error codes to react (missing vs corrupt file, out of memory), and how they are named
+- [ ] Fatal errors shown to the player: a message box when startup fails (no Vulkan driver, no
+      window), not only a log line nobody reads
+- [ ] Crash handling: catch crashes (unhandled exceptions on Windows, signals on Linux), write the
+      stack trace to the log and flush it; minidumps on Windows
 
 ### Profiling and performance
 - [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find bottlenecks
@@ -107,6 +115,9 @@ code refer to them.
 - [ ] Gamepads
 - [ ] Input action mapping (bindings to actions), after the game lifecycle (§4)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
+- [ ] Application icon: on Windows embedded in the executable (`.rc` resource, shown by Explorer
+      and the taskbar) and set per window (`WM_SETICON`); on Linux the `_NET_WM_ICON` property
+      (ARGB pixels, so it needs decoded images, see Assets) and a `.desktop` file when packaging
 - [ ] Win32 modal loop: the game freezes while a window is dragged or resized (the loop clamps
       the frozen time, ADR 0011; running during the drag needs a timer or a window thread)
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
@@ -120,9 +131,44 @@ code refer to them.
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
 - [ ] Batched 2D renderer (sprites, textures)
+- [ ] 2D camera: position, zoom, world-to-screen conversion (needs the math library)
+- [ ] Screenshots: copy the presented image to a file (also for golden-image tests)
 - [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
 - [ ] 3D
+
+### Assets
+- [ ] File system layer: read/write whole files, paths resolved from the executable's folder
+      (not the current directory, which depends on how the game is launched), directory listing
+- [ ] Asset manager: assets referenced by handle (generational pool, ADR 0007), loaded once and
+      shared, unloaded when no longer used (reference counting vs explicit lifetimes: to decide)
+- [ ] Image decoding (PNG at least) for textures and the icon (own decoder vs external library:
+      to decide)
+- [ ] Asynchronous loading on the job system (see Threading)
+- [ ] Hot reload: watch asset files and reload them while the game runs (shaders first)
+- [ ] Asset baking: convert source files into engine-ready formats at build time, packed into
+      one archive for release builds (format to decide)
+
+### Audio
+- [ ] Backend per platform: WASAPI on Windows, PulseAudio or ALSA on Linux (to decide), on its own
+      thread feeding the device
+- [ ] Mixer: several sounds at once, volume per sound and per group (music, effects)
+- [ ] Sound effects (loaded whole) and music (streamed from disk); decoding WAV first, compressed
+      formats later (own decoder vs external library: to decide)
+
+### Text and UI
+- [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
+      pre-baked bitmap font: to decide)
+- [ ] Text rendering on the 2D renderer: UTF-8 strings, measuring, alignment
+- [ ] Debug UI, immediate mode (rebuilt every frame): panels, buttons, sliders, value inspection.
+      Base for the in-game console and the profiler overlay
+
+### Scene
+- [ ] Game object model: ECS vs object hierarchy vs plain arrays per type (to decide in its ADR)
+- [ ] Transforms with parent-child relations, if the model needs them
+- [ ] Scenes saved and loaded from files (needs serialization)
+- [ ] Serialization: one mechanism for scenes, save games and config (text vs binary, format to
+      decide)
 
 ### Testing
 - [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
@@ -137,6 +183,8 @@ code refer to them.
 - [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
 - [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
       package manager on Linux (distros to support: to decide)
+- [ ] Release packaging: one folder or archive per platform with the executable, packed assets,
+      icon and (Linux) `.desktop` file, built by a script or CI; installers later
 - [ ] Game code hot-reload as a DLL
 - [ ] LLM debug/control API (state inspection, scene commands)
 
