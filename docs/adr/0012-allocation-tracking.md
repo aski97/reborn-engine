@@ -4,7 +4,7 @@
 - **Date:** 2026-11-16
 
 ## Context
-Roadmap §6 asks for allocation tracking by tag and a leak report. All engine code that frees
+The engine needs allocation tracking by tag and a leak report. All engine code that frees
 objects one at a time goes through `rb_allocator` (ADR 0010); arenas are pushed directly and free
 everything at once. A future profiler (backlog: resource usage) wants current, peak and count per
 subsystem. No threads yet.

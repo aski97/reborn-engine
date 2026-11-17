@@ -10,7 +10,7 @@
 
 ## Summary
 A monotonic, high-resolution clock in nanoseconds and a sleep precise to about a millisecond on
-both platforms. Base of frame timing (game loop, §4) and of the logger's `t`.
+both platforms. Base of frame timing (game loop) and of the logger's `t`.
 
 ## Spec
 - `rb_time_now()`: nanoseconds since an OS-defined origin (usually boot). Never goes back.

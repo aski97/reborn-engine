@@ -4,11 +4,11 @@
 - **Date:** 2026-11-16
 
 ## Context
-The game loop (roadmap §4) measures frame durations and must not spin a CPU core. The logger
+The game loop measures frame durations and must not spin a CPU core. The logger
 measures `t` on the wall clock (ADR 0008, H1), which jumps when the system time changes. Both need
 a clock that never goes back, with sub-millisecond resolution, from the first line of `main()`
 (the logger runs before any startup). There is no allocator and no threading yet. Done before the
-rest of §4 and before §6 (see `TODO.md`).
+rest of the game loop and before the allocators.
 
 ## Options
 **A. Clock source**

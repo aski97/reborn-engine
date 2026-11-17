@@ -190,7 +190,7 @@ static rb_color hsv_to_srgb(f32 h, f32 s, f32 v) {
 }
 
 /*
- * Nothing to draw yet (roadmap §7): the clear color turns around the hue
+ * Nothing to draw yet: the clear color turns around the hue
  * wheel, which shows that frames keep reaching the screen. Muted (low
  * saturation and value) so it stays easy on the eyes. Shows from the next frame.
  */

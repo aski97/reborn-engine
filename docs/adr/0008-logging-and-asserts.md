@@ -7,7 +7,7 @@
 The engine needs diagnostics before window lifecycle and input: every new event should be visible
 while it is developed. Logs are read by people (console) and by LLMs and scripts (a file). The
 logger must work from the first line of `main()`, inside OS callbacks (`WndProc`) and in tests.
-There are no threads and no allocator yet (roadmap §6).
+There are no threads and no allocator yet.
 
 ## Options
 **A. Where the state lives**
@@ -50,7 +50,7 @@ There are no threads and no allocator yet (roadmap §6).
 
 **H. Timestamp**
 1. `timespec_get` (C11) — no platform code; wall clock, may jump.
-2. Platform monotonic timer — the right clock; pulls part of roadmap §4 forward.
+2. Platform monotonic timer — the right clock; pulls part of the game loop work forward.
 
 ## Decision
 **A1, B1, C1, D1, E1, F1, G1, H1.**
@@ -78,7 +78,7 @@ There are no threads and no allocator yet (roadmap §6).
   whose violation would silently corrupt state. Failures caused by input or the environment are
   logged and returned, never asserted.
 - **H1:** `t` is seconds since the logger's first use: durations read at a glance. The clock can
-  move to the §4 timer later without changing the record. Absolute time, needed to match other
+  move to the game loop's timer later without changing the record. Absolute time, needed to match other
   logs (crash dumps, OS event logs, bug reports), comes from two additions:
   - `rb_log_startup` logs one anchor line, `Log clock: t = 0 at 2026-11-15T19:32:10.123+01:00`
     (ISO 8601 local time with its UTC offset): any line's absolute time is the anchor plus its
@@ -136,7 +136,7 @@ Linux file is `linux_`, not `xlib_`: it uses POSIX and `/proc`, nothing from X11
 | Trigger | Change | Impact |
 |---|---|---|
 | Threads (backlog) | Mutex around delivery, or a queue drained by a logging thread | Internal |
-| Game loop timer (§4) | `t` from the monotonic timer | None for readers |
+| Game loop timer | `t` from the monotonic timer | None for readers |
 | A subsystem floods the log | Categories with their own level | New macro argument or per-file define |
 | Logging shows up in profiles | Batch file writes, flush only from WARN | File may lose last lines on a crash |
 | Testing assert failures | Replaceable assert handler | New function in `assert.h` |

@@ -5,11 +5,11 @@
 
 ## Context
 Until now the sandbox drives everything: it reserves the engine arena, starts the platform, opens
-the window, pumps events and sleeps 1 ms per iteration. Every game would repeat that code. Roadmap
-§4 asks for an application interface, a game loop with per-frame memory and a timestep strategy.
+the window, pumps events and sleeps 1 ms per iteration. Every game would repeat that code. The
+engine needs an application interface, a game loop with per-frame memory and a timestep strategy.
 The engine must allocate the game's state (ADR 0010) and keep the platform state out of hidden
 globals (ADR 0006). Later goals shape the choice: game code hot-reloaded as a DLL, an LLM
-debug API that steps the simulation, and Vulkan with vsync (§7).
+debug API that steps the simulation, and Vulkan with vsync.
 
 ## Options
 **A. Who owns the loop**
@@ -71,7 +71,7 @@ debug API that steps the simulation, and Vulkan with vsync (§7).
 1. Sleep to an absolute deadline that advances by one frame period. Sleep overshoot does not
    accumulate, so the average rate is the cap. Precision is that of `rb_time_sleep` (~0.5 ms).
 2. Sleep, then busy-wait the last part (ADR 0009, D4). Precise; burns CPU.
-3. No cap. Spins a core until vsync arrives (§7).
+3. No cap. Spins a core until the renderer brings vsync.
 
 **H. What the game's `main` does** (every game would repeat the process setup)
 1. Starts the logger, checks the version, calls `rb_app_run`, stops the logger. Explicit; about
@@ -139,6 +139,6 @@ debug API that steps the simulation, and Vulkan with vsync (§7).
   interpolation to look smooth: without it motion stutters when frames and steps beat.
 - Input edges are exact per step. Window events and input reach the game only on step
   boundaries, so the update rate bounds input latency (16.7 ms at 60 Hz).
-- With vsync (§7) the cap becomes optional; the swapchain present paces frames.
+- With the renderer's vsync the cap becomes optional; the swapchain present paces frames.
 - The engine decides when the game ends on close; a "save before quitting?" prompt needs a veto
   later.

@@ -9,7 +9,7 @@
 | **ADRs** | [0013](../adr/0013-vulkan-renderer.md) |
 
 ## Summary
-Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step (roadmap §7); so
+Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
 far it opens the Vulkan loader at run time, creates an instance with validation layers reporting
 to the engine's log, picks a GPU, opens a device, keeps a swapchain sized to the window and
 presents a frame cleared to a color the game sets, with two frames in flight.
@@ -164,7 +164,7 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 - Colors: linear inside, sRGB and linear constructors (Y3), in their own header (Z2).
 
 ## Future work
-- Shaders and pipeline, first triangle, then a 2D quad (roadmap §7).
+- Shaders and pipeline, first triangle, then a 2D quad.
 - Recovering from a lost device instead of stopping.
 - Rendering without a window; choosing the GPU by name or index (backlog).
 - The game's name in `VkApplicationInfo` (drivers use it for per-game profiles).

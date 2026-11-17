@@ -9,6 +9,8 @@ One decision per file (a topic, with all its sub-decisions). The status says whe
 | Rejected | Considered and dropped; kept as a record of why. | No |
 | Superseded by NNNN | Replaced by a later ADR. Only the status line changes. | No |
 
+Editorial fixes that change no decision (wording, references) are allowed in any status.
+
 An ADR may be committed while still *Proposed*. It becomes *Accepted* in the commit that completes
 its implementation.
 
@@ -27,5 +29,6 @@ its implementation.
 | 0011 | [Application layer and game loop](0011-application-layer-and-game-loop.md) | Accepted |
 | 0012 | [Allocation tracking](0012-allocation-tracking.md) | Accepted |
 | 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Proposed |
+| 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Proposed |
 
 Template: [`template.md`](template.md).

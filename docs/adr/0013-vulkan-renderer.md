@@ -4,12 +4,12 @@
 - **Date:** 2026-11-17
 
 ## Context
-Roadmap §7 renders through Vulkan on Windows and Linux. Every Vulkan call goes through the
+The renderer draws through Vulkan on Windows and Linux. Every Vulkan call goes through the
 *loader* (`vulkan-1.dll`, `libvulkan.so.1`), which comes with the GPU driver, finds the drivers
 and layers and dispatches calls to them. The Vulkan SDK (headers, validation layers, shader
 compilers) is installed on the Windows development machine; the Linux container only has the
 loader. The engine must not need external libraries without approval, and a machine without
-Vulkan should get a logged error, not a crash. This ADR grows with §7, one group per step.
+Vulkan should get a logged error, not a crash. This ADR grows with the renderer, one group per step.
 
 ## Options
 **A. Where the headers come from**

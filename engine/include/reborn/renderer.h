@@ -12,7 +12,7 @@
  *   ...
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
- * Work in progress (roadmap §7): every frame shows the window cleared to the
+ * Work in progress: every frame shows the window cleared to the
  * clear color, nothing is drawn yet. Pointer parameters must not be NULL
  * (RB_ASSERT in debug builds).
  */

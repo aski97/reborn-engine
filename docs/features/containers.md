@@ -64,7 +64,7 @@ while (rb_ring_pop_index(&ring, &i)) handle(&events[i]);
 - Ring stores a count instead of a tail index, so full and empty are distinguishable.
 
 ## Future work
-- Dynamic array, hash map: own memory, need the allocator (roadmap §6) and their own ADR.
+- Dynamic array, hash map: own memory, need an allocator (ADR 0010) and their own ADR.
 
 ## History
 | Version | Date | Change |

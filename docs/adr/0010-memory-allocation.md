@@ -6,7 +6,7 @@
 ## Context
 Systems must not allocate their own state (ADR 0006, B2): the engine chooses where memory comes
 from. Today the caller `malloc`s a size it queried; ADR 0006 planned the move to an allocator
-passed at startup (B3). The game loop (§4) needs a per-frame arena, future containers need an
+passed at startup (B3). The game loop needs a per-frame arena, future containers need an
 allocator (ADR 0007), and error paths need a way to make allocations fail in tests. ASan must still
 see overflows inside custom allocators. Targets are 64-bit only (`defines.h`). No threads yet.
 
@@ -129,7 +129,7 @@ see overflows inside custom allocators. Targets are 64-bit only (`defines.h`). N
 - **Platform startup** (K1): `rb_platform_state *rb_platform_startup(rb_allocator)` allocates
   the state zeroed, keeps the allocator in the shared state and frees through it on shutdown or on
   a failed startup; `rb_platform_state_size` is gone. The sandbox gives it an engine-lifetime arena
-  (64 MiB reserved) until the application layer (§4) owns one.
+  (64 MiB reserved) until the application layer owns one.
 
 ## Consequences
 - Every system and container takes an `rb_allocator`; tests can inject failures anywhere.

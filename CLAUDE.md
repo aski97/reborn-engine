@@ -6,7 +6,15 @@ the owner wants to understand and approve every architectural choice.
 ## Workflow
 - Before introducing a new architectural choice, present the alternatives with pros/cons
   and let the owner decide. Record the decision in `docs/adr/`: one ADR per topic, *Proposed*
-  (editable) until implemented, then *Accepted* (immutable). See `docs/adr/README.md`.
+  (editable) until implemented, then *Accepted* (immutable decision; editorial fixes allowed).
+  See `docs/adr/README.md`.
+- Docs and code never cite roadmap sections by number: name the work ("the game loop").
+- Build supporting pieces (data structures, threading, interfaces, abstractions) only when the
+  feature being implemented needs them, as part of that feature: built ahead of a concrete use,
+  they fit guesses instead of our needs. Until then they stay in the `TODO.md` backlog, with the
+  feature or condition that will call for them.
+- From v0.2.0 the roadmap is a ladder of our own games under `games/` (ADR 0014): engine tasks come
+  from what the current game needs. The sandbox keeps exercising every engine feature.
 - No external libraries without explicit approval.
 - Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date. `[Unreleased]` is the difference
   from the last release: before the first one, everything is *Added* and describes the current

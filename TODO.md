@@ -2,10 +2,7 @@
 
 ## v0.1.0 — Foundations
 
-§1–§6 are done; what remains is §7, in its listed order. Section numbers stay fixed: ADRs and
-code refer to them.
-
-### 1. Project setup
+**Project setup**
 - [x] Folder layout, git, `.gitignore` / `.gitattributes`
 - [x] CMake + presets (Clang, Ninja, C17)
 - [x] Single-source version + generated `version.h`
@@ -13,13 +10,13 @@ code refer to them.
 - [x] Verify CMake build on Windows (all presets)
 - [x] Verify CMake build on Linux (Docker, all presets — ADR 0005)
 
-### 2. Unit testing
+**Unit testing**
 - [x] `rb_test.h`: test macros, expectations, auto-registration (`__attribute__((constructor))`)
 - [x] CTest integration (`ctest --preset debug`, one entry per test, JUnit output — ADR 0004)
 - [x] `tests/` layout mirroring `engine/src/`, first test for `version`
 - [x] Feature page + ADR
 
-### 3. Application layer and windows
+**Application layer and windows**
 - [x] Platform abstraction + Win32 backend (ADR 0006)
 - [x] Generational handle pool and index-only ring buffer (ADR 0007)
 - [x] Linux backend: Xlib (ADR 0006)
@@ -28,20 +25,20 @@ code refer to them.
 - [x] Event queue (fixed-size ring buffer, ADR 0006)
 - [x] Basic keyboard/mouse input by physical key position (ADR 0006)
 
-### 4. Game lifecycle
-- [x] High-resolution monotonic timer and sleep (done before §6, ADR 0009); the logger's `t` moves
+**Game lifecycle**
+- [x] High-resolution monotonic timer and sleep (done before Memory, ADR 0009); the logger's `t` moves
       to it (ADR 0008, H); the sandbox loop stops spinning a CPU core
 - [x] Application interface (configure / init / on_event / update / render / shutdown); the
-      engine allocates the game's state through the §6 allocators (ADR 0011)
+      engine allocates the game's state through the allocators (ADR 0011)
 - [x] Game loop: frame timing, per-frame arena reset, frame cap until vsync (ADR 0011)
 - [x] Timestep strategy: fixed step with accumulator, one pump per step (ADR 0011)
 
-### 5. Logging (done before finishing §3, to see window and input events)
+**Logging** (done before finishing the windows, to see their events)
 - [x] Levels (TRACE → FATAL), console with colors, file output (ADR 0008)
 - [x] `RB_ASSERT`
 - [x] Structured output (JSON lines) for LLM consumption
 
-### 6. Memory
+**Memory**
 - [x] OS allocation: reserve / commit / decommit / release (VirtualAlloc / mmap, ADR 0010)
 - [x] Arena allocator: virtual memory or caller buffer, temp scopes (ADR 0010)
 - [x] Allocator interface, arena adapter, heap allocator; system startup takes an allocator
@@ -51,7 +48,7 @@ code refer to them.
 - [x] Failing test allocator (fails at the N-th allocation) to cover error paths
 - [x] Allocation tracking by tag, leak report, arena high-water mark (ADR 0012)
 
-### 7. Rendering (Vulkan)
+**Rendering (Vulkan)**
 - [x] Vulkan loading: loader opened at run time, function tables (ADR 0013)
 - [x] Instance (Vulkan 1.3), validation layers, debug messenger; public `rb_renderer` started
       by the app (ADR 0013)
@@ -61,7 +58,65 @@ code refer to them.
 - [x] Command buffers, synchronization, two frames in flight; each frame cleared and presented,
       clear color set by the game (`reborn/color.h`); no frame cap by default (ADR 0013, R–Z)
 - [ ] Shaders and pipeline, first triangle → 2D quad (shader language, compiler, files or embedded:
-      to decide)
+      to decide; files need whole-file reads from the file system layer first)
+
+## Games
+
+From v0.2.0 the roadmap follows a ladder of small games of our own, simplest first (ADR 0014).
+Engine tasks come out of building them: a piece (container, thread, file format...) is added when
+a game needs it, and moves from the backlog into that game's version. The sandbox keeps exercising
+every engine feature. "Likely needs" are guesses, not tasks.
+
+## v0.2.0
+
+**Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
+up, a miss costs a life, the score is a bar of squares (no text).
+Likely needs: colored quads at any position, 2D math and an orthographic projection, a seeded
+random number generator, mouse position in world coordinates.
+
+**Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
+ring shrinks.
+Likely needs: circle vs arc collisions, sound effects (audio backend, mixer, WAV), text for score
+and game over (fonts), pause and game states.
+
+**Continuous integration**
+- [ ] GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
+      decide whether to publish the image (GHCR) or build it per run. Needed before the v0.3.0
+      refactoring
+
+## v0.3.0
+
+**Refactoring** (after v0.2.0's games, and threading if one of them brought it)
+- [ ] File by file: drop comments that restate the code, review function, variable and file names
+- [ ] Interfaces and duplication: logic repeated across backends moves to common code (platform
+      startup/shutdown and window slots are identical in Win32 and Xlib)
+- [ ] Components behind interfaces with swappable backends (renderer, audio...; compile time vs
+      function table vs dynamic plugins: to decide), a null backend next to each real one; the
+      platform hands out native window handles instead of creating Vulkan surfaces
+      (`platform_vulkan.h` makes the platform depend on the renderer); subsystem startup in the app
+- [ ] Directory layout and file names: e.g. stateless OS services (`linux_*`) apart from the window
+      system (`xlib_*`), so a Wayland backend replaces only the latter
+
+## v0.4.0
+
+**Seedling** (2D, top-down): walk a character around a tiled garden, collect seeds, plant and water
+them before they wither.
+Likely needs: textures and sprite sheets (PNG decoding, file system), batched renderer, sprite
+animation, tile map loaded from a file, a camera following the player, asset manager.
+
+## Next games
+
+In order; each gets a version when it starts.
+
+- **Hollow** (2D platformer): levels, simple enemies, menus, saves. Likely needs: AABB physics,
+  entity model, level files (serialization), streamed music, gamepads, input mapping, menu UI.
+- **Swarm** (2D): thousands of creatures moving as a flock and avoiding the player. Likely needs:
+  job system, profiler, spatial structure for neighbour queries, performance tests.
+- **Gallery** (3D): walk in first person through a room with a few objects and a light. Likely
+  needs: 3D math, depth buffer, meshes from files, first-person camera with a locked mouse, basic
+  lighting.
+- **Archipelago** (3D): a small island to explore, with terrain, shadows and objects to interact
+  with. Likely needs: terrain, shadows, 3D physics, transform hierarchies, larger scenes.
 
 ## Backlog
 
@@ -72,17 +127,22 @@ code refer to them.
 - [ ] Application: veto on the main window's close ("save before quitting?"); a variable
       `update` next to the fixed one if camera or UI need it (ADR 0011, C4); window events
       between steps if a low update rate makes them lag
+- [ ] Containers that own memory: dynamic array, hash map, string/string builder (allocator-aware,
+      ADR 0010; macros vs `void*` + size to decide in their ADR — ADR 0007). With the first feature
+      that needs one: likely the batched 2D renderer (sprites per frame) or the asset manager
+      (name → handle)
+- [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide), with
+      the hash map
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
-      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide)
+      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide). With the first feature that
+      needs it: likely the audio backend (a thread feeding the device) or asynchronous asset loading
 - [ ] Thread safety: decide which public functions must be callable from any thread (logger first,
       then event queue, allocators...), state the guarantee in each function's doc comment,
-      protection per case (mutex, lock-free, per-thread data: to decide)
+      protection per case (mutex, lock-free, per-thread data: to decide). With threading
 - [ ] Configuration separate from code: values hard-coded today (window size and title, log level
       and file, capacities...) read from a config file and/or command line (format and parser to decide)
 - [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
       debug API (ADR 0008)
-- [ ] Containers that own memory: dynamic array, hash map, string/string builder
-      (allocator-aware, see Memory; macros vs `void*` + size to decide in their ADR — ADR 0007)
 - [ ] Chained arena blocks (ADR 0010, B3), inside `rb_arena` without an API change. Only when one
       of these shows up: an arena whose size depends on content with no sensible upper bound
       (editor, mods, long sessions); reservations failing in a real environment (`ulimit -v`,
@@ -90,7 +150,6 @@ code refer to them.
       from a parent allocator than each reserving address space; a target without virtual memory
       control (WebAssembly, some consoles)
 - [ ] Random number generator with an explicit seed (reproducible runs, replays, tests)
-- [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide)
 - [ ] Error handling: public functions return `bool` and log today; decide whether callers need
       error codes to react (missing vs corrupt file, out of memory), and how they are named
 - [ ] Fatal errors shown to the player: a message box when startup fails (no Vulkan driver, no
@@ -101,7 +160,7 @@ code refer to them.
 ### Profiling and performance
 - [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find bottlenecks
       (own implementation vs external tool: to decide)
-- [ ] Resource usage: memory by tag (builds on §6 allocation tracking: current, peak, allocation
+- [ ] Resource usage: memory by tag (builds on the allocation tracking: current, peak, allocation
       count per subsystem), process CPU and memory from the OS, later GPU
 - [ ] Viewer: in-game overlay and/or export (JSON lines for LLMs, trace format for external viewers)
 - [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
@@ -115,7 +174,7 @@ code refer to them.
 - [ ] Key labels of the current layout, for prompts ("press Z" on AZERTY)
 - [ ] Mouse enter/leave events, cursor shape
 - [ ] Gamepads
-- [ ] Input action mapping (bindings to actions), after the game lifecycle (§4)
+- [ ] Input action mapping (bindings to actions)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
 - [ ] Application icon: on Windows embedded in the executable (`.rc` resource, shown by Explorer
       and the taskbar) and set per window (`WM_SETICON`); on Linux the `_NET_WM_ICON` property
@@ -183,8 +242,6 @@ code refer to them.
 - [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
 
 ### Build, CI and tooling
-- [ ] CI: GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
-      decide whether to publish the image (GHCR) or build it per run
 - [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
 - [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
       package manager on Linux (distros to support: to decide)

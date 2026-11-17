@@ -49,7 +49,7 @@ When a generation wraps, a very old handle can become valid again.
   returns the slot to write, pop the slot to read. Any capacity, not only powers of two.
 - **Free slots** are a plain stack inside the pool: three lines, not worth an abstraction.
 - **Containers that own memory** (dynamic array, hash map) need an allocator: they get their own
-  ADR with roadmap §6, where `void *` vs macros is decided on a concrete case.
+  ADR once the allocators exist, where `void *` vs macros is decided on a concrete case.
 - Internal for now: promoting a header to `reborn/` is easy, withdrawing a public API is not.
 
 ## Consequences

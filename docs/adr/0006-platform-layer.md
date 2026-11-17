@@ -20,10 +20,10 @@ are not needed for v0.1 but must not require an API break later.
 1. Hidden `static` state allocated by the system itself — simplest; the engine cannot control
    where the memory comes from.
 2. Size query + startup: the system reports the size of its state, the engine allocates it and
-   passes it to `startup` — the engine owns all memory, fits arenas (roadmap §6); one more call
+   passes it to `startup` — the engine owns all memory, fits arenas; one more call
    per system.
 3. Allocator passed in: `startup(allocator, cfg)` and the system takes its memory from it — one
-   call, the engine still chooses the source; needs an allocator interface (§6 does not exist
+   call, the engine still chooses the source; needs an allocator interface (none exists
    yet), and the total size is no longer known before allocating.
 
 **C. Referring to a window**
@@ -97,7 +97,7 @@ swapchain)
 2. Send the resize only at the end of the drag (`WM_EXITSIZEMOVE`) — Win32 only.
 
 **M. Win32 modal loop** (while dragging or resizing, `rb_platform_pump` does not return)
-1. Keep it as a known limit until the game loop (§4).
+1. Keep it as a known limit until the game loop exists.
 2. A `WM_TIMER` that runs game code inside the modal loop — engine code inside an OS callback.
 3. A window thread — needs threading (backlog).
 
@@ -160,13 +160,13 @@ primary monitor's top left, negative left of or above it)
    no round trip; depends on the window manager.
 
 ## Decision
-**A1, B3 (B2 until §6), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1, V1,
+**A1, B3 (B2 until the allocators existed), C3, D2, E1, F1; window lifecycle: G2, H1, I1, J1, K1, L1, M1, N1, V1,
 W1, X1; input: O1, P1, Q1, R1, S1, T1, U1.**
 - **A1:** the public API is one header; CMake compiles `platform/win32/` or `platform/linux/`.
   If Linux ever needs two backends, the vtable lives inside the Linux backend only (A3 locally).
 - **B3:** systems never choose where their memory comes from; the engine does.
   `rb_platform_startup(allocator)` takes its state from the allocator it is given and keeps it,
-  and shutdown frees through it (ADR 0010, K1). Until §6 existed it was **B2**: the caller
+  and shutdown frees through it (ADR 0010, K1). Until the allocators existed it was **B2**: the caller
   queried `rb_platform_state_size()` and allocated with `malloc`. One call, and systems that
   allocate at runtime (renderer resources) need an allocator anyway.
 - **C3:** the API stays object-like (`rb_window_set_title(win, ...)`), the handle plays the role
@@ -315,7 +315,7 @@ in `platform_os.h`, `win32/win32_os.c` and `linux/linux_os.c` (ADR 0008).
 - The maximum number of windows is a compile-time constant.
 - Pure parts (ring buffer, handle pool, key mapping, window and input state, event merging) are
   unit-tested; windows and events are
-  tested once logging and the game lifecycle exist (§4, §5).
+  tested once logging and the game lifecycle exist.
 - Linux needs `libx11-dev` in `docker/linux.Dockerfile`. The container has no X server, so the
   Linux scripts gate on `ctest` and no longer run the sandbox, which runs on a Linux desktop
   (e.g. a WSL distro with WSLg). Rejected: Xvfb in the image (new package, and the sandbox
