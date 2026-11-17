@@ -73,8 +73,66 @@ offending call has not returned yet)
 1. `bool validation`, prefilled from the engine's build type — one field; a zeroed config means off.
 2. Enum `DEFAULT` / `ON` / `OFF` — a zeroed config follows the build type; one more type.
 
+**J. Who creates the surface** (OS-specific: `VK_KHR_win32_surface` takes an `HWND`,
+`VK_KHR_xlib_surface` a `Display *` and a `Window`)
+1. The platform, through an internal `platform/platform_vulkan.h` (the instance extension it needs,
+   and surface creation), implemented by each backend — OS code stays in `platform/<os>/`, native
+   handles never leave the platform, no `#ifdef` in the renderer; the platform knows Vulkan.
+2. The renderer, from native handles the platform exposes as `void *` — the platform ignores
+   Vulkan; the renderer includes `<windows.h>` and Xlib behind `#ifdef`, against the layout rules.
+3. The renderer, in per-OS files under `renderer/vulkan/` — clean, but widens the rule on where OS
+   code may live.
+
+**K. A renderer without a window** (tools, offscreen rendering, servers and CI without a display)
+1. Window optional: `platform` NULL creates a device without surface or swapchain — tests run
+   anywhere; two paths through device selection, for a use no game has yet.
+2. Window required — one path; tests that start the renderer need a display. Headless stays
+   possible later as an addition (NULL accepted) without changing the signature.
+
+**L. Which GPU** (fixed requirements: device Vulkan 1.3, VK_KHR_swapchain, a queue family as N)
+1. The first suitable, in the loader's order — least code; the order is the loader's and the
+   OS's, a laptop may get its integrated GPU.
+2. Ranked by type: discrete > integrated > virtual > CPU, ties in the loader's order — predictable,
+   picks the strongest.
+3. 2 plus an override (config or environment, by name or index) — nobody needs it yet, and the
+   configuration file does not exist yet.
+
+**M. CPU implementations** (lavapipe, SwiftShader)
+1. Last resort, with a warning — runs everywhere; a Linux player whose GPU driver is too old gets
+   a slideshow instead of an error (Mesa installs lavapipe next to the real driver).
+2. Only when the config allows it — a clear error for players; tests and sandboxes set a field.
+3. Never — no device at all where only lavapipe exists (containers, CI).
+
+**N. Queues**
+1. One family that does both graphics and presentation, required — one queue, swapchain images
+   never change family; rejects GPUs with split families (none among desktop GPUs in practice).
+2. Split families supported — more general; shared images or ownership transfers, code our
+   hardware would never run.
+
+**O. Vsync** (present mode: `FIFO` waits for the vertical blank and is always available; `MAILBOX`
+replaces the queued image, no tearing but the GPU renders unbounded; `IMMEDIATE` tears)
+1. Always FIFO.
+2. `bool vsync` in the config: FIFO when on; otherwise MAILBOX, then IMMEDIATE, then FIFO — uncapped
+   runs for profiling; one field.
+3. An enum of present modes in the config — a Vulkan concept in the game's hands.
+
+**P. Swapchain color format**
+1. sRGB (`B8G8R8A8_SRGB` / `R8G8B8A8_SRGB`, sRGB nonlinear): shaders write linear values, the
+   GPU encodes them — correct blending and lighting; colors picked as sRGB must be linearized.
+2. UNORM: values reach the screen as written — what you write is what you see; blending happens
+   in gamma space and gradients come out too dark.
+
+**Q. When the swapchain is recreated** (its extent is fixed at creation; a window with zero pixels
+cannot have one)
+1. The renderer compares the window's pixel size with the swapchain's at the start of each frame
+   (plus `VK_ERROR_OUT_OF_DATE_KHR` once frames are presented) — no wiring to events, nothing lost
+   when the queue drops one; needs a per-frame entry point now.
+2. The application forwards `RB_EVENT_WINDOW_RESIZED` — one more link, depends on events.
+3. Only on Vulkan's out-of-date errors — least code; drivers are not required to report them (some
+   X11 drivers do not): a stretched image.
+
 ## Decision
-**A1, B2, C2, D3, E2, F3, G2, H1, I1.**
+**A1, B2, C2, D3, E2, F3, G2, H1, I1, J1, K2, L2, M1, N1, O2, P1, Q1.**
 - **Version:** Vulkan 1.3, for instance and device: less code (no render passes) and the modern
   synchronization API, on every GPU we target. A loader offering less fails the startup (logged).
 - **Public API** (`reborn/renderer.h`): opaque `rb_renderer`, `rb_renderer_startup(allocator,
@@ -108,6 +166,26 @@ offending call has not returned yet)
 - **Function lists:** one X-macro per level (global, instance, device) names each function once;
   it generates the table fields and the loading code. Fields keep the full Vulkan name
   (`loader->global.vkCreateInstance`), so the spec's names are searchable in the code.
+- **Startup signature:** `rb_renderer_startup(allocator, config, platform, window)`. The renderer
+  keeps `platform` to read the window's size, so the platform must outlive it.
+- **Surface:** `rb_platform_vulkan_surface_extension()` names the OS extension, enabled with
+  `VK_KHR_surface` (missing: startup fails); `rb_platform_vulkan_create_surface` loads the OS
+  function from the instance and creates the surface. The renderer destroys it (`VK_KHR_surface`).
+- **GPU:** a candidate offers device API 1.3, `VK_KHR_swapchain` and a queue family with graphics and
+  presentation to the surface (dynamic rendering and synchronization2 are mandatory in 1.3, so the
+  version is enough; both are enabled at device creation). Every GPU is logged at INFO with its
+  verdict (suitable, or why not), so a failure explains itself; a CPU implementation chosen adds a
+  warning. One queue.
+- **Swapchain:** `rb_renderer_config.vsync`, prefilled `true` by the app. Images: the driver's
+  minimum + 1, within its maximum and the engine's array (8). Format: `B8G8R8A8_SRGB`, then
+  `R8G8B8A8_SRGB` (sRGB nonlinear), else the first offered, with a warning. One image view per
+  image. The first creation is logged at INFO, recreations at DEBUG (a drag makes many).
+- **Recreation:** internal `rb_renderer_prepare_frame` (`renderer/renderer_internal.h`), called by
+  the app each frame instead of the minimized check, says whether the frame can be shown: false
+  while minimized (Windows reports a 0x0 surface then) or with zero pixels.
+  When the window's pixel size differs from the one the swapchain was built for, it waits for the
+  device to go idle and recreates it, passing the old one as `oldSwapchain`. A failure is logged
+  once: no swapchain until the size changes again.
 
 ## Consequences
 - The executable starts without Vulkan; the renderer reports it and the engine decides what to do.
@@ -117,3 +195,6 @@ offending call has not returned yet)
 - The Linux build container needs `libvulkan-dev`, a driver (`mesa-vulkan-drivers`: lavapipe
   runs Vulkan on the CPU, so tests need no GPU) and `vulkan-validationlayers`.
 - A game cannot run on a machine without Vulkan 1.3, even one that never draws (tools).
+- The platform layer depends on the Vulkan headers (internal header and backends only).
+- Tests that start the renderer need a window: they are built on Windows only, like the
+  application runs; Linux checks them through the sandbox under Xvfb.

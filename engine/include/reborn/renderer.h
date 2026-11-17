@@ -6,18 +6,22 @@
  * for tools and tests.
  *
  *   rb_renderer *renderer = rb_renderer_startup(rb_arena_allocator(&arena),
- *                                               &(rb_renderer_config){.validation = true});
+ *                                               &(rb_renderer_config){.validation = true,
+ *                                                                     .vsync = true},
+ *                                               platform, window);
  *   ...
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
- * Work in progress (roadmap §7): it creates the Vulkan instance, nothing is drawn yet.
- * Pointer parameters must not be NULL (RB_ASSERT in debug builds).
+ * Work in progress (roadmap §7): it creates the device and the window's
+ * swapchain, nothing is drawn yet. Pointer parameters must not be NULL
+ * (RB_ASSERT in debug builds).
  */
 #ifndef RB_RENDERER_H
 #define RB_RENDERER_H
 
 #include <reborn/defines.h>
 #include <reborn/memory.h>
+#include <reborn/platform.h>
 
 /* Opaque: Vulkan types never reach game code. */
 typedef struct rb_renderer rb_renderer;
@@ -30,15 +34,24 @@ typedef struct rb_renderer_config {
      * without them a warning is logged and the renderer runs unchecked.
      */
     bool validation;
+    /*
+     * Wait for the monitor's refresh before showing a frame: no tearing, and
+     * the frame rate never exceeds the refresh rate. Off: frames are shown as
+     * soon as they are ready (without tearing where the driver can), for
+     * measuring performance.
+     */
+    bool vsync;
 } rb_renderer_config;
 
 /*
- * Takes its state from `allocator` (tag RB_MEMORY_TAG_RENDERER) and keeps a
- * copy of it: the state behind the allocator must outlive the renderer. NULL
- * on failure (logged): no Vulkan, a version below 1.3, no driver, no memory.
- * Nothing is left allocated or open then.
+ * Draws into `window`. Takes its state from `allocator` (tag
+ * RB_MEMORY_TAG_RENDERER) and keeps a copy of it and of `platform`: both, and
+ * the window, must outlive the renderer. NULL on failure (logged): no Vulkan,
+ * a version below 1.3, no GPU that can present to the window, a stale window,
+ * no memory. Nothing is left allocated or open then.
  */
-RB_API rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_config *config);
+RB_API rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_config *config,
+                                        const rb_platform_state *platform, rb_window window);
 
 /* Logs the validation totals, destroys every Vulkan object, frees `renderer`. */
 RB_API void rb_renderer_shutdown(rb_renderer *renderer);

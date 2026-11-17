@@ -21,6 +21,7 @@ RB_TEST(app, default_config_is_valid) {
     RB_EXPECT_EQ_UINT(config.state_size, 0);
     RB_EXPECT_EQ_INT(config.log.console_level, RB_LOG_LEVEL_INFO);
     RB_EXPECT(config.log.file_path == NULL);
+    RB_EXPECT(config.renderer.vsync);
 #if defined(RB_DEBUG)
     RB_EXPECT(config.renderer.validation);
 #else

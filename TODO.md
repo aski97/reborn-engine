@@ -55,8 +55,9 @@ code refer to them.
 - [x] Vulkan loading: loader opened at run time, function tables (ADR 0013)
 - [x] Instance (Vulkan 1.3), validation layers, debug messenger; public `rb_renderer` started
       by the app (ADR 0013)
-- [ ] Surface, devices, swapchain (to decide: who creates the surface, platform or renderer; GPU
-      choice, lavapipe as last resort or never; `rb_renderer_startup` takes the platform and window)
+- [ ] Surface (created by the platform), GPU ranked by type with lavapipe as last resort, device
+      with one graphics + present queue, swapchain (sRGB, vsync option) recreated when the window's
+      pixel size changes; `rb_renderer_startup` takes the platform and window (ADR 0013, J–Q)
 - [ ] Pipeline, command buffers, synchronization
 - [ ] First triangle → 2D quad
 
@@ -113,6 +114,11 @@ code refer to them.
 - [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
 
 ### Rendering
+- [ ] Rendering without a window (ADR 0013, K): `rb_renderer_startup` accepts a NULL platform and
+      creates a device without surface or swapchain, drawing to offscreen images. For tools (asset
+      baking, thumbnails), golden-image tests and CI machines without a display
+- [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
+      integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
 - [ ] Batched 2D renderer (sprites, textures)
 - [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)

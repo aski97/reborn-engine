@@ -25,10 +25,11 @@ add_executable(reborn_tests
     platform/test_library.c
     platform/test_memory.c
     platform/test_platform.c
-    renderer/test_renderer.c
     renderer/vulkan/test_vulkan_debug.c
+    renderer/vulkan/test_vulkan_device.c
     renderer/vulkan/test_vulkan_instance.c
     renderer/vulkan/test_vulkan_loader.c
+    renderer/vulkan/test_vulkan_swapchain.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c
     support/test_failing_allocator.c
@@ -37,8 +38,10 @@ add_executable(reborn_tests
 # Backend tests: only the backend of the target OS is in the engine (ADR 0006).
 if(WIN32)
     target_sources(reborn_tests PRIVATE
-        # Opens a real window: Windows only, the Linux test container has no X server.
+        # Open a real window: Windows only, the Linux test container has no X server.
         app/test_app_run.c
+        renderer/test_renderer.c
+        renderer/vulkan/test_vulkan_renderer.c
         platform/win32/test_win32_input.c
         platform/win32/test_win32_platform.c
     )

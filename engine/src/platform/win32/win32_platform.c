@@ -23,6 +23,10 @@
 #include <windows.h>
 #include <windowsx.h> /* GET_X_LPARAM / GET_Y_LPARAM */
 
+/* After <windows.h>: the Win32 surface types use HWND and HINSTANCE. */
+#include "platform/platform_vulkan.h"
+#include <vulkan/vulkan_win32.h>
+
 /* ============================================================================
  * State
  * ========================================================================== */
@@ -563,4 +567,44 @@ void rb_platform_pump(rb_platform_state *state) {
         DispatchMessageW(&msg);
     }
     win32_release_stuck_shifts(state);
+}
+
+/* ============================================================================
+ * Vulkan surface (ADR 0013, J1)
+ * ========================================================================== */
+
+const char *rb_platform_vulkan_surface_extension(void) {
+    return VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
+}
+
+bool rb_platform_vulkan_create_surface(const rb_platform_state *state, rb_window window,
+                                       VkInstance                instance,
+                                       PFN_vkGetInstanceProcAddr get_instance_proc_addr,
+                                       VkSurfaceKHR             *surface) {
+    RB_ASSERT(state != NULL && get_instance_proc_addr != NULL && surface != NULL);
+    *surface = VK_NULL_HANDLE;
+    if (!rb_handle_pool_valid(&state->common.window_pool, window.id)) {
+        RB_LOG_ERROR("Vulkan surface: window 0x%08x does not exist", window.id);
+        return false;
+    }
+    /* Present whenever the instance enabled VK_KHR_win32_surface. */
+    PFN_vkCreateWin32SurfaceKHR create =
+        (PFN_vkCreateWin32SurfaceKHR)get_instance_proc_addr(instance, "vkCreateWin32SurfaceKHR");
+    if (create == NULL) {
+        RB_LOG_ERROR("Vulkan instance lacks vkCreateWin32SurfaceKHR: "
+                     "was " VK_KHR_WIN32_SURFACE_EXTENSION_NAME " enabled?");
+        return false;
+    }
+    VkWin32SurfaceCreateInfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+        .hinstance = state->instance,
+        .hwnd = state->windows[rb_handle_index(window.id)].hwnd,
+    };
+    VkResult result = create(instance, &info, NULL, surface);
+    if (result != VK_SUCCESS) {
+        RB_LOG_ERROR("vkCreateWin32SurfaceKHR failed: %s", rb_vk_result_name(result));
+        *surface = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
 }

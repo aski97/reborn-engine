@@ -1,34 +1,75 @@
 /*
- * Vulkan instance internals (ADR 0013): the instance table, and a real
- * validation error travelling from the layer to our counters.
+ * Vulkan instance internals (ADR 0013): the instance table, the surface
+ * extensions, and a real validation error travelling from the layer to our
+ * counters. The instance is created directly, without a window, so these run
+ * in the Linux container too.
  */
 #include "rb_test.h"
 
-#include "renderer/vulkan/vulkan_renderer.h"
+#include <string.h>
 
-static rb_renderer *start(bool validation) {
-    return rb_renderer_startup(rb_heap_allocator(),
-                               &(rb_renderer_config){.validation = validation});
+#include "platform/platform_vulkan.h"
+#include "renderer/vulkan/vulkan_instance.h"
+
+typedef struct fixture {
+    rb_vk_loader   loader;
+    rb_vk_instance instance;
+    rb_vk_debug    debug; /* must outlive the instance: static storage below */
+} fixture;
+
+static fixture fx;
+
+static bool start(const char *surface_extension, bool validation) {
+    memset(&fx, 0, sizeof(fx));
+    if (!rb_vk_loader_open(&fx.loader)) {
+        return false;
+    }
+    if (!rb_vk_instance_create(&fx.instance, &fx.loader, rb_heap_allocator(), surface_extension,
+                               validation, &fx.debug)) {
+        rb_vk_loader_close(&fx.loader);
+        return false;
+    }
+    return true;
+}
+
+static void stop(void) {
+    rb_vk_instance_destroy(&fx.instance);
+    rb_vk_loader_close(&fx.loader);
 }
 
 RB_TEST(vulkan_instance, table_is_loaded) {
-    rb_renderer *renderer = start(true);
-    RB_REQUIRE(renderer != NULL);
-    RB_EXPECT(renderer->instance.handle != VK_NULL_HANDLE);
-#define TEST_EXPECT_LOADED(fn) RB_EXPECT(renderer->instance.vk.fn != NULL);
+    RB_REQUIRE(start(rb_platform_vulkan_surface_extension(), true));
+    RB_EXPECT(fx.instance.handle != VK_NULL_HANDLE);
+#define TEST_EXPECT_LOADED(fn) RB_EXPECT(fx.instance.vk.fn != NULL);
     RB_VK_INSTANCE_FUNCTIONS(TEST_EXPECT_LOADED)
+    RB_VK_SURFACE_FUNCTIONS(TEST_EXPECT_LOADED)
     RB_VK_DEBUG_UTILS_FUNCTIONS(TEST_EXPECT_LOADED)
 #undef TEST_EXPECT_LOADED
-    RB_EXPECT(renderer->instance.messenger != VK_NULL_HANDLE);
-    rb_renderer_shutdown(renderer);
+    RB_EXPECT(fx.instance.messenger != VK_NULL_HANDLE);
+    stop();
+}
+
+RB_TEST(vulkan_instance, no_surface_table_without_surface_extension) {
+    RB_REQUIRE(start(NULL, false));
+    RB_EXPECT(fx.instance.vk.vkDestroyInstance != NULL);
+    RB_EXPECT(fx.instance.vk.vkDestroySurfaceKHR == NULL);
+    stop();
 }
 
 RB_TEST(vulkan_instance, no_messenger_without_validation) {
-    rb_renderer *renderer = start(false);
-    RB_REQUIRE(renderer != NULL);
-    RB_EXPECT(renderer->instance.messenger == VK_NULL_HANDLE);
-    RB_EXPECT(renderer->instance.vk.vkCreateDebugUtilsMessengerEXT == NULL);
-    rb_renderer_shutdown(renderer);
+    RB_REQUIRE(start(NULL, false));
+    RB_EXPECT(fx.instance.messenger == VK_NULL_HANDLE);
+    RB_EXPECT(fx.instance.vk.vkCreateDebugUtilsMessengerEXT == NULL);
+    stop();
+}
+
+/* Unlike a missing validation layer, a missing surface extension leaves nothing to fall back to. */
+RB_TEST(vulkan_instance, unknown_surface_extension_fails) {
+    RB_REQUIRE(rb_vk_loader_open(&fx.loader));
+    RB_EXPECT(!rb_vk_instance_create(&fx.instance, &fx.loader, rb_heap_allocator(),
+                                     "VK_RB_no_such_surface", false, &fx.debug));
+    RB_EXPECT(fx.instance.handle == VK_NULL_HANDLE);
+    rb_vk_loader_close(&fx.loader);
 }
 
 /*
@@ -38,23 +79,20 @@ RB_TEST(vulkan_instance, no_messenger_without_validation) {
  * Under a debugger this stops in the callback, as designed.
  */
 RB_TEST(vulkan_instance, validation_error_is_counted) {
-    rb_renderer *renderer = start(true);
-    RB_REQUIRE(renderer != NULL);
-    RB_REQUIRE(rb_renderer_get_validation_stats(renderer).enabled);
+    RB_REQUIRE(start(NULL, true));
+    RB_REQUIRE(fx.debug.stats.enabled);
 
-    VkDebugUtilsMessengerCreateInfoEXT info = rb_vk_debug_messenger_info(&renderer->debug);
+    VkDebugUtilsMessengerCreateInfoEXT info = rb_vk_debug_messenger_info(&fx.debug);
     info.messageSeverity = 0;
     VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
-    VkResult                 result = renderer->instance.vk.vkCreateDebugUtilsMessengerEXT(
-        renderer->instance.handle, &info, NULL, &messenger);
+    VkResult                 result =
+        fx.instance.vk.vkCreateDebugUtilsMessengerEXT(fx.instance.handle, &info, NULL, &messenger);
     /* The layer reports and lets the call through: whatever was created is destroyed. */
     if (result == VK_SUCCESS && messenger != VK_NULL_HANDLE) {
-        renderer->instance.vk.vkDestroyDebugUtilsMessengerEXT(renderer->instance.handle, messenger,
-                                                              NULL);
+        fx.instance.vk.vkDestroyDebugUtilsMessengerEXT(fx.instance.handle, messenger, NULL);
     }
 
-    rb_renderer_validation_stats stats = rb_renderer_get_validation_stats(renderer);
-    RB_EXPECT(stats.errors >= 1);
-    RB_EXPECT_EQ_UINT(renderer->debug.seen_count, 1);
-    rb_renderer_shutdown(renderer);
+    RB_EXPECT(fx.debug.stats.errors >= 1);
+    RB_EXPECT_EQ_UINT(fx.debug.seen_count, 1);
+    stop();
 }

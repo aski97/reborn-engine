@@ -54,7 +54,7 @@ typedef struct rb_app rb_app;
 typedef struct rb_app_config {
     rb_log_config      log;         /* console INFO, no file */
     rb_window_desc     window;      /* main window; "Reborn", 1280x720 */
-    rb_renderer_config renderer;    /* validation on in debug builds of the engine */
+    rb_renderer_config renderer;    /* validation on in debug builds of the engine, vsync on */
     u32                update_rate; /* fixed steps per second, 1..1000; 60 */
     u32                max_fps;     /* frame cap until vsync; 60 */
     usize              state_size;  /* game state; 0 */

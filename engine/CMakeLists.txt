@@ -27,10 +27,12 @@ set(REBORN_SOURCES
     src/platform/input.c
     src/platform/platform.c
     src/renderer/vulkan/vulkan_debug.c
+    src/renderer/vulkan/vulkan_device.c
     src/renderer/vulkan/vulkan_instance.c
     src/renderer/vulkan/vulkan_loader.c
     src/renderer/vulkan/vulkan_renderer.c
     src/renderer/vulkan/vulkan_result.c
+    src/renderer/vulkan/vulkan_swapchain.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).

@@ -6,7 +6,7 @@
 | **Since** | v0.1.0 (2026-11-15) |
 | **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `engine/include/reborn/platform.h`, `engine/src/platform/` |
-| **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md) |
+| **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md), [0013](../adr/0013-vulkan-renderer.md) |
 
 ## Summary
 Windows and OS events behind one OS-independent API. Game and engine code never include an OS
@@ -143,10 +143,13 @@ rb_arena_destroy(&engine);
 - Xlib: each window registers `WM_DELETE_WINDOW`, so the close button becomes a `ClientMessage`
   instead of the window manager killing the connection. Titles go to `_NET_WM_NAME` and `WM_NAME`
   as `UTF8_STRING` (`XStoreName` would type them Latin-1). No custom X error handlers yet.
+- Vulkan surfaces (internal `platform/platform_vulkan.h`, ADR 0013, J1): each backend names its
+  instance extension (`VK_KHR_win32_surface`, `VK_KHR_xlib_surface`) and creates the surface from
+  its native handles, which never leave the platform. The Vulkan function comes from the
+  instance's `vkGetInstanceProcAddr`: the platform does not link Vulkan either.
 
 ## Future work
 - A native Wayland backend would have no window position (Wayland hides global coordinates).
-- Vulkan surface for the renderer.
 - Window commands (set size, minimize, fullscreen); maximized as a state.
 - Win32 modal loop: the game freezes while a window is dragged. The game loop clamps the frozen
   time ([app.md](app.md)); running during the drag still needs a solution (backlog).
@@ -165,3 +168,4 @@ rb_arena_destroy(&engine);
 | v0.1.0 | 2026-11-16 | Window position: `RB_EVENT_WINDOW_MOVED`, `rb_window_get_position` |
 | v0.1.0 | 2026-11-16 | Startup takes an `rb_allocator` and returns the state; `rb_platform_state_size` removed |
 | v0.1.0 | 2026-11-17 | Internal dynamic library loading (`rb_platform_library_*`, [renderer.md](renderer.md)) |
+| v0.1.0 | 2026-11-17 | Vulkan surface creation for the renderer (internal) |

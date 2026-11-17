@@ -21,8 +21,9 @@ and shuts everything down. Timing, frame memory and event handling are written o
   library), then calls `configure`, then starts the logger with `config.log` (default: console
   INFO, no file), and stops it last. `main` is one line; do not start the logger yourself.
 - **Renderer:** started after the main window, stopped before it (`rb_app_renderer`), configured
-  in `config.renderer`: validation on by default in debug builds of the engine. A machine without
-  Vulkan 1.3 fails the startup. See [renderer.md](renderer.md).
+  in `config.renderer`: validation on by default in debug builds of the engine, vsync on. It draws
+  into the main window. A machine without Vulkan 1.3 fails the startup. See
+  [renderer.md](renderer.md).
 - **Failure:** a version mismatch, `configure` or `init` returning `false`, an invalid config, or a
   failed startup (Vulkan missing included) make `rb_app_run` return 1 (logged). `shutdown` is not called when `init`
   failed. A log file that cannot be opened is only a warning.
@@ -32,8 +33,10 @@ and shuts everything down. Timing, frame memory and event handling are written o
 - **Step = pump + events + update:** each step pumps the platform, gives every event to
   `on_event`, then updates. `rb_key_was_pressed` covers exactly the time since the previous step.
   Events and input reach the game only at step boundaries.
-- **Render:** once per frame, with `alpha` in [0, 1) = leftover time / step. Skipped while the main
-  window is minimized, and the loop then sleeps until the next step is due.
+- **Render:** once per frame, with `alpha` in [0, 1) = leftover time / step. Each frame first asks
+  the renderer whether it can be shown (which also rebuilds the swapchain after a resize); it
+  cannot while the main window is minimized or has no pixels: render is skipped and the loop
+  sleeps until the next step is due.
 - **Quit:** a close request on the main window (after `on_event` saw it) or `rb_app_quit`. The
   loop ends after the current step's events, or after the current frame.
 - **Logging:** each phase once, never per frame. INFO: the configuration as received (`Config:`
@@ -62,7 +65,7 @@ flowchart TD
     I --> F[frame: advance clock, reset frame arena]
     F --> Q{full step in accumulator?}
     Q -- yes --> P[pump] --> E[on_event for each event] --> U["update(dt)"] --> Q
-    Q -- no --> R["render(alpha), unless minimized"] --> W[sleep to the frame deadline] --> F
+    Q -- no --> R["render(alpha), unless nothing can be shown"] --> W[sleep to the frame deadline] --> F
     E -. close / quit .-> D[shutdown] --> T[tear down systems, logger last]
 ```
 `frame_timing.c` holds the accumulator (`rb_step_clock`) and the pacer (`rb_frame_pacer`). Both are
@@ -128,3 +131,4 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 | v0.1.0 | 2026-11-16 | First version: callbacks, fixed step, frame cap, persistent and frame arenas |
 | v0.1.0 | 2026-11-16 | `rb_app_allocator`; memory report (leaks, arena peaks) at the end of the run |
 | v0.1.0 | 2026-11-17 | Starts the renderer (`config.renderer`, `rb_app_renderer`) |
+| v0.1.0 | 2026-11-17 | The renderer gets the main window; render skipped when the renderer cannot show a frame |

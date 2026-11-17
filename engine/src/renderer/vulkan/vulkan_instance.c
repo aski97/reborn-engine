@@ -1,5 +1,5 @@
 /*
- * Vulkan instance (ADR 0013, D3 and E2).
+ * Vulkan instance (ADR 0013, D3, E2 and J1).
  */
 #include "renderer/vulkan/vulkan_instance.h"
 
@@ -113,13 +113,37 @@ static bool instance_validation_available(const rb_vk_loader *loader, rb_allocat
     return true;
 }
 
+/*
+ * Whether the instance can present: VK_KHR_surface for the common surface
+ * functions, `extension` for the OS. Unlike validation there is nothing to fall
+ * back to, so a missing one is an error. False when an extension is missing or
+ * the list cannot be read (logged).
+ */
+static bool instance_surface_available(const rb_vk_loader *loader, rb_allocator allocator,
+                                       const char *extension) {
+    const char *names[] = {VK_KHR_SURFACE_EXTENSION_NAME, extension};
+    for (usize i = 0; i < RB_ARRAY_COUNT(names); ++i) {
+        bool found;
+        if (!instance_has_extension(loader, allocator, names[i], &found)) {
+            return false;
+        }
+        if (!found) {
+            RB_LOG_ERROR("Vulkan cannot present to a window: %s is missing (update the GPU "
+                         "driver)",
+                         names[i]);
+            return false;
+        }
+    }
+    return true;
+}
+
 /* ============================================================================
  * Creation and destruction
  * ========================================================================== */
 
 /* After vkCreateInstance: the instance table, then the messenger. False (logged) on failure. */
-static bool instance_finish(rb_vk_instance *instance, const rb_vk_loader *loader, bool validation,
-                            rb_vk_debug *debug) {
+static bool instance_finish(rb_vk_instance *instance, const rb_vk_loader *loader, bool surface,
+                            bool validation, rb_vk_debug *debug) {
     bool complete = true;
 #define RB_VK_LOAD_INSTANCE(fn)                                                                    \
     instance->vk.fn = (PFN_##fn)loader->vkGetInstanceProcAddr(instance->handle, #fn);              \
@@ -128,6 +152,9 @@ static bool instance_finish(rb_vk_instance *instance, const rb_vk_loader *loader
         complete = false;                                                                          \
     }
     RB_VK_INSTANCE_FUNCTIONS(RB_VK_LOAD_INSTANCE)
+    if (surface) {
+        RB_VK_SURFACE_FUNCTIONS(RB_VK_LOAD_INSTANCE)
+    }
     if (validation) {
         RB_VK_DEBUG_UTILS_FUNCTIONS(RB_VK_LOAD_INSTANCE)
     }
@@ -149,7 +176,8 @@ static bool instance_finish(rb_vk_instance *instance, const rb_vk_loader *loader
 }
 
 bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
-                           rb_allocator allocator, bool validation, rb_vk_debug *debug) {
+                           rb_allocator allocator, const char *surface_extension, bool validation,
+                           rb_vk_debug *debug) {
     RB_ASSERT(instance != NULL && loader != NULL && debug != NULL);
     memset(instance, 0, sizeof(*instance));
     debug->stats.enabled = false;
@@ -159,6 +187,11 @@ bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
         RB_LOG_ERROR("Vulkan 1.3 is required, the installed loader offers %u.%u: update the GPU "
                      "driver",
                      VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version));
+        return false;
+    }
+
+    if (surface_extension != NULL &&
+        !instance_surface_available(loader, allocator, surface_extension)) {
         return false;
     }
 
@@ -178,7 +211,15 @@ bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
         .apiVersion = VK_API_VERSION_1_3,
     };
     const char *layers[] = {RB_VK_VALIDATION_LAYER};
-    const char *extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+    const char *extensions[3];
+    u32         extension_count = 0;
+    if (surface_extension != NULL) {
+        extensions[extension_count++] = VK_KHR_SURFACE_EXTENSION_NAME;
+        extensions[extension_count++] = surface_extension;
+    }
+    if (use_validation) {
+        extensions[extension_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+    }
     /*
      * The messenger needs an instance to exist; chained here, the same callback
      * also checks vkCreateInstance and vkDestroyInstance themselves.
@@ -190,7 +231,7 @@ bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
         .pApplicationInfo = &app_info,
         .enabledLayerCount = use_validation ? (u32)RB_ARRAY_COUNT(layers) : 0,
         .ppEnabledLayerNames = layers,
-        .enabledExtensionCount = use_validation ? (u32)RB_ARRAY_COUNT(extensions) : 0,
+        .enabledExtensionCount = extension_count,
         .ppEnabledExtensionNames = extensions,
     };
     VkResult result = loader->global.vkCreateInstance(&info, NULL, &instance->handle);
@@ -202,12 +243,14 @@ bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
         memset(instance, 0, sizeof(*instance));
         return false;
     }
-    if (!instance_finish(instance, loader, use_validation, debug)) {
+    if (!instance_finish(instance, loader, surface_extension != NULL, use_validation, debug)) {
         rb_vk_instance_destroy(instance);
         return false;
     }
     debug->stats.enabled = use_validation;
-    RB_LOG_INFO("Vulkan instance created: API 1.3, validation %s", use_validation ? "on" : "off");
+    RB_LOG_INFO("Vulkan instance created: API 1.3, %s, validation %s",
+                surface_extension != NULL ? surface_extension : "no surface",
+                use_validation ? "on" : "off");
     return true;
 }
 

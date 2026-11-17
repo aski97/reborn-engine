@@ -12,6 +12,7 @@
 #include "app/app_internal.h"
 #include "app/frame_timing.h"
 #include "memory/memory_internal.h"
+#include "renderer/renderer_internal.h"
 
 /*
  * Longest frame delta the simulation sees. Longer gaps (suspend, a debugger
@@ -56,9 +57,9 @@ rb_app_config rb_app_default_config(void) {
         .log = {.console_level = RB_LOG_LEVEL_INFO, .file_level = RB_LOG_LEVEL_INFO},
         .window = {.title = "Reborn", .width = 1280, .height = 720},
 #if defined(RB_DEBUG)
-        .renderer = {.validation = true},
+        .renderer = {.validation = true, .vsync = true},
 #else
-        .renderer = {.validation = false},
+        .renderer = {.validation = false, .vsync = true},
 #endif
         .update_rate = 60,
         .max_fps = 60,
@@ -85,7 +86,8 @@ static void app_log_config(const rb_app_config *config) {
                 config->window.title != NULL ? config->window.title : "(no title)",
                 config->window.width, config->window.height);
     RB_LOG_INFO("Config: %u updates/s, frame cap %s", config->update_rate, cap);
-    RB_LOG_INFO("Config: renderer validation %s", config->renderer.validation ? "on" : "off");
+    RB_LOG_INFO("Config: renderer validation %s, vsync %s",
+                config->renderer.validation ? "on" : "off", config->renderer.vsync ? "on" : "off");
     RB_LOG_INFO("Config: state %s aligned to %zu, arenas %s persistent + %s frame reserved",
                 rb_memory_format_size(state, sizeof(state), config->state_size),
                 config->state_align,
@@ -146,8 +148,8 @@ static bool app_startup(rb_app *app, const rb_app_config *config) {
     if (app->platform != NULL) {
         app->window = rb_window_create(app->platform, &config->window);
         if (rb_window_is_valid(app->platform, app->window)) {
-            app->renderer =
-                rb_renderer_startup(rb_arena_allocator(&app->persistent), &config->renderer);
+            app->renderer = rb_renderer_startup(rb_arena_allocator(&app->persistent),
+                                                &config->renderer, app->platform, app->window);
             if (app->renderer != NULL) {
                 app->state =
                     rb_arena_push(&app->persistent, config->state_size, config->state_align);
@@ -271,16 +273,19 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
             break;
         }
 
-        /* Nothing to show: a minimized window only keeps the simulation going. */
-        bool minimized = rb_window_is_minimized(app->platform, app->window);
-        if (!minimized && app->callbacks->render != NULL) {
+        /*
+         * Nothing to show while minimized or without a swapchain: the
+         * simulation keeps going. Also rebuilds the swapchain after a resize.
+         */
+        bool visible = rb_renderer_prepare_frame(app->renderer);
+        if (visible && app->callbacks->render != NULL) {
             app->callbacks->render(app->state, app, rb_step_clock_alpha(&clock));
         }
         ++app->frame_count;
 
         now = rb_time_now();
         u64 wait = rb_frame_pacer_wait(&pacer, now);
-        if (minimized) {
+        if (!visible) {
             /* Even uncapped: without a render, frames before the next step are empty spins. */
             u64 next_step = rb_step_clock_next_step_at(&clock);
             if (next_step > now && next_step - now > wait) {

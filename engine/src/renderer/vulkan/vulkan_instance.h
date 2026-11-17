@@ -1,6 +1,6 @@
 /*
- * Vulkan instance (ADR 0013, D3 and E2): the connection between the engine and
- * the Vulkan installation, with the layers and extensions it enables.
+ * Vulkan instance (ADR 0013, D3, E2 and J1): the connection between the engine
+ * and the Vulkan installation, with the layers and extensions it enables.
  */
 #ifndef RB_VULKAN_INSTANCE_H
 #define RB_VULKAN_INSTANCE_H
@@ -22,15 +22,19 @@ typedef struct rb_vk_instance {
 } rb_vk_instance;
 
 /*
- * Creates a Vulkan 1.3 instance. With `validation`, enables the validation
- * layer and a messenger reporting to `debug` when both the layer and
- * VK_EXT_debug_utils are installed, otherwise warns and goes on without;
- * debug->stats.enabled tells which. `allocator` serves the temporary lists of
- * layers and extensions. `debug` must outlive the instance: it also receives
- * the messages of its destruction. False (logged): *instance is zeroed.
+ * Creates a Vulkan 1.3 instance. `surface_extension` is the OS's surface
+ * extension (rb_platform_vulkan_surface_extension), enabled with VK_KHR_surface
+ * and required; NULL for an instance that never presents (tests). With
+ * `validation`, enables the validation layer and a messenger reporting to
+ * `debug` when both the layer and VK_EXT_debug_utils are installed, otherwise
+ * warns and goes on without; debug->stats.enabled tells which. `allocator`
+ * serves the temporary lists of layers and extensions. `debug` must outlive
+ * the instance: it also receives the messages of its destruction. False
+ * (logged): *instance is zeroed.
  */
 bool rb_vk_instance_create(rb_vk_instance *instance, const rb_vk_loader *loader,
-                           rb_allocator allocator, bool validation, rb_vk_debug *debug);
+                           rb_allocator allocator, const char *surface_extension, bool validation,
+                           rb_vk_debug *debug);
 
 /* Messenger, then instance; zeroes *instance. */
 void rb_vk_instance_destroy(rb_vk_instance *instance);

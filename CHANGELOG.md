@@ -90,9 +90,9 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   holds the callbacks). It logs every window and input event (modifiers by name:
   `key S pressed [Ctrl]`) and the steps and frames of each second, to the console and to
   `reborn.log.jsonl`.
-- Vulkan renderer (ADR 0013), `reborn/renderer.h`: `rb_renderer_startup(allocator, config)` /
-  `rb_renderer_shutdown` create and destroy a Vulkan 1.3 instance; state tagged
-  `RB_MEMORY_TAG_RENDERER`. The engine opens `vulkan-1.dll` / `libvulkan.so.1` at run time instead
+- Vulkan renderer (ADR 0013), `reborn/renderer.h`: `rb_renderer_startup(allocator, config,
+  platform, window)` / `rb_renderer_shutdown` create and destroy a Vulkan 1.3 instance, the
+  window's surface, a device and a swapchain; state tagged `RB_MEMORY_TAG_RENDERER`. The engine opens `vulkan-1.dll` / `libvulkan.so.1` at run time instead
   of linking it, so a machine without Vulkan (or below 1.3) gets a logged error; functions are
   loaded into per-object tables (X-macro lists, `VK_NO_PROTOTYPES`). Headers come from the Vulkan
   SDK on Windows and `libvulkan-dev` on Linux.
@@ -102,8 +102,19 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   to the log at the matching level; validation errors and warnings are counted
   (`rb_renderer_get_validation_stats`) and their totals logged at shutdown; the first error of each
   kind stops in an attached debugger (`RB_DEBUG_BREAK`, shared with `RB_ASSERT`).
-- Application layer starts the renderer after the main window (`rb_app_config.renderer`,
-  `rb_app_renderer`).
+- GPU choice: every GPU is logged with its verdict; suitable ones (Vulkan 1.3, `VK_KHR_swapchain`,
+  one queue family that draws and presents) are ranked discrete > integrated > virtual > CPU, with
+  a warning when only a CPU implementation such as lavapipe fits. The device enables dynamic
+  rendering and synchronization2.
+- Swapchain: sRGB format (`B8G8R8A8_SRGB` / `R8G8B8A8_SRGB`), minimum images + 1, one image view
+  each; `rb_renderer_config.vsync` picks FIFO, or MAILBOX / IMMEDIATE when off. Rebuilt when the
+  window's pixel size changes, checked at the start of each frame; none while the window has no
+  pixels.
+- Vulkan surfaces created by the platform backends (internal `platform/platform_vulkan.h`:
+  `VK_KHR_win32_surface`, `VK_KHR_xlib_surface`), so native window handles stay in the platform.
+- Application layer starts the renderer on the main window (`rb_app_config.renderer`, vsync on by
+  default, `rb_app_renderer`); each frame asks it whether the frame can be shown, and skips render
+  when not (minimized, no pixels).
 - Linux build container: `libvulkan-dev`, `mesa-vulkan-drivers` (lavapipe, Vulkan on the CPU) and
   `vulkan-validationlayers`, so renderer tests run without a GPU.
 - Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the

@@ -40,7 +40,22 @@ typedef struct rb_vk_global_functions {
  * ========================================================================== */
 
 /* Core 1.0–1.3: required. */
-#define RB_VK_INSTANCE_FUNCTIONS(X) X(vkDestroyInstance)
+#define RB_VK_INSTANCE_FUNCTIONS(X)                                                                \
+    X(vkDestroyInstance)                                                                           \
+    X(vkEnumeratePhysicalDevices)                                                                  \
+    X(vkGetPhysicalDeviceProperties)                                                               \
+    X(vkGetPhysicalDeviceQueueFamilyProperties)                                                    \
+    X(vkEnumerateDeviceExtensionProperties)                                                        \
+    X(vkCreateDevice)                                                                              \
+    X(vkGetDeviceProcAddr)
+
+/* VK_KHR_surface: loaded only when the instance presents to a window. */
+#define RB_VK_SURFACE_FUNCTIONS(X)                                                                 \
+    X(vkDestroySurfaceKHR)                                                                         \
+    X(vkGetPhysicalDeviceSurfaceSupportKHR)                                                        \
+    X(vkGetPhysicalDeviceSurfaceCapabilitiesKHR)                                                   \
+    X(vkGetPhysicalDeviceSurfaceFormatsKHR)                                                        \
+    X(vkGetPhysicalDeviceSurfacePresentModesKHR)
 
 /* VK_EXT_debug_utils: loaded only when the extension is enabled (validation). */
 #define RB_VK_DEBUG_UTILS_FUNCTIONS(X)                                                             \
@@ -49,8 +64,34 @@ typedef struct rb_vk_global_functions {
 
 typedef struct rb_vk_instance_functions {
     RB_VK_INSTANCE_FUNCTIONS(RB_VK_DECLARE_FUNCTION)
+    /* NULL without a surface extension. */
+    RB_VK_SURFACE_FUNCTIONS(RB_VK_DECLARE_FUNCTION)
     /* NULL without validation. */
     RB_VK_DEBUG_UTILS_FUNCTIONS(RB_VK_DECLARE_FUNCTION)
 } rb_vk_instance_functions;
+
+/* ============================================================================
+ * Device level: loaded with vkGetDeviceProcAddr(device, name). They belong to
+ * one device and call its driver directly, without the loader's dispatch.
+ * ========================================================================== */
+
+/* Core 1.0–1.3: required. */
+#define RB_VK_DEVICE_FUNCTIONS(X)                                                                  \
+    X(vkDestroyDevice)                                                                             \
+    X(vkDeviceWaitIdle)                                                                            \
+    X(vkGetDeviceQueue)                                                                            \
+    X(vkCreateImageView)                                                                           \
+    X(vkDestroyImageView)
+
+/* VK_KHR_swapchain: always enabled, the renderer always presents to a window (ADR 0013, K2). */
+#define RB_VK_SWAPCHAIN_FUNCTIONS(X)                                                               \
+    X(vkCreateSwapchainKHR)                                                                        \
+    X(vkDestroySwapchainKHR)                                                                       \
+    X(vkGetSwapchainImagesKHR)
+
+typedef struct rb_vk_device_functions {
+    RB_VK_DEVICE_FUNCTIONS(RB_VK_DECLARE_FUNCTION)
+    RB_VK_SWAPCHAIN_FUNCTIONS(RB_VK_DECLARE_FUNCTION)
+} rb_vk_device_functions;
 
 #endif /* RB_VULKAN_FUNCTIONS_H */
