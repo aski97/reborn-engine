@@ -7,26 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "core/debug_break.h"
 #include "platform/platform_os.h"
-
-/*
- * Stops in the debugger as if a breakpoint were set on this line. Without a
- * debugger it would kill the process with a breakpoint exception, hence the
- * check before using it.
- */
-#if defined(RB_COMPILER_CLANG)
-    #define RB_ASSERT_BREAK_() __builtin_debugtrap()
-#elif defined(RB_COMPILER_MSVC)
-    #include <intrin.h>
-    #define RB_ASSERT_BREAK_() __debugbreak()
-#else
-    /* GCC has no resumable trap; execution does not resume past an assert anyway. */
-    #define RB_ASSERT_BREAK_() __builtin_trap()
-#endif
 
 static _Noreturn void assert_stop(void) {
     if (rb_platform_debugger_attached()) {
-        RB_ASSERT_BREAK_();
+        RB_DEBUG_BREAK();
     }
     /*
      * abort, not exit: no atexit handlers run on state we know is broken, and

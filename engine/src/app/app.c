@@ -40,6 +40,7 @@ struct rb_app {
     rb_arena                frame;
     rb_platform_state      *platform;
     rb_window               window;
+    rb_renderer            *renderer;
     app_quit_reason         quit_reason;
     /* Totals for the closing log line. Frames count loop iterations, rendered or not. */
     u64 frame_count;
@@ -54,6 +55,11 @@ rb_app_config rb_app_default_config(void) {
     return (rb_app_config){
         .log = {.console_level = RB_LOG_LEVEL_INFO, .file_level = RB_LOG_LEVEL_INFO},
         .window = {.title = "Reborn", .width = 1280, .height = 720},
+#if defined(RB_DEBUG)
+        .renderer = {.validation = true},
+#else
+        .renderer = {.validation = false},
+#endif
         .update_rate = 60,
         .max_fps = 60,
         .state_size = 0,
@@ -79,6 +85,7 @@ static void app_log_config(const rb_app_config *config) {
                 config->window.title != NULL ? config->window.title : "(no title)",
                 config->window.width, config->window.height);
     RB_LOG_INFO("Config: %u updates/s, frame cap %s", config->update_rate, cap);
+    RB_LOG_INFO("Config: renderer validation %s", config->renderer.validation ? "on" : "off");
     RB_LOG_INFO("Config: state %s aligned to %zu, arenas %s persistent + %s frame reserved",
                 rb_memory_format_size(state, sizeof(state), config->state_size),
                 config->state_align,
@@ -139,9 +146,15 @@ static bool app_startup(rb_app *app, const rb_app_config *config) {
     if (app->platform != NULL) {
         app->window = rb_window_create(app->platform, &config->window);
         if (rb_window_is_valid(app->platform, app->window)) {
-            app->state = rb_arena_push(&app->persistent, config->state_size, config->state_align);
-            if (app->state != NULL) {
-                return true;
+            app->renderer =
+                rb_renderer_startup(rb_arena_allocator(&app->persistent), &config->renderer);
+            if (app->renderer != NULL) {
+                app->state =
+                    rb_arena_push(&app->persistent, config->state_size, config->state_align);
+                if (app->state != NULL) {
+                    return true;
+                }
+                rb_renderer_shutdown(app->renderer);
             }
             rb_window_destroy(app->platform, app->window);
         }
@@ -172,6 +185,7 @@ static void app_log_memory(const rb_app *app) {
 }
 
 static void app_shutdown(rb_app *app) {
+    rb_renderer_shutdown(app->renderer);
     rb_window_destroy(app->platform, app->window);
     rb_platform_shutdown(app->platform);
     app_log_memory(app);
@@ -370,6 +384,11 @@ rb_platform_state *rb_app_platform(rb_app *app) {
 rb_window rb_app_window(const rb_app *app) {
     RB_ASSERT(app != NULL);
     return app->window;
+}
+
+rb_renderer *rb_app_renderer(rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return app->renderer;
 }
 
 rb_arena *rb_app_persistent_arena(rb_app *app) {

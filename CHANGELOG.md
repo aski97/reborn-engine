@@ -90,3 +90,21 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   holds the callbacks). It logs every window and input event (modifiers by name:
   `key S pressed [Ctrl]`) and the steps and frames of each second, to the console and to
   `reborn.log.jsonl`.
+- Vulkan renderer (ADR 0013), `reborn/renderer.h`: `rb_renderer_startup(allocator, config)` /
+  `rb_renderer_shutdown` create and destroy a Vulkan 1.3 instance; state tagged
+  `RB_MEMORY_TAG_RENDERER`. The engine opens `vulkan-1.dll` / `libvulkan.so.1` at run time instead
+  of linking it, so a machine without Vulkan (or below 1.3) gets a logged error; functions are
+  loaded into per-object tables (X-macro lists, `VK_NO_PROTOTYPES`). Headers come from the Vulkan
+  SDK on Windows and `libvulkan-dev` on Linux.
+- Vulkan validation: `rb_renderer_config.validation` (on by default in debug builds of the engine)
+  enables `VK_LAYER_KHRONOS_validation` with a `VK_EXT_debug_utils` messenger, also covering
+  instance creation and destruction; without the layer, a warning and the run goes on. Messages go
+  to the log at the matching level; validation errors and warnings are counted
+  (`rb_renderer_get_validation_stats`) and their totals logged at shutdown; the first error of each
+  kind stops in an attached debugger (`RB_DEBUG_BREAK`, shared with `RB_ASSERT`).
+- Application layer starts the renderer after the main window (`rb_app_config.renderer`,
+  `rb_app_renderer`).
+- Linux build container: `libvulkan-dev`, `mesa-vulkan-drivers` (lavapipe, Vulkan on the CPU) and
+  `vulkan-validationlayers`, so renderer tests run without a GPU.
+- Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the
+  application folder and System32, `dlopen`).

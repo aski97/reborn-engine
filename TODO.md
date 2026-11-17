@@ -2,9 +2,8 @@
 
 ## v0.1.0 — Foundations
 
-Order of the remaining work: §4 timer → §6 core (OS allocation, arena, allocator interface, ASan,
-failing allocator) → rest of §4, designed on top of the allocators → rest of §6 (tracking) → §7.
-Section numbers stay fixed: ADRs and code refer to them.
+§1–§6 are done; what remains is §7, in its listed order. Section numbers stay fixed: ADRs and
+code refer to them.
 
 ### 1. Project setup
 - [x] Folder layout, git, `.gitignore` / `.gitattributes`
@@ -53,9 +52,11 @@ Section numbers stay fixed: ADRs and code refer to them.
 - [x] Allocation tracking by tag, leak report, arena high-water mark (ADR 0012)
 
 ### 7. Rendering (Vulkan)
-- [ ] Vulkan loading (link vs dynamic: to decide)
-- [ ] Instance, validation layers, debug messenger
-- [ ] Surface, devices, swapchain
+- [x] Vulkan loading: loader opened at run time, function tables (ADR 0013)
+- [x] Instance (Vulkan 1.3), validation layers, debug messenger; public `rb_renderer` started
+      by the app (ADR 0013)
+- [ ] Surface, devices, swapchain (to decide: who creates the surface, platform or renderer; GPU
+      choice, lavapipe as last resort or never; `rb_renderer_startup` takes the platform and window)
 - [ ] Pipeline, command buffers, synchronization
 - [ ] First triangle → 2D quad
 
@@ -113,6 +114,8 @@ Section numbers stay fixed: ADRs and code refer to them.
 
 ### Rendering
 - [ ] Batched 2D renderer (sprites, textures)
+- [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
+- [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
 - [ ] 3D
 
 ### Testing

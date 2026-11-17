@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.1.0 (2026-11-16) |
+| **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `engine/include/reborn/memory.h`, `engine/src/memory/`, `engine/src/platform/platform_os.h`, `engine/src/platform/*/…_memory.c`, `tests/support/failing_allocator.*` |
 | **ADRs** | [0010](../adr/0010-memory-allocation.md), [0012](../adr/0012-allocation-tracking.md) |
 
@@ -31,7 +31,7 @@ and peaks show up per subsystem at the end of the run.
 
 **Tracking** (public, `reborn/memory.h`; ADR 0012)
 - Every helper takes an `rb_memory_tag` as its last argument (`GENERAL` for tools and tests,
-  `PLATFORM`, `GAME`), the same in alloc, resize and free; out of range is asserted.
+  `PLATFORM`, `GAME`, `RENDERER`), the same in alloc, resize and free; out of range is asserted.
 - Counted per tag by the helpers, whichever allocator serves the call: `live_bytes`, `peak_bytes`,
   `live_blocks`, `alloc_count` (a resize of `NULL` included), `free_count`
   (`rb_memory_get_stats`). Failed calls and frees of `NULL` count nothing. Always on.
@@ -220,3 +220,4 @@ for (u32 n = 1;; ++n) {
 | v0.1.0 | 2026-11-16 | Allocator interface, arena adapter, heap allocator, failing test allocator |
 | v0.1.0 | 2026-11-16 | Platform startup takes an allocator; the sandbox uses an engine arena |
 | v0.1.0 | 2026-11-16 | Tracking by tag, leak report, arena high-water mark |
+| v0.1.0 | 2026-11-17 | `RB_MEMORY_TAG_RENDERER` |

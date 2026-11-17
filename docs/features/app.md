@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.1.0 (2026-11-16) |
+| **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `engine/include/reborn/app.h`, `engine/src/app/` |
-| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md) |
+| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md), [0013](../adr/0013-vulkan-renderer.md) |
 
 ## Summary
 The engine owns the game loop. A game is a set of callbacks: the engine starts its systems, opens
@@ -20,8 +20,11 @@ and shuts everything down. Timing, frame memory and event handling are written o
   engine's headers (an inline function in `app.h`, so the game's `RB_VERSION_NUMBER` reaches the
   library), then calls `configure`, then starts the logger with `config.log` (default: console
   INFO, no file), and stops it last. `main` is one line; do not start the logger yourself.
+- **Renderer:** started after the main window, stopped before it (`rb_app_renderer`), configured
+  in `config.renderer`: validation on by default in debug builds of the engine. A machine without
+  Vulkan 1.3 fails the startup. See [renderer.md](renderer.md).
 - **Failure:** a version mismatch, `configure` or `init` returning `false`, an invalid config, or a
-  failed startup make `rb_app_run` return 1 (logged). `shutdown` is not called when `init`
+  failed startup (Vulkan missing included) make `rb_app_run` return 1 (logged). `shutdown` is not called when `init`
   failed. A log file that cannot be opened is only a warning.
 - **Fixed step:** `update(dt)` runs `update_rate` times per second (1..1000, default 60), with
   `dt = 1 / update_rate`. The first frame runs one step at once. Frame deltas are clamped to
@@ -55,7 +58,7 @@ and shuts everything down. Timing, frame memory and event handling are written o
 ## Design
 ```mermaid
 flowchart TD
-    V[version check] --> C[configure] --> LG[logger] --> S[arenas, platform, main window, state] --> I[init]
+    V[version check] --> C[configure] --> LG[logger] --> S[arenas, platform, main window, renderer, state] --> I[init]
     I --> F[frame: advance clock, reset frame arena]
     F --> Q{full step in accumulator?}
     Q -- yes --> P[pump] --> E[on_event for each event] --> U["update(dt)"] --> Q
@@ -92,7 +95,8 @@ int main(void) {
     return rb_app_run(&game);
 }
 ```
-Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_persistent_arena`,
+Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_renderer`,
+`rb_app_persistent_arena`,
 `rb_app_frame_arena`, `rb_app_allocator`, `rb_app_quit`.
 
 ```c
@@ -123,3 +127,4 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 |---|---|---|
 | v0.1.0 | 2026-11-16 | First version: callbacks, fixed step, frame cap, persistent and frame arenas |
 | v0.1.0 | 2026-11-16 | `rb_app_allocator`; memory report (leaks, arena peaks) at the end of the run |
+| v0.1.0 | 2026-11-17 | Starts the renderer (`config.renderer`, `rb_app_renderer`) |

@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-16) |
+| **Updated** | v0.1.0 (2026-11-17) |
 | **Code** | `engine/include/reborn/platform.h`, `engine/src/platform/` |
 | **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md) |
 
@@ -44,6 +44,8 @@ header; each OS has its own backend, chosen by CMake.
 - Failures are logged with their reason (Win32: `GetLastError` text); startup, window creation
   (with the measured pixel size and DPI) and destruction are logged too.
 - Keyboard and mouse events and state: see [input.md](input.md).
+- Internal, stateless: dynamic libraries opened at run time (`rb_platform_library_open` /
+  `_symbol` / `_close`); Windows searches only the application folder and System32.
 - Not yet: window commands (set size, minimize, fullscreen).
 - Known limits: while a window is dragged or resized, Windows runs its own loop and
   `rb_platform_pump` does not return. On Linux, an X protocol error or a lost connection ends the
@@ -162,3 +164,4 @@ rb_arena_destroy(&engine);
 | v0.1.0 | 2026-11-16 | Owned by the application layer; `platform.h` stays public ([app.md](app.md)) |
 | v0.1.0 | 2026-11-16 | Window position: `RB_EVENT_WINDOW_MOVED`, `rb_window_get_position` |
 | v0.1.0 | 2026-11-16 | Startup takes an `rb_allocator` and returns the state; `rb_platform_state_size` removed |
+| v0.1.0 | 2026-11-17 | Internal dynamic library loading (`rb_platform_library_*`, [renderer.md](renderer.md)) |

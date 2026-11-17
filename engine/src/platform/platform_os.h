@@ -79,4 +79,34 @@ void *rb_platform_heap_resize(void *ptr, usize old_size, usize new_size, usize a
 /* A block from rb_platform_heap_alloc or _resize, never NULL. */
 void rb_platform_heap_free(void *ptr);
 
+/* ============================================================================
+ * Dynamic libraries (ADR 0013)
+ *
+ * Loading a DLL / shared object while running, instead of linking it: a
+ * missing library is then an error the engine reports, not an executable the
+ * OS refuses to start. Implemented by win32/win32_library.c and
+ * linux/linux_library.c.
+ * ========================================================================== */
+
+/* Opaque: an HMODULE on Windows, a dlopen handle on Linux. */
+typedef struct rb_platform_library rb_platform_library;
+
+/*
+ * Any function's address. Cast it to the real type before calling: calling
+ * through a different type is undefined behaviour.
+ */
+typedef void (*rb_platform_proc)(void);
+
+/*
+ * `name` is a file name (UTF-8), searched where the OS looks for libraries;
+ * Windows skips the current folder and PATH. NULL on failure (logged).
+ */
+rb_platform_library *rb_platform_library_open(const char *name);
+
+/* NULL when the library does not export `name`; not logged, absence may be expected. */
+rb_platform_proc rb_platform_library_symbol(rb_platform_library *library, const char *name);
+
+/* Every symbol taken from `library` becomes invalid. */
+void rb_platform_library_close(rb_platform_library *library);
+
 #endif /* RB_PLATFORM_OS_H */

@@ -22,8 +22,13 @@ add_executable(reborn_tests
     memory/test_tracking.c
     platform/test_clock.c
     platform/test_input.c
+    platform/test_library.c
     platform/test_memory.c
     platform/test_platform.c
+    renderer/test_renderer.c
+    renderer/vulkan/test_vulkan_debug.c
+    renderer/vulkan/test_vulkan_instance.c
+    renderer/vulkan/test_vulkan_loader.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c
     support/test_failing_allocator.c
@@ -51,7 +56,11 @@ target_include_directories(reborn_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/engine/src
 )
 
-target_link_libraries(reborn_tests PRIVATE Reborn::Engine)
+# Vulkan::Headers: the renderer's internal headers include vulkan.h (ADR 0013, A1).
+# Found again here because imported targets are visible only in the directory that
+# found them and its subdirectories, and tests/ is a sibling of engine/.
+find_package(Vulkan REQUIRED)
+target_link_libraries(reborn_tests PRIVATE Reborn::Engine Vulkan::Headers)
 
 # Must come before the discovery step: on Windows ASan builds it adds the
 # POST_BUILD copy of the ASan runtime, without which --list cannot even start.

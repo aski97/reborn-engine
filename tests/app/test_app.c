@@ -21,6 +21,11 @@ RB_TEST(app, default_config_is_valid) {
     RB_EXPECT_EQ_UINT(config.state_size, 0);
     RB_EXPECT_EQ_INT(config.log.console_level, RB_LOG_LEVEL_INFO);
     RB_EXPECT(config.log.file_path == NULL);
+#if defined(RB_DEBUG)
+    RB_EXPECT(config.renderer.validation);
+#else
+    RB_EXPECT(!config.renderer.validation);
+#endif
 }
 
 RB_TEST(app, state_macro_takes_size_and_alignment_from_the_type) {

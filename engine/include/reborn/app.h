@@ -22,7 +22,7 @@
  *
  * Phases, in order:
  *   configure   before any system starts, the logger included: change the defaults
- *   init        systems, main window and state ready
+ *   init        systems, main window, renderer and state ready
  *   loop        per step: on_event for each event, then update(dt);
  *               per frame: render(alpha), skipped while minimized
  *   shutdown    loop over, every system still alive
@@ -37,6 +37,7 @@
 #include <reborn/log.h>
 #include <reborn/memory.h>
 #include <reborn/platform.h>
+#include <reborn/renderer.h>
 #include <reborn/version.h>
 
 /* Opaque: only the engine knows its fields; callbacks reach them through the accessors below. */
@@ -51,14 +52,15 @@ typedef struct rb_app rb_app;
 
 /* Every field holds its default when configure is called. */
 typedef struct rb_app_config {
-    rb_log_config  log;         /* console INFO, no file */
-    rb_window_desc window;      /* main window; "Reborn", 1280x720 */
-    u32            update_rate; /* fixed steps per second, 1..1000; 60 */
-    u32            max_fps;     /* frame cap until vsync; 60 */
-    usize          state_size;  /* game state; 0 */
-    usize          state_align; /* power of two; the platform's maximum fundamental alignment */
-    usize          persistent_reserve; /* address space of the persistent arena; 256 MiB */
-    usize          frame_reserve;      /* address space of the frame arena; 64 MiB */
+    rb_log_config      log;         /* console INFO, no file */
+    rb_window_desc     window;      /* main window; "Reborn", 1280x720 */
+    rb_renderer_config renderer;    /* validation on in debug builds of the engine */
+    u32                update_rate; /* fixed steps per second, 1..1000; 60 */
+    u32                max_fps;     /* frame cap until vsync; 60 */
+    usize              state_size;  /* game state; 0 */
+    usize              state_align; /* power of two; the platform's maximum fundamental alignment */
+    usize              persistent_reserve; /* address space of the persistent arena; 256 MiB */
+    usize              frame_reserve;      /* address space of the frame arena; 64 MiB */
 } rb_app_config;
 
 /* Sets the state's size and alignment from its type: neither can be got wrong. */
@@ -127,6 +129,8 @@ static inline int rb_app_run(const rb_app_callbacks *callbacks) {
 RB_API rb_platform_state *rb_app_platform(rb_app *app);
 
 RB_API rb_window rb_app_window(const rb_app *app);
+
+RB_API rb_renderer *rb_app_renderer(rb_app *app);
 
 /* Lives until the end of the run: memory the game keeps beyond init. */
 RB_API rb_arena *rb_app_persistent_arena(rb_app *app);

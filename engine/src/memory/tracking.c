@@ -20,6 +20,7 @@ static const char *const g_memory_tag_names[RB_MEMORY_TAG_COUNT] = {
     [RB_MEMORY_TAG_GENERAL] = "general",
     [RB_MEMORY_TAG_PLATFORM] = "platform",
     [RB_MEMORY_TAG_GAME] = "game",
+    [RB_MEMORY_TAG_RENDERER] = "renderer",
 };
 
 /*

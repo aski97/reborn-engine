@@ -26,6 +26,11 @@ set(REBORN_SOURCES
     src/platform/clock.c
     src/platform/input.c
     src/platform/platform.c
+    src/renderer/vulkan/vulkan_debug.c
+    src/renderer/vulkan/vulkan_instance.c
+    src/renderer/vulkan/vulkan_loader.c
+    src/renderer/vulkan/vulkan_renderer.c
+    src/renderer/vulkan/vulkan_result.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
@@ -34,6 +39,7 @@ if(WIN32)
         src/platform/win32/win32_clock.c
         src/platform/win32/win32_error.c
         src/platform/win32/win32_input.c
+        src/platform/win32/win32_library.c
         src/platform/win32/win32_memory.c
         src/platform/win32/win32_os.c
         src/platform/win32/win32_platform.c
@@ -41,6 +47,7 @@ if(WIN32)
 elseif(LINUX)
     list(APPEND REBORN_SOURCES
         src/platform/linux/linux_clock.c
+        src/platform/linux/linux_library.c
         src/platform/linux/linux_memory.c
         src/platform/linux/linux_os.c
         src/platform/linux/xlib_input.c
@@ -83,7 +90,14 @@ elseif(LINUX)
     # Xlib is the only Linux system dependency (ADR 0006, `libx11-dev`). REQUIRED stops at
     # configure time with a clear message when it is missing, instead of a compile error later.
     find_package(X11 REQUIRED)
-    target_link_libraries(reborn PRIVATE X11::X11)
+    # dlopen lives in libc since glibc 2.34; CMAKE_DL_LIBS names libdl for older ones (ADR 0013).
+    target_link_libraries(reborn PRIVATE X11::X11 ${CMAKE_DL_LIBS})
 endif()
+
+# Headers only (ADR 0013, A1): from the Vulkan SDK on Windows (VULKAN_SDK), from
+# `libvulkan-dev` on Linux. Not Vulkan::Vulkan: the loader is opened at run time
+# (B2), so the executable starts and reports a missing Vulkan itself.
+find_package(Vulkan REQUIRED)
+target_link_libraries(reborn PRIVATE Vulkan::Headers)
 
 reborn_set_compiler_options(reborn)

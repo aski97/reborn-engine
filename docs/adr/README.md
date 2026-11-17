@@ -26,5 +26,6 @@ its implementation.
 | 0010 | [Memory allocation](0010-memory-allocation.md) | Accepted |
 | 0011 | [Application layer and game loop](0011-application-layer-and-game-loop.md) | Accepted |
 | 0012 | [Allocation tracking](0012-allocation-tracking.md) | Accepted |
+| 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Proposed |
 
 Template: [`template.md`](template.md).
