@@ -91,6 +91,20 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
 - [ ] The game in `games/blink/`: CMake wiring, where its assets live, how it is launched and
       tested on Linux (ADR 0014)
 
+**Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
+platform and without clicking by hand; the sandbox exposes the same commands). In order.
+- [ ] Command system: named commands with arguments, registered by the engine and the game
+      (`pause`, `step 10`, `screenshot out.png`...), each answering with a structured result
+      (JSON lines). Starts with the commands Blink needs; each later feature adds its own (e.g.
+      scene save/load with scenes). Reachable from a script file passed at startup and from an agent while the
+      game runs (stdin, local socket or named pipe: to decide); the in-game console comes later
+      with the debug UI
+- [ ] Input injection: synthetic key and mouse events pushed into the event queue by command or
+      script, the same on every platform and without a display (today: xdotool, Linux only)
+- [ ] Screenshots on command: copy the presented image to a file the agent can open (agents read
+      PNG, not raw formats like BMP or PPM: own minimal PNG encoder vs external library, to
+      decide); later the base for golden-image tests
+
 **Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
 these steps put numbers next to it). After Blink's text rendering.
 - [ ] Numbers in the overlay: frames per second, average and worst frame time, steps per second,
@@ -121,8 +135,14 @@ pause and game states.
       function table vs dynamic plugins: to decide), a null backend next to each real one; the
       platform hands out native window handles instead of creating Vulkan surfaces
       (`platform_vulkan.h` makes the platform depend on the renderer); subsystem startup in the app
-- [ ] Directory layout and file names: e.g. stateless OS services (`linux_*`) apart from the window
-      system (`xlib_*`), so a Wayland backend replaces only the latter
+- [ ] Directory layout and file names: `engine/include/reborn/` is one flat folder mixing
+      foundations (`defines.h`, `assert.h`, `log.h`), memory, platform, renderer, camera and math;
+      public headers grouped by subsystem like `engine/src/` (e.g. `reborn/core/log.h`,
+      `reborn/renderer/camera2d.h`), plus an umbrella header if games want one (to decide). Review
+      where each file lives on both sides (clock and input under `platform/`, color under `core/`,
+      camera under `renderer/`), and the top-level folders (`docker/`, `scripts/`, `cmake/`,
+      `games/`). Stateless OS services (`linux_*`) apart from the window system (`xlib_*`), so a
+      Wayland backend replaces only the latter
 
 ## v0.5.0
 
@@ -170,6 +190,13 @@ In order; each gets a version when it starts.
       and file, capacities...) read from a config file and/or command line (format and parser to decide)
 - [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
       debug API (ADR 0008)
+- [ ] Log file size cap and rotation: today the file is overwritten at startup and grows without
+      limit during a run (a long session at TRACE, or a message logged every frame, fills the disk).
+      A maximum size per file; past it the file is closed and the next one opened
+      (`reborn.log.jsonl`, `reborn.log.1.jsonl`...), at most N files kept, the oldest deleted. Each
+      file starts with the clock anchor line, so it can be read alone. To decide: sizes and count
+      (config), naming, whether earlier runs are kept the same way instead of overwritten, and
+      collapsing a repeated message into one line ("repeated N times")
 - [ ] Chained arena blocks (ADR 0010, B3), inside `rb_arena` without an API change. Only when one
       of these shows up: an arena whose size depends on content with no sensible upper bound
       (editor, mods, long sessions); reservations failing in a real environment (`ulimit -v`,
@@ -249,7 +276,6 @@ In order; each gets a version when it starts.
       `rb_camera2d_make` gives it the whole window. When a game shows the world twice
 - [ ] Rotated quads: an angle (or a 2D transform) in the quad's data, when a game turns objects
       (Orbit's arc may be the first)
-- [ ] Screenshots: copy the presented image to a file (also for golden-image tests)
 - [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
 - [ ] Device lost: today the renderer logs it and stops drawing (ADR 0013); recreate the device
@@ -287,6 +313,41 @@ In order; each gets a version when it starts.
 - [ ] Serialization: one mechanism for scenes, save games and config (text vs binary, format to
       decide)
 
+### Editor
+- [ ] Editor mode and play mode: the game starts in one or the other and switches at run time
+      (e.g. a key). In editor mode the simulation is paused and the world can be explored and
+      changed; play starts the game from the edited scene, and going back restores the scene as it
+      was before play (a snapshot through serialization). Editor built into the game's executable
+      (debug builds only) vs a separate editor executable loading the game as a DLL (see game code
+      hot-reload): to decide. Needs the debug UI, the game object model and scene serialization;
+      likely with Hollow, whose levels are painful to write by hand
+- [ ] Free editor camera, independent of the game's: in 2D pan by dragging and zoom with the
+      wheel; in 3D fly with the mouse (needs relative mouse motion)
+- [ ] Selection and editing: pick objects with the mouse (screen-to-world conversion exists), move
+      them with handles (gizmos), edit their fields in a panel (needs type information for the
+      fields: reflection, to decide), undo/redo
+- [ ] Scenes created, saved and loaded from the editor; objects created, duplicated and deleted
+
+### LLM and automation tooling
+Today agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`, and drive
+Linux windows from outside (Xvfb, xdotool). They cannot act inside a running game, ask it for its
+state, or see what it draws. The command system, input injection and screenshots are in v0.2.0
+(driving Blink from an agent); these build on them.
+- [ ] Commands from the in-game console, with the debug UI
+- [ ] Console variables: named, typed values (speeds, toggles, log levels) read and set by
+      command and listed with their current value; later loaded from the config file
+- [ ] State inspection: commands that dump engine and game state as JSON (windows, frame timing,
+      memory per tag, renderer resources, recent log lines, later objects and their fields)
+- [ ] Unattended runs: a script (or `--frames N`) ends the game, which exits with a status code
+      and a summary (frames, warnings, errors, leaks) as the last JSON line; no display needed
+      once the renderer can run without a window (see Rendering). Runs a scenario in CI or Docker
+- [ ] Record and replay: each fixed step's input (and the seed) written to a file and played back
+      to reproduce a run exactly, e.g. a bug; needs a deterministic simulation (seeded random
+      number generator, fixed step)
+- [ ] Golden-image tests: screenshots compared with reference images (see Testing)
+- [ ] Frame number on every log line, to match log lines, commands and screenshots
+- [ ] A page for agents listing commands, variables and output formats, linked from `CLAUDE.md`
+
 ### Testing
 - [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
       fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
@@ -301,7 +362,6 @@ In order; each gets a version when it starts.
 - [ ] Release packaging: one folder or archive per platform with the executable, packed assets,
       icon and (Linux) `.desktop` file, built by a script or CI; installers later
 - [ ] Game code hot-reload as a DLL
-- [ ] LLM debug/control API (state inspection, scene commands)
 
 ### Documentation
 - [ ] Doc comments on every public header and function: purpose, parameters, ownership, errors,
