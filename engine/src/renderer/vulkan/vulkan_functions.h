@@ -44,6 +44,7 @@ typedef struct rb_vk_global_functions {
     X(vkDestroyInstance)                                                                           \
     X(vkEnumeratePhysicalDevices)                                                                  \
     X(vkGetPhysicalDeviceProperties)                                                               \
+    X(vkGetPhysicalDeviceMemoryProperties)                                                         \
     X(vkGetPhysicalDeviceQueueFamilyProperties)                                                    \
     X(vkEnumerateDeviceExtensionProperties)                                                        \
     X(vkCreateDevice)                                                                              \
@@ -108,7 +109,30 @@ typedef struct rb_vk_instance_functions {
     X(vkCmdSetViewport)                                                                            \
     X(vkCmdSetScissor)                                                                             \
     X(vkCmdPushConstants)                                                                          \
-    X(vkCmdDraw)
+    X(vkCmdDraw)                                                                                   \
+    X(vkAllocateMemory)                                                                            \
+    X(vkFreeMemory)                                                                                \
+    X(vkMapMemory)                                                                                 \
+    X(vkUnmapMemory)                                                                               \
+    X(vkCreateBuffer)                                                                              \
+    X(vkDestroyBuffer)                                                                             \
+    X(vkGetBufferMemoryRequirements)                                                               \
+    X(vkBindBufferMemory)                                                                          \
+    X(vkCreateImage)                                                                               \
+    X(vkDestroyImage)                                                                              \
+    X(vkGetImageMemoryRequirements)                                                                \
+    X(vkBindImageMemory)                                                                           \
+    X(vkCmdCopyBufferToImage)                                                                      \
+    X(vkCreateSampler)                                                                             \
+    X(vkDestroySampler)                                                                            \
+    X(vkCreateDescriptorSetLayout)                                                                 \
+    X(vkDestroyDescriptorSetLayout)                                                                \
+    X(vkCreateDescriptorPool)                                                                      \
+    X(vkDestroyDescriptorPool)                                                                     \
+    X(vkAllocateDescriptorSets)                                                                    \
+    X(vkFreeDescriptorSets)                                                                        \
+    X(vkUpdateDescriptorSets)                                                                      \
+    X(vkCmdBindDescriptorSets)
 
 /* VK_KHR_swapchain: always enabled, the renderer always presents to a window (ADR 0013, K2). */
 #define RB_VK_SWAPCHAIN_FUNCTIONS(X)                                                               \

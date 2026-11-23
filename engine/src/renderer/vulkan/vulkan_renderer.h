@@ -17,6 +17,7 @@
 #include "renderer/vulkan/vulkan_loader.h"
 #include "renderer/vulkan/vulkan_pipeline.h"
 #include "renderer/vulkan/vulkan_swapchain.h"
+#include "renderer/vulkan/vulkan_texture.h"
 
 struct rb_renderer {
     rb_allocator allocator; /* the startup allocator: the state, temporary query lists */
@@ -40,6 +41,8 @@ struct rb_renderer {
     /* Acquire or present said out of date or suboptimal: rebuild at the next begin. */
     bool swapchain_stale;
 
+    /* Textures and what they share (ADR 0017): the pipeline is built with their set layout. */
+    rb_vk_textures textures;
     /* Built for the swapchain's format once a swapchain exists (ADR 0015). */
     rb_vk_pipeline pipeline;
 
@@ -48,6 +51,8 @@ struct rb_renderer {
     u32         image_index; /* the swapchain image acquired by the current frame */
     /* Between a successful begin and its end: an image is acquired and must be presented. */
     bool in_frame;
+    /* The texture set the current frame last bound: a draw rebinds only on a change. */
+    VkDescriptorSet bound_set;
     /*
      * A Vulkan call failed in a way a rebuild cannot fix (device lost, out of
      * memory): logged once, nothing is drawn any more.

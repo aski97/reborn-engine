@@ -15,10 +15,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   field; `NULL` returns to window pixels, where each frame begins.
 - Sandbox: a 16x9 world field drawn through a camera (grid, a moving square, a marker where the
   left button clicks, logged in world units); the wheel zooms, Z resets; the HUD stays in pixels.
+- Textures (ADR 0017), in `reborn/renderer.h`: `rb_texture` generational handles (up to
+  `RB_RENDERER_MAX_TEXTURES`, 256, alive), `rb_renderer_create_texture` from RGBA sRGB pixels with
+  a nearest or linear filter, `rb_renderer_destroy_texture`, `rb_renderer_texture_is_valid`,
+  `rb_renderer_draw_texture` (the whole texture over a rectangle, multiplied by a tint; a zero or
+  stale handle draws a plain quad). Pixels reach device-local memory through a staging buffer;
+  one memory allocation and one descriptor set per texture. Textures left alive are freed at
+  renderer shutdown.
+- The renderer logs the GPU's memory heaps and types at DEBUG.
+- Sandbox: an 8x8 checkerboard enlarged 16 times (T swaps nearest and linear filtering, destroying
+  and recreating it) and a soft yellow glow under the mouse instead of the translucent square.
 
 ### Changed
 - The quad shader receives a view matrix instead of the target size: 96 bytes of push constants,
   the view pushed when the space changes, 32 bytes per quad.
+- The quad shader samples a texture and multiplies it by the quad's color; plain quads use an
+  internal 1x1 white texture, so `rb_renderer_draw_quad` draws as before.
 
 ## [0.1.0] - 2026-11-23
 

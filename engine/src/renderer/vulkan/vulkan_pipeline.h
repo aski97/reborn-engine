@@ -1,7 +1,7 @@
 /*
  * Graphics pipeline (ADR 0015): the shaders and the fixed-function state the
  * GPU runs a draw with, baked into one immutable object at startup. One for
- * now: colored quads.
+ * now: quads, colored and textured (ADR 0017).
  */
 #ifndef RB_VULKAN_PIPELINE_H
 #define RB_VULKAN_PIPELINE_H
@@ -23,7 +23,7 @@ typedef struct rb_vk_quad_push {
     f32 view[16];    /* the current space to normalized coordinates, column-major (rb_mat4) */
     f32 position[2]; /* top-left corner, in the current space */
     f32 size[2];     /* in the current space */
-    f32 color[4];    /* linear, straight alpha */
+    f32 color[4];    /* linear, straight alpha; multiplies the texture */
 } rb_vk_quad_push;
 
 /* A mismatch would draw garbage without any error: checked at compile time. */
@@ -39,7 +39,7 @@ _Static_assert(sizeof(rb_vk_quad_push) == 96, "must match shaders/quad.glsl");
 #define RB_VK_QUAD_PUSH_STAGES (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
 
 typedef struct rb_vk_pipeline {
-    /* What the shaders receive besides the vertices: the push constant range. */
+    /* What the shaders receive besides the vertices: the texture's set, the push constants. */
     VkPipelineLayout layout;
     VkPipeline       handle;
     /* The image format it draws into (dynamic rendering bakes it in): a change needs a rebuild. */
@@ -47,11 +47,12 @@ typedef struct rb_vk_pipeline {
 } rb_vk_pipeline;
 
 /*
- * Builds the quad pipeline for images of `color_format`. False
- * (logged): *pipeline is zeroed.
+ * Builds the quad pipeline for images of `color_format`, with the texture's
+ * set at set 0 (`texture_layout`, rb_vk_textures.set_layout: must outlive the
+ * pipeline). False (logged): *pipeline is zeroed.
  */
 bool rb_vk_pipeline_create(rb_vk_pipeline *pipeline, const rb_vk_device *device,
-                           VkFormat color_format);
+                           VkFormat color_format, VkDescriptorSetLayout texture_layout);
 
 /* The GPU must be done with it. Zeroes *pipeline; a zeroed pipeline is ignored. */
 void rb_vk_pipeline_destroy(rb_vk_pipeline *pipeline, const rb_vk_device *device);

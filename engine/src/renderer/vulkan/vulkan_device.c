@@ -164,7 +164,28 @@ static bool device_evaluate(const rb_vk_instance *instance, rb_allocator allocat
  * ========================================================================== */
 
 /*
- * Fills device->physical, ->properties and ->queue_family with the best
+ * The heaps and the memory types on top of them (ADR 0017): a discrete GPU
+ * shows its own memory and the part of system memory it can reach; integrated
+ * GPUs and lavapipe often one heap that is both.
+ */
+static void device_log_memory(const VkPhysicalDeviceMemoryProperties *memory) {
+    for (u32 h = 0; h < memory->memoryHeapCount; ++h) {
+        const VkMemoryHeap *heap = &memory->memoryHeaps[h];
+        RB_LOG_DEBUG("Memory heap %u: %llu MiB%s", h, (unsigned long long)(heap->size >> 20),
+                     (heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0 ? ", device-local" : "");
+    }
+    for (u32 t = 0; t < memory->memoryTypeCount; ++t) {
+        VkMemoryPropertyFlags flags = memory->memoryTypes[t].propertyFlags;
+        RB_LOG_DEBUG("Memory type %u: heap %u%s%s%s%s", t, memory->memoryTypes[t].heapIndex,
+                     (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0 ? ", device-local" : "",
+                     (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0 ? ", host-visible" : "",
+                     (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0 ? ", host-coherent" : "",
+                     (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != 0 ? ", host-cached" : "");
+    }
+}
+
+/*
+ * Fills device->physical, ->properties, ->memory and ->queue_family with the best
  * suitable GPU (L2). Every GPU is logged with its verdict: when none fits,
  * the lines above the error say why.
  */
@@ -232,6 +253,8 @@ static bool device_pick(rb_vk_device *device, const rb_vk_instance *instance,
         RB_LOG_WARN("Using %s, which runs Vulkan on the CPU: no GPU fits, expect a low frame rate",
                     device->properties.deviceName);
     }
+    instance->vk.vkGetPhysicalDeviceMemoryProperties(device->physical, &device->memory);
+    device_log_memory(&device->memory);
     return true;
 }
 

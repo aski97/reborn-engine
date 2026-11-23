@@ -18,8 +18,10 @@
 typedef struct rb_vk_device {
     VkPhysicalDevice           physical;
     VkPhysicalDeviceProperties properties; /* name, type, version, limits */
-    VkDevice                   handle;
-    rb_vk_device_functions     vk;
+    /* Heaps and memory types, for rb_vk_memory_find_type (ADR 0017). */
+    VkPhysicalDeviceMemoryProperties memory;
+    VkDevice                         handle;
+    rb_vk_device_functions           vk;
     /* One family does graphics and presents to the surface (N1): one queue for both. */
     u32     queue_family;
     VkQueue queue;

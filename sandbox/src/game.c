@@ -1,7 +1,8 @@
 /*
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
  * input and timing can be checked by hand, and draws a few quads: a world
- * field through a 2D camera, a HUD in window pixels on top.
+ * field through a 2D camera, a HUD in window pixels on top, textures made in
+ * code.
  */
 #include "game.h"
 
@@ -38,6 +39,13 @@ typedef struct sandbox_state {
     rb_camera2d camera;
     rb_vec2     marker;
     bool        has_marker;
+    /*
+     * Textures (ADR 0017): a checkerboard, nearest or linear (T swaps it: a
+     * destroy and a create), and a soft disc whose alpha fades to its edge.
+     */
+    rb_texture        checker;
+    rb_texture_filter checker_filter;
+    rb_texture        glow;
 } sandbox_state;
 
 /* ============================================================================
@@ -161,14 +169,75 @@ static bool game_configure(rb_app_config *config) {
     return true;
 }
 
+/* Textures made in code (ADR 0017): created in init, destroyed in shutdown. */
+
+#define SANDBOX_CHECKER_SIDE 8u
+#define SANDBOX_GLOW_SIDE    32u
+
+/* 8x8 squares in two tones, a red one in the top-left corner to show which way is up. */
+static rb_texture sandbox_create_checker(rb_renderer *renderer, rb_texture_filter filter) {
+    u8 pixels[SANDBOX_CHECKER_SIDE * SANDBOX_CHECKER_SIDE * 4];
+    for (u32 y = 0; y < SANDBOX_CHECKER_SIDE; ++y) {
+        for (u32 x = 0; x < SANDBOX_CHECKER_SIDE; ++x) {
+            u8  *p = &pixels[(y * SANDBOX_CHECKER_SIDE + x) * 4];
+            u8   tone = (x + y) % 2 == 0 ? 230 : 60;
+            bool corner = x == 0 && y == 0;
+            p[0] = corner ? 230 : tone;
+            p[1] = corner ? 40 : tone;
+            p[2] = corner ? 40 : tone;
+            p[3] = 255;
+        }
+    }
+    return rb_renderer_create_texture(renderer, &(rb_texture_desc){.width = SANDBOX_CHECKER_SIDE,
+                                                                   .height = SANDBOX_CHECKER_SIDE,
+                                                                   .pixels = pixels,
+                                                                   .filter = filter});
+}
+
+/*
+ * White, opaque at the center and transparent at the edge: alpha (1 - d^2)^2,
+ * d the distance from the center as a fraction of the radius. No square root.
+ */
+static rb_texture sandbox_create_glow(rb_renderer *renderer) {
+    u8        pixels[SANDBOX_GLOW_SIDE * SANDBOX_GLOW_SIDE * 4];
+    const f32 radius = (f32)SANDBOX_GLOW_SIDE * 0.5f;
+    for (u32 y = 0; y < SANDBOX_GLOW_SIDE; ++y) {
+        for (u32 x = 0; x < SANDBOX_GLOW_SIDE; ++x) {
+            /* From the pixel's center: +0.5. */
+            f32 dx = ((f32)x + 0.5f - radius) / radius;
+            f32 dy = ((f32)y + 0.5f - radius) / radius;
+            f32 d2 = dx * dx + dy * dy;
+            f32 a = d2 < 1.0f ? (1.0f - d2) * (1.0f - d2) : 0.0f;
+            u8 *p = &pixels[(y * SANDBOX_GLOW_SIDE + x) * 4];
+            p[0] = p[1] = p[2] = 255;
+            p[3] = (u8)(a * 255.0f + 0.5f);
+        }
+    }
+    return rb_renderer_create_texture(renderer,
+                                      &(rb_texture_desc){.width = SANDBOX_GLOW_SIDE,
+                                                         .height = SANDBOX_GLOW_SIDE,
+                                                         .pixels = pixels,
+                                                         .filter = RB_TEXTURE_FILTER_LINEAR});
+}
+
 static bool game_init(void *state, rb_app *app) {
-    (void)app;
     sandbox_state *game = state;
     game->start = rb_time_now();
     game->window_start = game->start;
     game->graph_visible = true;
     game->camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
+    /* A failure is logged; a zero handle draws a plain quad, so the sandbox goes on. */
+    game->checker_filter = RB_TEXTURE_FILTER_NEAREST;
+    game->checker = sandbox_create_checker(rb_app_renderer(app), game->checker_filter);
+    game->glow = sandbox_create_glow(rb_app_renderer(app));
     return true;
+}
+
+/* The renderer's shutdown would free them anyway: done here as a game unloading its assets. */
+static void game_shutdown(void *state, rb_app *app) {
+    sandbox_state *game = state;
+    rb_renderer_destroy_texture(rb_app_renderer(app), game->checker);
+    rb_renderer_destroy_texture(rb_app_renderer(app), game->glow);
 }
 
 static void game_update(void *state, rb_app *app, f64 dt) {
@@ -192,6 +261,17 @@ static void game_update(void *state, rb_app *app, f64 dt) {
     if (rb_key_was_pressed(platform, RB_KEY_L)) {
         game->graph_visible = !game->graph_visible;
         RB_LOG_INFO("Frame-time graph %s (L)", game->graph_visible ? "shown" : "hidden");
+    }
+    /* In update, not render: a texture cannot be destroyed while a frame is being recorded. */
+    if (rb_key_was_pressed(platform, RB_KEY_T)) {
+        rb_renderer *renderer = rb_app_renderer(app);
+        game->checker_filter = game->checker_filter == RB_TEXTURE_FILTER_NEAREST
+                                   ? RB_TEXTURE_FILTER_LINEAR
+                                   : RB_TEXTURE_FILTER_NEAREST;
+        rb_renderer_destroy_texture(renderer, game->checker);
+        game->checker = sandbox_create_checker(renderer, game->checker_filter);
+        RB_LOG_INFO("Checkerboard filter: %s (T)",
+                    game->checker_filter == RB_TEXTURE_FILTER_NEAREST ? "nearest" : "linear");
     }
 
     ++game->steps;
@@ -253,10 +333,11 @@ static f32 sandbox_phase(u64 start, u64 period) {
 
 /*
  * Quads (ADR 0015): a row of opaque squares around the hue wheel; one sliding
- * across the window by fractions of a pixel, so its motion stays smooth; a
- * translucent one under the mouse, blending with whatever it covers.
+ * across the window by fractions of a pixel, so its motion stays smooth; the
+ * checkerboard enlarged 16 times, sharp or blurred by its filter; a yellow
+ * glow under the mouse, blending with whatever it covers (ADR 0017).
  */
-static void sandbox_draw_quads(rb_app *app, f32 hue, f32 slide) {
+static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 hue, f32 slide) {
     rb_renderer       *renderer = rb_app_renderer(app);
     rb_platform_state *platform = rb_app_platform(app);
     rb_window_size     size = rb_window_get_size(platform, rb_app_window(app));
@@ -275,11 +356,16 @@ static void sandbox_draw_quads(rb_app *app, f32 hue, f32 slide) {
     rb_renderer_draw_quad(renderer, there_and_back * travel, ((f32)size.pixel_height - side) * 0.5f,
                           side, side, rb_color_srgb(0.95f, 0.95f, 0.95f, 1.0f));
 
-    /* Drawn last: on top of the others, which show through at half opacity. */
+    /* Top right: 8 texels across 128 pixels. */
+    const f32 checker = (f32)SANDBOX_CHECKER_SIDE * 16.0f;
+    rb_renderer_draw_texture(renderer, (f32)size.pixel_width - checker - 32.0f, 32.0f, checker,
+                             checker, game->checker, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+
+    /* Drawn last: on top of the others, which show through where the glow fades. */
     rb_mouse_position mouse = rb_mouse_get_position(platform);
-    f32               big = side * 1.5f;
-    rb_renderer_draw_quad(renderer, (f32)mouse.x - big * 0.5f, (f32)mouse.y - big * 0.5f, big, big,
-                          rb_color_srgb(1.0f, 0.85f, 0.2f, 0.5f));
+    f32               big = side * 2.0f;
+    rb_renderer_draw_texture(renderer, (f32)mouse.x - big * 0.5f, (f32)mouse.y - big * 0.5f, big,
+                             big, game->glow, rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f));
 }
 
 /* ============================================================================
@@ -422,7 +508,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     rb_renderer_set_clear_color(rb_app_renderer(app), hsv_to_srgb(hue, 0.5f, 0.45f));
     f32 slide = sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS);
     sandbox_draw_world(game, app, slide);
-    sandbox_draw_quads(app, hue, slide);
+    sandbox_draw_quads(game, app, hue, slide);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }
@@ -434,4 +520,5 @@ const rb_app_callbacks sandbox_game = {
     .on_event = game_on_event,
     .update = game_update,
     .render = game_render,
+    .shutdown = game_shutdown,
 };

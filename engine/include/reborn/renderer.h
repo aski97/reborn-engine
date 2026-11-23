@@ -13,8 +13,8 @@
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
  * Each frame starts cleared to the clear color; the game's `render` draws
- * colored quads on top, in window pixels or, through a 2D camera, in world
- * units (rb_renderer_set_camera). Pointer parameters must not be NULL, unless
+ * colored or textured quads on top, in window pixels or, through a 2D camera,
+ * in world units (rb_renderer_set_camera). Pointer parameters must not be NULL, unless
  * stated otherwise (RB_ASSERT in debug builds).
  */
 #ifndef RB_RENDERER_H
@@ -91,6 +91,75 @@ RB_API void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *cam
  */
 RB_API void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                                   rb_color color);
+
+/* ============================================================================
+ * Textures (ADR 0017)
+ *
+ * Images in GPU memory that quads are drawn with:
+ *
+ *   rb_texture checker = rb_renderer_create_texture(
+ *       renderer, &(rb_texture_desc){.width = 8, .height = 8, .pixels = rgba,
+ *                                    .filter = RB_TEXTURE_FILTER_NEAREST});
+ *   ...
+ *   rb_renderer_draw_texture(renderer, 10, 10, 64, 64, checker, rb_color_srgb(1, 1, 1, 1));
+ *   ...
+ *   rb_renderer_destroy_texture(renderer, checker);
+ * ========================================================================== */
+
+/* Textures alive at once. */
+#define RB_RENDERER_MAX_TEXTURES 256
+
+/* Generational handle (ADR 0007). A zero-initialized rb_texture is never valid. */
+typedef struct rb_texture {
+    u32 id;
+} rb_texture;
+
+/* How a texture is read where its pixels do not land one to one on the screen's. */
+typedef enum rb_texture_filter {
+    /* The nearest pixel: sharp squares when enlarged. Pixel art, bitmap text. */
+    RB_TEXTURE_FILTER_NEAREST,
+    /* The four nearest, blended: smooth when scaled, blurred when enlarged a lot. */
+    RB_TEXTURE_FILTER_LINEAR,
+} rb_texture_filter;
+
+typedef struct rb_texture_desc {
+    u32 width; /* pixels, both above 0 and within the GPU's limit (16384 or more on desktops) */
+    u32 height;
+    /*
+     * width * height * 4 bytes: R, G, B, A per pixel, rows from the top. Color
+     * as image files store it (sRGB, like rb_color_srgb's arguments), straight
+     * alpha. Copied: the caller may free it once the call returns.
+     */
+    const u8         *pixels;
+    rb_texture_filter filter;
+} rb_texture_desc;
+
+/*
+ * Uploads the pixels to the GPU and waits for the copy (ADR 0017, C1): for
+ * loading, not for every frame. Callable at any time, inside `render` too.
+ * Zero handle on failure (logged): a size of 0 or beyond the GPU's limit,
+ * RB_RENDERER_MAX_TEXTURES already alive, out of GPU memory.
+ */
+RB_API rb_texture rb_renderer_create_texture(rb_renderer *renderer, const rb_texture_desc *desc);
+
+/*
+ * Waits for the GPU to finish with every frame (ADR 0017, G1), then frees the
+ * texture: for unloading, not for every frame. Not inside `render`, whose
+ * frame may already use it (RB_ASSERT). Stale or zero handles are ignored.
+ * Textures still alive at rb_renderer_shutdown are freed by it.
+ */
+RB_API void rb_renderer_destroy_texture(rb_renderer *renderer, rb_texture texture);
+
+RB_API bool rb_renderer_texture_is_valid(const rb_renderer *renderer, rb_texture texture);
+
+/*
+ * Like rb_renderer_draw_quad, with the whole texture stretched over the
+ * rectangle: its top-left pixel at (x, y). Each pixel is multiplied by `tint`
+ * (white leaves it as it is; alpha fades it). A zero or stale handle draws a
+ * plain quad of the tint's color.
+ */
+RB_API void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                                     rb_texture texture, rb_color tint);
 
 /* Counted since startup. Only messages from the validation layers count, not driver notes. */
 typedef struct rb_renderer_validation_stats {

@@ -25,6 +25,7 @@ static void renderer_destroy_objects(rb_renderer *renderer) {
         }
         rb_vk_pipeline_destroy(&renderer->pipeline, &renderer->device);
         rb_vk_swapchain_destroy(&renderer->swapchain, &renderer->device);
+        rb_vk_textures_destroy(&renderer->textures, &renderer->device);
     }
     rb_vk_device_destroy(&renderer->device);
     if (renderer->surface != VK_NULL_HANDLE) {
@@ -50,7 +51,8 @@ static bool renderer_fit_pipeline(rb_renderer *renderer) {
         renderer->device.vk.vkDeviceWaitIdle(renderer->device.handle);
         rb_vk_pipeline_destroy(&renderer->pipeline, &renderer->device);
     }
-    return rb_vk_pipeline_create(&renderer->pipeline, &renderer->device, format);
+    return rb_vk_pipeline_create(&renderer->pipeline, &renderer->device, format,
+                                 renderer->textures.set_layout);
 }
 
 rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_config *config,
@@ -84,6 +86,7 @@ rb_renderer *rb_renderer_startup(rb_allocator allocator, const rb_renderer_confi
                                                  &renderer->surface);
     ok = ok &&
          rb_vk_device_create(&renderer->device, &renderer->instance, allocator, renderer->surface);
+    ok = ok && rb_vk_textures_create(&renderer->textures, &renderer->device);
     ok = ok && rb_vk_swapchain_create(&renderer->swapchain, &renderer->instance, &renderer->device,
                                       renderer->surface, allocator, size.pixel_width,
                                       size.pixel_height, renderer->vsync);
@@ -185,23 +188,78 @@ void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *camera) {
     renderer_set_space(renderer, camera);
 }
 
-void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
-                           rb_color color) {
-    RB_ASSERT(renderer != NULL);
+/*
+ * A quad with `texture`'s pixels multiplied by `color`: its set bound if the
+ * last draw used another, its push constants, six vertices.
+ */
+static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                          const rb_vk_texture *texture, rb_color color) {
     /* Outside a frame there is no command buffer to record into: a bug in the caller. */
     RB_ASSERT(renderer->in_frame);
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    VkCommandBuffer               commands = renderer->frames[renderer->frame_index].commands;
+    if (texture->set != renderer->bound_set) {
+        /* Set 0 of the pipeline layout (ADR 0017, D1); it stays bound across draws. */
+        vk->vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    renderer->pipeline.layout, 0, 1, &texture->set, 0, NULL);
+        renderer->bound_set = texture->set;
+    }
     rb_vk_quad_push quad = {
         .position = {x, y},
         .size = {width, height},
         .color = {color.r, color.g, color.b, color.a},
     };
     /* From `position` on: the view pushed by the last change of space stays (ADR 0016). */
-    VkCommandBuffer commands = renderer->frames[renderer->frame_index].commands;
-    renderer->device.vk.vkCmdPushConstants(commands, renderer->pipeline.layout,
-                                           RB_VK_QUAD_PUSH_STAGES, RB_VK_QUAD_PUSH_OFFSET,
-                                           RB_VK_QUAD_PUSH_SIZE, quad.position);
+    vk->vkCmdPushConstants(commands, renderer->pipeline.layout, RB_VK_QUAD_PUSH_STAGES,
+                           RB_VK_QUAD_PUSH_OFFSET, RB_VK_QUAD_PUSH_SIZE, quad.position);
     /* Six vertices, two triangles: the vertex shader builds them from the quad (F1). */
-    renderer->device.vk.vkCmdDraw(commands, 6, 1, 0, 0);
+    vk->vkCmdDraw(commands, 6, 1, 0, 0);
+}
+
+void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                           rb_color color) {
+    RB_ASSERT(renderer != NULL);
+    /* White: the shader's texture Ã— color leaves the color as it is (ADR 0017). */
+    renderer_draw(renderer, x, y, width, height, &renderer->textures.white, color);
+}
+
+void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                              rb_texture texture, rb_color tint) {
+    RB_ASSERT(renderer != NULL);
+    /* A zero or stale handle gets the white texture: a plain quad, never a freed set. */
+    renderer_draw(renderer, x, y, width, height,
+                  rb_vk_textures_get(&renderer->textures, texture.id), tint);
+}
+
+/* ============================================================================
+ * Textures (ADR 0017)
+ * ========================================================================== */
+
+rb_texture rb_renderer_create_texture(rb_renderer *renderer, const rb_texture_desc *desc) {
+    RB_ASSERT(renderer != NULL);
+    RB_ASSERT(desc != NULL && desc->pixels != NULL);
+    /*
+     * Allowed inside a frame: the upload is submitted and waited for on its
+     * own, before the frame being recorded is submitted.
+     */
+    return (rb_texture){rb_vk_textures_add(&renderer->textures, &renderer->device, desc)};
+}
+
+void rb_renderer_destroy_texture(rb_renderer *renderer, rb_texture texture) {
+    RB_ASSERT(renderer != NULL);
+    /* The frame being recorded may already use it, and no wait covers unsubmitted work. */
+    RB_ASSERT(!renderer->in_frame);
+    if (!rb_handle_pool_valid(&renderer->textures.handles, texture.id)) {
+        return;
+    }
+    /* Frames still on the GPU may use it (G1: a stall, fine for rare destructions). */
+    renderer->device.vk.vkDeviceWaitIdle(renderer->device.handle);
+    (void)rb_vk_textures_remove(&renderer->textures, &renderer->device, texture.id);
+}
+
+bool rb_renderer_texture_is_valid(const rb_renderer *renderer, rb_texture texture) {
+    RB_ASSERT(renderer != NULL);
+    return rb_handle_pool_valid(&renderer->textures.handles, texture.id);
 }
 
 /*
@@ -330,6 +388,8 @@ static bool renderer_record_begin(rb_renderer *renderer, const rb_vk_frame *fram
     /* Every draw of the frame uses the one pipeline: bound once. */
     vk->vkCmdBindPipeline(frame->commands, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           renderer->pipeline.handle);
+    /* A new command buffer has nothing bound: the first draw binds its texture. */
+    renderer->bound_set = VK_NULL_HANDLE;
     /* Window pixels until the game sets a camera: a forgotten reset lasts one frame at most. */
     renderer_set_space(renderer, NULL);
     return true;

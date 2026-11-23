@@ -32,6 +32,7 @@ add_executable(reborn_tests
     renderer/vulkan/test_vulkan_device.c
     renderer/vulkan/test_vulkan_instance.c
     renderer/vulkan/test_vulkan_loader.c
+    renderer/vulkan/test_vulkan_memory.c
     renderer/vulkan/test_vulkan_swapchain.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c

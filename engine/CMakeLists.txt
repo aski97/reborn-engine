@@ -33,10 +33,12 @@ set(REBORN_SOURCES
     src/renderer/vulkan/vulkan_frame.c
     src/renderer/vulkan/vulkan_instance.c
     src/renderer/vulkan/vulkan_loader.c
+    src/renderer/vulkan/vulkan_memory.c
     src/renderer/vulkan/vulkan_pipeline.c
     src/renderer/vulkan/vulkan_renderer.c
     src/renderer/vulkan/vulkan_result.c
     src/renderer/vulkan/vulkan_swapchain.c
+    src/renderer/vulkan/vulkan_texture.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).

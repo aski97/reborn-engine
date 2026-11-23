@@ -6,5 +6,5 @@ layout(push_constant) uniform Quad {
     mat4 view;     // the current space (world units or pixels) to normalized coordinates
     vec2 position; // top-left corner, in the current space
     vec2 size;     // in the current space
-    vec4 color;    // linear, straight alpha (rb_color)
+    vec4 color;    // linear, straight alpha (rb_color); multiplies the texture (ADR 0017)
 } quad;

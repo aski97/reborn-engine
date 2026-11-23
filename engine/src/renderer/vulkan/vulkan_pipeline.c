@@ -37,7 +37,8 @@ static VkShaderModule pipeline_create_module(const rb_vk_device *device, const u
     return module;
 }
 
-static bool pipeline_create_layout(rb_vk_pipeline *pipeline, const rb_vk_device *device) {
+static bool pipeline_create_layout(rb_vk_pipeline *pipeline, const rb_vk_device *device,
+                                   VkDescriptorSetLayout texture_layout) {
     /* Both stages read the quad: the vertex shader its rectangle, the fragment shader its color. */
     VkPushConstantRange push = {
         .stageFlags = RB_VK_QUAD_PUSH_STAGES,
@@ -46,6 +47,9 @@ static bool pipeline_create_layout(rb_vk_pipeline *pipeline, const rb_vk_device 
     };
     VkPipelineLayoutCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        /* Set 0: the texture the fragment shader samples (ADR 0017). */
+        .setLayoutCount = 1,
+        .pSetLayouts = &texture_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push,
     };
@@ -162,8 +166,9 @@ static bool pipeline_create_handle(rb_vk_pipeline *pipeline, const rb_vk_device 
 }
 
 bool rb_vk_pipeline_create(rb_vk_pipeline *pipeline, const rb_vk_device *device,
-                           VkFormat color_format) {
+                           VkFormat color_format, VkDescriptorSetLayout texture_layout) {
     RB_ASSERT(pipeline != NULL && device != NULL && device->handle != VK_NULL_HANDLE);
+    RB_ASSERT(texture_layout != VK_NULL_HANDLE);
     memset(pipeline, 0, sizeof(*pipeline));
     pipeline->color_format = color_format;
 
@@ -172,7 +177,7 @@ bool rb_vk_pipeline_create(rb_vk_pipeline *pipeline, const rb_vk_device *device,
     VkShaderModule fragment =
         pipeline_create_module(device, fragment_spirv, sizeof(fragment_spirv), "fragment");
     bool ok = vertex != VK_NULL_HANDLE && fragment != VK_NULL_HANDLE &&
-              pipeline_create_layout(pipeline, device) &&
+              pipeline_create_layout(pipeline, device, texture_layout) &&
               pipeline_create_handle(pipeline, device, vertex, fragment);
     if (fragment != VK_NULL_HANDLE) {
         device->vk.vkDestroyShaderModule(device->handle, fragment, NULL);

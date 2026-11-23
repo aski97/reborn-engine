@@ -76,12 +76,13 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
 - [x] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
       of the window's resolution (ADR 0015, B3); screen-to-world conversion for the mouse; UI and
       debug drawing stay in window pixels next to the world (ADR 0016)
-- [ ] GPU memory and textures: allocate device memory, create an image, upload pixels through a
-      staging buffer, a sampler and a descriptor so the fragment shader can read it (allocation
-      strategy and descriptor model: to decide). The quad shader samples a texture, a 1x1 white
-      one for plain quads
+- [x] GPU memory and textures: one device memory allocation per resource, images uploaded through
+      a staging buffer, nearest and linear samplers, one descriptor set per texture; public
+      `rb_texture` (create from RGBA pixels, destroy, draw tinted); the quad shader samples a
+      texture, a 1x1 white one for plain quads (ADR 0017)
 - [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
-      pre-baked bitmap font: to decide)
+      pre-baked bitmap font: to decide); a source rectangle per textured draw, to pick a glyph out
+      of the atlas (ADR 0017, A3)
 - [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment;
       the HUD in window pixels or in a virtual resolution through a HUD camera, so it keeps its
       proportion on every screen (to decide)
@@ -127,7 +128,7 @@ pause and game states.
 
 **Seedling** (2D, top-down): walk a character around a tiled garden, collect seeds, plant and water
 them before they wither.
-Likely needs: textures and sprite sheets (PNG decoding, file system), batched renderer, sprite
+Likely needs: sprite sheets (PNG decoding, file system), batched renderer, sprite
 animation, tile map loaded from a file, a camera following the player, asset manager.
 
 ## Next games
@@ -217,10 +218,28 @@ In order; each gets a version when it starts.
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
 - [ ] Batched 2D renderer (sprites, textures): the frame's quads collected into a vertex buffer and
-      drawn with few draw calls instead of one per quad (ADR 0015, F1); brings GPU memory
-      allocation. `quad.vert` reads vertices instead of push constants; `rb_renderer_draw_quad`
-      keeps its signature. A colored quad becomes a sprite with a 1x1 white texture tinted by its
-      color, so one shader serves both
+      drawn with few draw calls instead of one per quad (ADR 0015, F1). `quad.vert` reads vertices
+      instead of push constants; `rb_renderer_draw_quad` and `_draw_texture` keep their
+      signatures. A texture change breaks a batch: decide between atlases and bindless textures
+      (one array of every texture bound once per frame, its index per vertex; ADR 0017, D2)
+- [ ] GPU memory block allocator (ADR 0017, B2): a few large `vkAllocateMemory` blocks (e.g.
+      64 MiB) per memory type, carved into the resources' allocations by our own code (offsets,
+      alignment, `bufferImageGranularity` between buffers and images sharing a block), returned to
+      the block when freed. Why it will be needed: today every texture and buffer has its own
+      allocation; Vulkan guarantees only 4096 alive at once (many Windows drivers allow exactly
+      that), each allocation is a slow call into the OS kernel (a stutter if done mid-game), and
+      drivers may round each one up to a large granularity, wasting memory on small resources.
+      Blink's handful of textures is far from that; hundreds of sprites, glyph pages, per-frame
+      vertex buffers and later meshes are not. With the batched renderer or the asset manager
+      (Seedling), or earlier if the live allocation count nears the cap
+- [ ] Texture uploads without a stall (ADR 0017, C2): a persistent staging buffer, copies recorded
+      into the frame instead of a submit and wait each. With asynchronous asset loading / streaming
+- [ ] Deferred texture destruction (ADR 0017, G2): queued until the frames in flight that may use
+      it are done, instead of waiting for the whole GPU. With streaming
+- [ ] Premultiplied alpha for textures: with straight alpha, linear filtering blends the color of
+      transparent pixels into a sprite's edge (dark fringes). Decide with image decoding (PNG)
+- [ ] Texture formats other than RGBA8 sRGB (single-channel font atlases, linear data): when
+      memory or a feature needs them (ADR 0017, F3)
 - [ ] Layers: each draw tagged with a layer (background, world, HUD, menus), each layer with its
       camera, drawn in layer order whatever the call order; today the call order is the layer order.
       With the batched renderer, which collects the frame's quads anyway; likely Seedling (map,
