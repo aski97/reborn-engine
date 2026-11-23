@@ -70,18 +70,13 @@ every engine feature. "Likely needs" are guesses, not tasks.
 ## v0.2.0
 
 **Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
-up, a miss costs a life, the score is a bar of squares (no text).
-Likely needs: colored quads at any position, 2D math and an orthographic projection, a seeded
-random number generator, mouse position in world coordinates.
-
-**Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
-ring shrinks.
-Likely needs: circle vs arc collisions, sound effects (audio backend, mixer, WAV), text for score
-and game over (fonts), pause and game states.
-
-**Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
-these steps put numbers next to it). In order: each needs the one before. The text work is the
-same Orbit needs for its score. No batching yet: a few hundred glyphs fit one draw each.
+up, a miss costs a life; score and lives are shown as text.
+In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
+No batching yet: a few hundred quads and glyphs fit one draw each.
+- [ ] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
+      of the window's resolution (ADR 0015, B3); screen-to-world conversion for the mouse; UI and
+      debug drawing stay in window pixels next to the world (matrix or not, memory layout, visible
+      area, y direction: to decide)
 - [ ] GPU memory and textures: allocate device memory, create an image, upload pixels through a
       staging buffer, a sampler and a descriptor so the fragment shader can read it (allocation
       strategy and descriptor model: to decide). The quad shader samples a texture, a 1x1 white
@@ -89,6 +84,13 @@ same Orbit needs for its score. No batching yet: a few hundred glyphs fit one dr
 - [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
       pre-baked bitmap font: to decide)
 - [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment
+- [ ] Random number generator with an explicit seed (reproducible runs, replays, tests; algorithm
+      to decide)
+- [ ] The game in `games/blink/`: CMake wiring, where its assets live, how it is launched and
+      tested on Linux (ADR 0014)
+
+**Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
+these steps put numbers next to it). After Blink's text rendering.
 - [ ] Numbers in the overlay: frames per second, average and worst frame time, steps per second,
       memory per tag, validation counts, GPU, vsync and swapchain size
 - [ ] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
@@ -97,12 +99,19 @@ same Orbit needs for its score. No batching yet: a few hundred glyphs fit one dr
 
 **Continuous integration**
 - [ ] GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
-      decide whether to publish the image (GHCR) or build it per run. Needed before the v0.3.0
+      decide whether to publish the image (GHCR) or build it per run. Needed before the
       refactoring
 
 ## v0.3.0
 
-**Refactoring** (after v0.2.0's games, and threading if one of them brought it)
+**Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
+ring shrinks.
+Likely needs: circle vs arc collisions, rotated quads, sound effects (audio backend, mixer, WAV),
+pause and game states.
+
+## v0.4.0
+
+**Refactoring** (after Blink and Orbit, and threading if one of them brought it)
 - [ ] File by file: drop comments that restate the code, review function, variable and file names
 - [ ] Interfaces and duplication: logic repeated across backends moves to common code (platform
       startup/shutdown and window slots are identical in Win32 and Xlib)
@@ -113,7 +122,7 @@ same Orbit needs for its score. No batching yet: a few hundred glyphs fit one dr
 - [ ] Directory layout and file names: e.g. stateless OS services (`linux_*`) apart from the window
       system (`xlib_*`), so a Wayland backend replaces only the latter
 
-## v0.4.0
+## v0.5.0
 
 **Seedling** (2D, top-down): walk a character around a tiled garden, collect seeds, plant and water
 them before they wither.
@@ -165,7 +174,6 @@ In order; each gets a version when it starts.
       Windows job objects); many small short-lived arenas (per asset, per entity), better carved
       from a parent allocator than each reserving address space; a target without virtual memory
       control (WebAssembly, some consoles)
-- [ ] Random number generator with an explicit seed (reproducible runs, replays, tests)
 - [ ] Error handling: public functions return `bool` and log today; decide whether callers need
       error codes to react (missing vs corrupt file, out of memory), and how they are named
 - [ ] Fatal errors shown to the player: a message box when startup fails (no Vulkan driver, no
@@ -212,11 +220,6 @@ In order; each gets a version when it starts.
       allocation. `quad.vert` reads vertices instead of push constants; `rb_renderer_draw_quad`
       keeps its signature. A colored quad becomes a sprite with a 1x1 white texture tinted by its
       color, so one shader serves both
-- [ ] 2D camera: draws in world units instead of window pixels (ADR 0015, B3), independent of the
-      window's resolution; position, zoom, orthographic projection (a matrix replaces the quad's
-      `target`), world-to-screen and screen-to-world conversion (the mouse). Needs the math
-      library. Decide with it how UI and debug drawing stay in screen pixels next to the world
-      (two cameras, a screen-space mode...)
 - [ ] Rotated quads: an angle (or a 2D transform) in the quad's data, when a game turns objects
       (Orbit's arc may be the first)
 - [ ] Screenshots: copy the presented image to a file (also for golden-image tests)
@@ -224,7 +227,6 @@ In order; each gets a version when it starts.
 - [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
 - [ ] Device lost: today the renderer logs it and stops drawing (ADR 0013); recreate the device
       and every GPU resource if a real driver reset shows up
-- [ ] Math library (vectors, matrices, colors on top of it) when the renderer needs transforms
 - [ ] 3D
 
 ### Assets
