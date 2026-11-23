@@ -14,12 +14,42 @@ renderer drawing colored quads); it is not yet usable to make a game. See the [r
 
 | Tool       | Version | Notes |
 |------------|---------|-------|
-| Clang      | ≥ 17    | primary compiler |
+| Clang      | ≥ 17    | compiler, called `clang` by the presets |
 | CMake      | ≥ 3.25  | build system |
 | Ninja      | any     | build executor used by the presets |
-| Vulkan SDK | ≥ 1.3   | headers, loader, validation layers, `glslc` |
+| Vulkan     | ≥ 1.3   | headers, loader, validation layers, `glslc`, a GPU driver |
+
+### Windows
+
+In PowerShell:
+
+```powershell
+winget install -e --id LLVM.LLVM
+winget install -e --id Kitware.CMake
+winget install -e --id Ninja-build.Ninja
+winget install -e --id KhronosGroup.VulkanSDK
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Add `C:\Program Files\LLVM\bin` to `PATH`, then open a new terminal. Clang uses the Windows SDK
+and C runtime from the Visual Studio Build Tools on its own: no developer prompt is needed.
+
+### Linux
+
+On Ubuntu or Debian (other distributions have the same packages under their own names):
+
+```sh
+sudo apt install clang cmake ninja-build libx11-dev \
+    libvulkan-dev vulkan-validationlayers glslc mesa-vulkan-drivers
+```
+
+If the distribution's Clang is older than 17, install a newer one from [apt.llvm.org](https://apt.llvm.org/)
+and make `clang` point to it. `debug-asan` also needs the sanitizer runtime
+(`libclang-rt-<version>-dev` on Ubuntu). With an NVIDIA GPU, its proprietary driver provides Vulkan.
 
 ## Build
+
+The same commands in PowerShell on Windows and in a shell on Linux:
 
 ```sh
 cmake --preset debug
@@ -27,19 +57,7 @@ cmake --build --preset debug
 ./build/debug/bin/sandbox
 ```
 
-Presets: `debug`, `release`, `debug-asan`.
-
-### Checking Linux without a Linux machine
-
-Optional, development only: building the engine never requires Docker. With Docker installed,
-this builds the presets in an Ubuntu container with the same Clang major as Windows, then runs
-the tests (the sandbox itself needs a Linux desktop, e.g. a WSL distro with WSLg):
-
-```powershell
-./scripts/linux-build.ps1 debug release debug-asan
-```
-
-Details in [docs/features/build-system.md](docs/features/build-system.md).
+Presets: `debug`, `release`, `debug-asan`. Details in [docs/features/build-system.md](docs/features/build-system.md).
 
 ## Tests
 
@@ -76,7 +94,7 @@ engine/src/              implementation
 sandbox/                 test application using the engine
 tests/                   unit tests (mirrors engine/src/) and the rb_test framework
 cmake/                   CMake modules
-docker/, scripts/        optional Linux check (dev tooling, not needed to build)
+docker/, scripts/        development tooling, not needed to build
 docs/features/           one page per engine feature
 docs/adr/                architecture decision records
 ```
