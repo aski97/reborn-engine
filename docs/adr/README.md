@@ -21,14 +21,14 @@ its implementation.
 | 0003 | [Versioning and repository layout](0003-versioning-and-repo-layout.md) | Accepted |
 | 0004 | [Unit testing](0004-unit-testing.md) | Accepted |
 | 0005 | [Linux build container](0005-linux-build-container.md) | Accepted |
-| 0006 | [Platform layer](0006-platform-layer.md) | Proposed |
+| 0006 | [Platform layer](0006-platform-layer.md) | Accepted |
 | 0007 | [Generational handles and index-only containers](0007-index-only-containers.md) | Accepted |
 | 0008 | [Logging and asserts](0008-logging-and-asserts.md) | Accepted |
 | 0009 | [Monotonic clock and sleep](0009-monotonic-clock-and-sleep.md) | Accepted |
 | 0010 | [Memory allocation](0010-memory-allocation.md) | Accepted |
 | 0011 | [Application layer and game loop](0011-application-layer-and-game-loop.md) | Accepted |
 | 0012 | [Allocation tracking](0012-allocation-tracking.md) | Accepted |
-| 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Proposed |
+| 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Accepted |
 | 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Proposed |
 | 0015 | [Shaders and graphics pipeline](0015-shaders-and-graphics-pipeline.md) | Accepted |
 

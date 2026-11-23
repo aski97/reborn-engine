@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.1.0 — Foundations
+## v0.1.0 — Foundations (released 2026-11-23)
 
 **Project setup**
 - [x] Folder layout, git, `.gitignore` / `.gitattributes`

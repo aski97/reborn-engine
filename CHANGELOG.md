@@ -4,7 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
-Nothing is released yet: every entry is *Added* and describes what v0.1.0 contains.
+## [0.1.0] - 2026-11-23
 
 ### Added
 - Project layout: `engine/` (`reborn` library), `sandbox/`, `cmake/`, `docs/`.
@@ -143,3 +143,6 @@ Nothing is released yet: every entry is *Added* and describes what v0.1.0 contai
   `vulkan-validationlayers`, so renderer tests run without a GPU; `glslc` for the shaders.
 - Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the
   application folder and System32, `dlopen`).
+
+[Unreleased]: https://github.com/aski97/reborn-engine/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/aski97/reborn-engine/releases/tag/v0.1.0

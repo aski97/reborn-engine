@@ -1,6 +1,6 @@
 # 0013 — Vulkan renderer
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 
 ## Context

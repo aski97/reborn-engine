@@ -3,6 +3,9 @@
 A game engine written in C17 with Vulkan, built step by step as a learning project.
 2D first, 3D later. Platforms: Windows and Linux.
 
+**Status: pre-alpha.** v0.1.0 has the foundations (windows, input, memory, game loop, a Vulkan
+renderer drawing colored quads); it is not yet usable to make a game. See the [roadmap](TODO.md).
+
 - **No external libraries**, except where building them makes no sense (e.g. the Vulkan loader).
 - **Every decision is documented** in [`docs/`](docs/README.md).
 - **LLM-friendly**: engine state and logs are designed to be inspected and driven by agents.

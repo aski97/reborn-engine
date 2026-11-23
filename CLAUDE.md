@@ -17,8 +17,8 @@ the owner wants to understand and approve every architectural choice.
   from what the current game needs. The sandbox keeps exercising every engine feature.
 - No external libraries without explicit approval.
 - Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date. `[Unreleased]` is the difference
-  from the last release: before the first one, everything is *Added* and describes the current
-  state (no *Changed* / *Removed*, no "no longer..."); edit the existing entry instead.
+  from the last release (*Added*, *Changed*, *Fixed*, *Removed*): a change to something added
+  since then edits its existing entry instead of adding a new one.
 - Every major feature has a page in `docs/features/` (from `_template.md`). Create it with the
   feature, update it (including the *History* table) when the feature changes, and update the index.
 - Everything in the repository is in English. Docs are concise.
