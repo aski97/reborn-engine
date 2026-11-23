@@ -73,17 +73,18 @@ every engine feature. "Likely needs" are guesses, not tasks.
 up, a miss costs a life; score and lives are shown as text.
 In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
 No batching yet: a few hundred quads and glyphs fit one draw each.
-- [ ] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
+- [x] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
       of the window's resolution (ADR 0015, B3); screen-to-world conversion for the mouse; UI and
-      debug drawing stay in window pixels next to the world (matrix or not, memory layout, visible
-      area, y direction: to decide)
+      debug drawing stay in window pixels next to the world (ADR 0016)
 - [ ] GPU memory and textures: allocate device memory, create an image, upload pixels through a
       staging buffer, a sampler and a descriptor so the fragment shader can read it (allocation
       strategy and descriptor model: to decide). The quad shader samples a texture, a 1x1 white
       one for plain quads
 - [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
       pre-baked bitmap font: to decide)
-- [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment
+- [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment;
+      the HUD in window pixels or in a virtual resolution through a HUD camera, so it keeps its
+      proportion on every screen (to decide)
 - [ ] Random number generator with an explicit seed (reproducible runs, replays, tests; algorithm
       to decide)
 - [ ] The game in `games/blink/`: CMake wiring, where its assets live, how it is launched and
@@ -220,6 +221,13 @@ In order; each gets a version when it starts.
       allocation. `quad.vert` reads vertices instead of push constants; `rb_renderer_draw_quad`
       keeps its signature. A colored quad becomes a sprite with a 1x1 white texture tinted by its
       color, so one shader serves both
+- [ ] Layers: each draw tagged with a layer (background, world, HUD, menus), each layer with its
+      camera, drawn in layer order whatever the call order; today the call order is the layer order.
+      With the batched renderer, which collects the frame's quads anyway; likely Seedling (map,
+      characters, interface)
+- [ ] Several cameras on the world at once (split-screen, minimap): a viewport rectangle in
+      `rb_camera2d`, the part of the window its field goes into (today: the largest centered one);
+      `rb_camera2d_make` gives it the whole window. When a game shows the world twice
 - [ ] Rotated quads: an angle (or a 2D transform) in the quad's data, when a game turns objects
       (Orbit's arc may be the first)
 - [ ] Screenshots: copy the presented image to a file (also for golden-image tests)

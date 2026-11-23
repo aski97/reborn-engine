@@ -31,5 +31,6 @@ its implementation.
 | 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Accepted |
 | 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Proposed |
 | 0015 | [Shaders and graphics pipeline](0015-shaders-and-graphics-pipeline.md) | Accepted |
+| 0016 | [Math library and 2D camera](0016-math-and-2d-camera.md) | Accepted |
 
 Template: [`template.md`](template.md).

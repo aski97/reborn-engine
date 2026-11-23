@@ -8,9 +8,8 @@ const vec2 corners[6] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
                                vec2(1.0, 1.0), vec2(0.0, 1.0), vec2(0.0, 0.0));
 
 void main() {
-    vec2 pixel = quad.position + corners[gl_VertexIndex] * quad.size;
-    // Pixels to Vulkan's normalized coordinates: -1 at the top-left edge, +1 at the bottom-right,
-    // y pointing down like the pixels (B1), so no flip.
-    vec2 ndc = pixel / quad.target * 2.0 - 1.0;
-    gl_Position = vec4(ndc, 0.0, 1.0);
+    vec2 point = quad.position + corners[gl_VertexIndex] * quad.size;
+    // The view maps the space onto Vulkan's normalized coordinates, -1 at the viewport's top-left
+    // edge and +1 at its bottom-right, y down (ADR 0016). The 1 in w lets it translate.
+    gl_Position = quad.view * vec4(point, 0.0, 1.0);
 }

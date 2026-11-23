@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Math library (ADR 0016), `reborn/math.h`, header-only: `rb_vec2` (add, sub, scale,
+  component-wise mul), `rb_mat4` column-major, `rb_mat4_ortho`.
+- 2D camera (ADR 0016), `reborn/camera2d.h`: `rb_camera2d` (center, design size, zoom) made with
+  `rb_camera2d_make`; the design area is always shown whole, with bars where the window's aspect
+  differs; `rb_camera2d_screen_to_world` converts mouse positions with the same field the
+  renderer draws into.
+- `rb_renderer_set_camera`: the draws that follow are in world units, clipped to the camera's
+  field; `NULL` returns to window pixels, where each frame begins.
+- Sandbox: a 16x9 world field drawn through a camera (grid, a moving square, a marker where the
+  left button clicks, logged in world units); the wheel zooms, Z resets; the HUD stays in pixels.
+
+### Changed
+- The quad shader receives a view matrix instead of the target size: 96 bytes of push constants,
+  the view pushed when the space changes, 32 bytes per quad.
+
 ## [0.1.0] - 2026-11-23
 
 ### Added

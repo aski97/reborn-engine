@@ -27,6 +27,7 @@ set(REBORN_SOURCES
     src/platform/clock.c
     src/platform/input.c
     src/platform/platform.c
+    src/renderer/camera2d.c
     src/renderer/vulkan/vulkan_debug.c
     src/renderer/vulkan/vulkan_device.c
     src/renderer/vulkan/vulkan_frame.c

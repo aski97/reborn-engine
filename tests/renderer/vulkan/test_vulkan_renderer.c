@@ -257,3 +257,54 @@ RB_TEST(vulkan_renderer, quads_are_drawn_without_validation_messages) {
     expect_no_validation_messages(renderer);
     stop(renderer);
 }
+
+/* ============================================================================
+ * 2D camera (ADR 0016)
+ * ========================================================================== */
+
+/*
+ * World, then pixels, then world again within each frame: viewport, scissor
+ * and the view change between draws. Validation would report a bad viewport
+ * or a push outside the layout's range.
+ */
+RB_TEST(vulkan_renderer, camera_switches_spaces_without_validation_messages) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    /* 4:3 window, 16:9 field: bars above and below. */
+    rb_camera2d camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
+    rb_color    red = rb_color_srgb(1.0f, 0.0f, 0.0f, 1.0f);
+    for (u32 i = 0; i < 2 * RB_VK_FRAMES_IN_FLIGHT + 1; ++i) {
+        if (!rb_renderer_begin_frame(renderer)) {
+            RB_EXPECT(false);
+            break;
+        }
+        rb_renderer_set_camera(renderer, &camera);
+        rb_renderer_draw_quad(renderer, 0.0f, 0.0f, 16.0f, 9.0f, red);
+        rb_renderer_draw_quad(renderer, -1.0f, 8.5f, 2.0f, 2.0f, red); /* across the field's edge */
+        rb_renderer_set_camera(renderer, NULL);
+        rb_renderer_draw_quad(renderer, 10.0f, 10.0f, 50.0f, 20.0f, red);
+        camera.zoom = 2.0f;
+        rb_renderer_set_camera(renderer, &camera);
+        rb_renderer_draw_quad(renderer, 7.5f, 4.0f, 1.0f, 1.0f, red);
+        camera.zoom = 1.0f;
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(!renderer->failed);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/* A field so flat it rounds to no pixels: a 1-pixel viewport, an empty scissor, nothing drawn. */
+RB_TEST(vulkan_renderer, an_empty_field_draws_nothing_without_validation_messages) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_camera2d camera = rb_camera2d_make((rb_vec2){0.0f, 0.0f}, (rb_vec2){10000.0f, 1.0f});
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_set_camera(renderer, &camera);
+    rb_renderer_draw_quad(renderer, -10.0f, -1.0f, 20.0f, 2.0f,
+                          rb_color_srgb(1.0f, 0.0f, 0.0f, 1.0f));
+    rb_renderer_end_frame(renderer);
+    RB_EXPECT(!renderer->failed);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}

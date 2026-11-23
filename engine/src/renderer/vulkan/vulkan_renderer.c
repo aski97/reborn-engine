@@ -8,6 +8,7 @@
 #include <reborn/log.h>
 
 #include "platform/platform_vulkan.h"
+#include "renderer/camera2d_internal.h"
 #include "renderer/renderer_internal.h"
 
 /*
@@ -140,21 +141,65 @@ void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color) {
     renderer->clear_color = color;
 }
 
+/*
+ * Points the draws that follow at a space (ADR 0016): viewport and scissor on
+ * the area it covers, the view that maps it there. NULL: the whole image, in
+ * pixels.
+ */
+static void renderer_set_space(rb_renderer *renderer, const rb_camera2d *camera) {
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    VkCommandBuffer               commands = renderer->frames[renderer->frame_index].commands;
+    VkExtent2D                    extent = renderer->swapchain.extent;
+    rb_camera2d_field             field = {0, 0, extent.width, extent.height};
+    rb_mat4 view = rb_mat4_ortho(0.0f, (f32)extent.width, 0.0f, (f32)extent.height);
+    if (camera != NULL) {
+        field = rb_camera2d_field_rect(camera, extent.width, extent.height);
+        view = rb_camera2d_projection(camera);
+    }
+    /*
+     * A viewport must not be empty, a scissor may: a field squeezed to no
+     * pixels by an extreme aspect keeps a 1-pixel viewport and draws nothing.
+     */
+    VkViewport viewport = {
+        .x = (f32)field.x,
+        .y = (f32)field.y,
+        .width = (f32)(field.width > 0 ? field.width : 1),
+        .height = (f32)(field.height > 0 ? field.height : 1),
+        .maxDepth = 1.0f,
+    };
+    VkRect2D scissor = {
+        .offset = {(i32)field.x, (i32)field.y},
+        .extent = {field.width, field.height},
+    };
+    vk->vkCmdSetViewport(commands, 0, 1, &viewport);
+    vk->vkCmdSetScissor(commands, 0, 1, &scissor);
+    /* Only the view: the quad's part is pushed with each draw. */
+    vk->vkCmdPushConstants(commands, renderer->pipeline.layout, RB_VK_QUAD_PUSH_STAGES,
+                           offsetof(rb_vk_quad_push, view), sizeof(view.m), view.m);
+}
+
+void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *camera) {
+    RB_ASSERT(renderer != NULL);
+    /* Outside a frame there is no command buffer to record into: a bug in the caller. */
+    RB_ASSERT(renderer->in_frame);
+    renderer_set_space(renderer, camera);
+}
+
 void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                            rb_color color) {
     RB_ASSERT(renderer != NULL);
     /* Outside a frame there is no command buffer to record into: a bug in the caller. */
     RB_ASSERT(renderer->in_frame);
-    VkExtent2D      extent = renderer->swapchain.extent;
     rb_vk_quad_push quad = {
         .position = {x, y},
         .size = {width, height},
         .color = {color.r, color.g, color.b, color.a},
-        .target = {(f32)extent.width, (f32)extent.height},
     };
+    /* From `position` on: the view pushed by the last change of space stays (ADR 0016). */
     VkCommandBuffer commands = renderer->frames[renderer->frame_index].commands;
     renderer->device.vk.vkCmdPushConstants(commands, renderer->pipeline.layout,
-                                           RB_VK_QUAD_PUSH_STAGES, 0, sizeof(quad), &quad);
+                                           RB_VK_QUAD_PUSH_STAGES, RB_VK_QUAD_PUSH_OFFSET,
+                                           RB_VK_QUAD_PUSH_SIZE, quad.position);
     /* Six vertices, two triangles: the vertex shader builds them from the quad (F1). */
     renderer->device.vk.vkCmdDraw(commands, 6, 1, 0, 0);
 }
@@ -282,18 +327,11 @@ static bool renderer_record_begin(rb_renderer *renderer, const rb_vk_frame *fram
     };
     vk->vkCmdBeginRendering(frame->commands, &rendering);
 
-    /* Every draw of the frame uses the one pipeline: bound once, with the frame's rectangles. */
+    /* Every draw of the frame uses the one pipeline: bound once. */
     vk->vkCmdBindPipeline(frame->commands, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           renderer->pipeline.handle);
-    VkExtent2D extent = renderer->swapchain.extent;
-    VkViewport viewport = {
-        .width = (f32)extent.width,
-        .height = (f32)extent.height,
-        .maxDepth = 1.0f,
-    };
-    VkRect2D scissor = {.extent = extent};
-    vk->vkCmdSetViewport(frame->commands, 0, 1, &viewport);
-    vk->vkCmdSetScissor(frame->commands, 0, 1, &scissor);
+    /* Window pixels until the game sets a camera: a forgotten reset lasts one frame at most. */
+    renderer_set_space(renderer, NULL);
     return true;
 }
 

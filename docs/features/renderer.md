@@ -4,16 +4,17 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-17) |
-| **Updated** | v0.1.0 (2026-11-17) |
+| **Updated** | v0.2.0 (2026-11-23) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
 far it opens the Vulkan loader at run time, creates an instance with validation layers reporting
 to the engine's log, picks a GPU, opens a device, keeps a swapchain sized to the window and
 presents a frame cleared to a color the game sets, with two frames in flight. The game draws
-colored quads in window pixels through one graphics pipeline, its shaders compiled at build time.
+colored quads through one graphics pipeline, its shaders compiled at build time, in window pixels
+or in world units through a 2D camera ([camera2d.md](camera2d.md)).
 
 ## Spec
 - `rb_renderer_startup(allocator, config, platform, window)` returns an opaque `rb_renderer`, or
@@ -38,13 +39,17 @@ colored quads in window pixels through one graphics pipeline, its shaders compil
 - **Clear color:** `rb_renderer_set_clear_color(renderer, rb_color)`, dark gray by default, used
   from the next frame begun (the current one is already cleared).
 - **Quads:** `rb_renderer_draw_quad(renderer, x, y, width, height, color)` from the game's
-  `render`: a filled rectangle in `f32` pixels of the client area, origin top left, y down (the
-  coordinates of `rb_mouse_position`), fractions allowed. Drawn in call order, each on top of the
-  previous ones; alpha blends with what is underneath (straight alpha). Outside a frame:
-  `RB_ASSERT`. One draw call per quad.
+  `render`: a filled rectangle in the current space, by default `f32` pixels of the client area,
+  origin top left, y down (the coordinates of `rb_mouse_position`), fractions allowed. Drawn in
+  call order, each on top of the previous ones; alpha blends with what is underneath (straight
+  alpha). Outside a frame: `RB_ASSERT`. One draw call per quad.
+- **Space:** `rb_renderer_set_camera(renderer, &camera)` switches the following draws to world
+  units, clipped to the camera's field (bars elsewhere); `NULL` back to window pixels. Each frame
+  begins in pixels. Details in [camera2d.md](camera2d.md).
 - **Pipeline:** one, built at startup for the swapchain's format (a failure fails the startup),
   rebuilt only if a new swapchain comes with another format (a failure then stops drawing). No
-  vertex buffers, no culling, viewport and scissor set every frame.
+  vertex buffers, no culling, viewport and scissor set at each frame's begin and each change of
+  space.
 - **Shaders:** GLSL in `engine/src/renderer/vulkan/shaders/`, compiled to SPIR-V by `glslc` at
   build time and embedded in the engine (see the build system page): nothing to load at run
   time, a shader error fails the build.
@@ -99,11 +104,12 @@ flowchart LR
 Startup order (shutdown is the reverse): loader → instance (+ messenger) → surface → device →
 swapchain → pipeline → frames in flight.
 
-A quad through the pipeline (window 800x600, `draw_quad(100, 50, 200, 100, red)`):
+A quad through the pipeline (window 800x600, pixels, `draw_quad(100, 50, 200, 100, red)`):
 
 ```mermaid
 flowchart LR
-    C["draw_quad: push constants<br/>{100,50} {200,100} red {800,600}<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → pixel → -1..1"]
+    B0["begin: push view<br/>ortho(0, 800, 0, 600)"] --> C
+    C["draw_quad: push constants from offset 64<br/>{100,50} {200,100} red<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → point → view × point → -1..1"]
     V --> RS["rasterizer<br/>pixels 100..299 x 50..149"]
     RS --> FS["quad.frag x20000<br/>out = color"]
     FS --> B["blend: src·a + dst·(1−a)"]
@@ -149,9 +155,10 @@ sequenceDiagram
   nothing back, and the image returning from acquire is the only sign that its present is over.
 - Barriers and the submit use synchronization2 (`vkCmdPipelineBarrier2`, `vkQueueSubmit2`).
 - A quad needs no GPU memory: the vertex shader picks one of six corners with `gl_VertexIndex`
-  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` mirrors
-  the block in `shaders/quad.glsl`, shared by both shaders; `_Static_assert`s check offsets and
-  size.
+  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` (96 bytes:
+  view matrix, position, size, color) mirrors the block in `shaders/quad.glsl`, shared by both
+  shaders; `_Static_assert`s check offsets and size. The view (64 bytes) is pushed when the space
+  changes, each quad pushes only its 32 bytes: push constants persist across draws.
 - Dynamic rendering bakes the image format into the pipeline: `rb_vk_pipeline.color_format`
   records it, so a swapchain with another format triggers a rebuild.
 
@@ -200,10 +207,10 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 - GLSL (C1) compiled by `glslc` at build time (D1), embedded for the engine's own shaders (E3).
 - Corners in the shader, quad data as push constants (F1); dynamic viewport and scissor (G1);
   straight alpha blending (H2).
+- A view matrix replaces the target size; a current camera, `NULL` for pixels (ADR 0016, A1, G1).
 
 ## Future work
 - Batched 2D renderer with vertex buffers and textures, when a game draws many sprites.
-- World units through a 2D camera instead of window pixels (ADR 0015, B3; backlog).
 - Shaders as files next to the executable, with hot reload (ADR 0015, E2).
 - Recovering from a lost device instead of stopping.
 - Rendering without a window; choosing the GPU by name or index (backlog).
@@ -218,3 +225,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.1.0 | 2026-11-17 | Surface from the platform, GPU choice, device, swapchain rebuilt on resize; startup takes the window |
 | v0.1.0 | 2026-11-17 | Frames: two in flight, cleared and presented each loop iteration; `rb_renderer_set_clear_color`, `reborn/color.h` |
 | v0.1.0 | 2026-11-17 | Shaders compiled at build time and embedded, quad pipeline, `rb_renderer_draw_quad` |
+| v0.2.0 | 2026-11-23 | `rb_renderer_set_camera`: world units through a 2D camera, letterboxed; a view matrix in the push constants |

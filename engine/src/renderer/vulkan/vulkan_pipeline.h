@@ -13,22 +13,28 @@
 #include "renderer/vulkan/vulkan_device.h"
 
 /*
- * One quad as the shaders receive it (push constants, ADR 0015, F1). Mirrors
- * the block in shaders/quad.glsl byte for byte: std430 starts a vec4 on a
- * 16-byte boundary, which `color` already is, so the C struct needs no padding.
+ * The shaders' push constants (ADR 0015, F1; ADR 0016). Mirrors the block in
+ * shaders/quad.glsl byte for byte: std430 starts a mat4 and a vec4 on 16-byte
+ * boundaries, which `view` and `color` already are, so the C struct needs no
+ * padding. Pushed in two parts, since push constants persist across draws: the
+ * view when the space changes, the quad (from `position`) with each draw.
  */
 typedef struct rb_vk_quad_push {
-    f32 position[2]; /* top-left corner, pixels from the image's top left */
-    f32 size[2];     /* pixels */
+    f32 view[16];    /* the current space to normalized coordinates, column-major (rb_mat4) */
+    f32 position[2]; /* top-left corner, in the current space */
+    f32 size[2];     /* in the current space */
     f32 color[4];    /* linear, straight alpha */
-    f32 target[2];   /* the image's size in pixels */
 } rb_vk_quad_push;
 
 /* A mismatch would draw garbage without any error: checked at compile time. */
-_Static_assert(offsetof(rb_vk_quad_push, color) == 16, "must match shaders/quad.glsl");
-_Static_assert(offsetof(rb_vk_quad_push, target) == 32, "must match shaders/quad.glsl");
+_Static_assert(offsetof(rb_vk_quad_push, position) == 64, "must match shaders/quad.glsl");
+_Static_assert(offsetof(rb_vk_quad_push, color) == 80, "must match shaders/quad.glsl");
 /* Vulkan guarantees at least 128 bytes of push constants. */
-_Static_assert(sizeof(rb_vk_quad_push) == 40, "must match shaders/quad.glsl");
+_Static_assert(sizeof(rb_vk_quad_push) == 96, "must match shaders/quad.glsl");
+
+/* The part pushed with each draw. */
+#define RB_VK_QUAD_PUSH_OFFSET offsetof(rb_vk_quad_push, position)
+#define RB_VK_QUAD_PUSH_SIZE   (sizeof(rb_vk_quad_push) - RB_VK_QUAD_PUSH_OFFSET)
 
 #define RB_VK_QUAD_PUSH_STAGES (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
 

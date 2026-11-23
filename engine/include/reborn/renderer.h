@@ -13,12 +13,14 @@
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
  * Each frame starts cleared to the clear color; the game's `render` draws
- * colored quads on top. Pointer parameters must not be NULL (RB_ASSERT in
- * debug builds).
+ * colored quads on top, in window pixels or, through a 2D camera, in world
+ * units (rb_renderer_set_camera). Pointer parameters must not be NULL, unless
+ * stated otherwise (RB_ASSERT in debug builds).
  */
 #ifndef RB_RENDERER_H
 #define RB_RENDERER_H
 
+#include <reborn/camera2d.h>
 #include <reborn/color.h>
 #include <reborn/defines.h>
 #include <reborn/memory.h>
@@ -65,11 +67,25 @@ RB_API void rb_renderer_shutdown(rb_renderer *renderer);
 RB_API void rb_renderer_set_clear_color(rb_renderer *renderer, rb_color color);
 
 /*
+ * The space of the draws that follow (ADR 0016). A camera: world units, drawn
+ * only inside its field (the rest of the window, the bars, keeps what is
+ * there). NULL: pixels of the window's client area. The camera is copied: later
+ * changes need another call. Each frame begins in pixels. Only inside the
+ * game's `render`.
+ *
+ *   rb_renderer_set_camera(renderer, &camera);   // the world
+ *   ...
+ *   rb_renderer_set_camera(renderer, NULL);      // the HUD, in pixels
+ */
+RB_API void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *camera);
+
+/*
  * Draws a filled rectangle into the current frame, on top of what was drawn
- * before it (ADR 0015). In pixels of the window's client area, origin at the
- * top left and y pointing down, like rb_mouse_position; fractions are allowed.
- * Alpha blends with what is underneath: 1 covers, 0 leaves it untouched.
- * Only inside the game's `render` (a frame begun by the application layer).
+ * before it (ADR 0015). In the current space (rb_renderer_set_camera): window
+ * pixels by default, origin at the top left and y pointing down, like
+ * rb_mouse_position; fractions are allowed. Alpha blends with what is
+ * underneath: 1 covers, 0 leaves it untouched. Only inside the game's `render`
+ * (a frame begun by the application layer).
  *
  *   rb_renderer_draw_quad(renderer, 100, 50, 200, 100, rb_color_srgb(1, 0, 0, 1));
  */

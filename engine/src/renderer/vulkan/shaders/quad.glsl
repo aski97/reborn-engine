@@ -1,9 +1,10 @@
-// One quad, sent with each draw as push constants (ADR 0015, F1). Must match rb_vk_quad_push in
-// vulkan_pipeline.h byte for byte: push constant blocks use the std430 layout, where a vec4 starts
-// on a 16-byte boundary (offsets 0, 8, 16, 32: 40 bytes).
+// The push constants (ADR 0015, F1; ADR 0016). Must match rb_vk_quad_push in vulkan_pipeline.h
+// byte for byte: push constant blocks use the std430 layout, where a mat4 and a vec4 start on a
+// 16-byte boundary (offsets 0, 64, 72, 80: 96 bytes). `view` is pushed when the space changes,
+// the rest with each draw.
 layout(push_constant) uniform Quad {
-    vec2 position; // top-left corner, in pixels from the image's top left
-    vec2 size;     // in pixels
+    mat4 view;     // the current space (world units or pixels) to normalized coordinates
+    vec2 position; // top-left corner, in the current space
+    vec2 size;     // in the current space
     vec4 color;    // linear, straight alpha (rb_color)
-    vec2 target;   // the image's size in pixels
 } quad;

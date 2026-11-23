@@ -1,13 +1,16 @@
 /*
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
- * input and timing can be checked by hand, and draws a few quads.
+ * input and timing can be checked by hand, and draws a few quads: a world
+ * field through a 2D camera, a HUD in window pixels on top.
  */
 #include "game.h"
 
 #include <stdio.h>
 
+#include <reborn/camera2d.h>
 #include <reborn/clock.h>
 #include <reborn/log.h>
+#include <reborn/math.h>
 #include <reborn/renderer.h>
 
 /* Frames shown by the frame-time graph: two seconds at 60 fps. */
@@ -28,6 +31,13 @@ typedef struct sandbox_state {
     u64  last_render; /* 0 before the first frame */
     f32  frame_ms[SANDBOX_GRAPH_FRAMES];
     u32  frame_next; /* where the next interval goes */
+    /*
+     * World field (ADR 0016): the wheel zooms, Z resets, a left click drops a
+     * marker where it lands in world units.
+     */
+    rb_camera2d camera;
+    rb_vec2     marker;
+    bool        has_marker;
 } sandbox_state;
 
 /* ============================================================================
@@ -61,11 +71,17 @@ static const char *format_mods(u32 mods, char *buf, usize size) {
     return buf;
 }
 
+/* The world point under a window pixel, for the main window's current size. */
+static rb_vec2 sandbox_to_world(const sandbox_state *game, rb_app *app, i32 x, i32 y) {
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    rb_vec2        target = {(f32)size.pixel_width, (f32)size.pixel_height};
+    return rb_camera2d_screen_to_world(&game->camera, target, (rb_vec2){(f32)x, (f32)y});
+}
+
 static void game_on_event(void *state, rb_app *app, const rb_event *ev) {
-    (void)state;
-    (void)app;
-    u32  id = ev->window.id;
-    char mods[32];
+    sandbox_state *game = state;
+    u32            id = ev->window.id;
+    char           mods[32];
     switch (ev->type) {
     case RB_EVENT_WINDOW_CLOSE_REQUESTED:
         RB_LOG_INFO("Window 0x%08x: close requested", id);
@@ -97,20 +113,32 @@ static void game_on_event(void *state, rb_app *app, const rb_event *ev) {
                      ev->key.repeat ? " (repeat)" : "");
         break;
     case RB_EVENT_MOUSE_BUTTON_PRESSED:
-    case RB_EVENT_MOUSE_BUTTON_RELEASED:
-        RB_LOG_DEBUG("Window 0x%08x: mouse %s %s at %d,%d%s", id,
+    case RB_EVENT_MOUSE_BUTTON_RELEASED: {
+        rb_vec2 world = sandbox_to_world(game, app, ev->button.x, ev->button.y);
+        RB_LOG_DEBUG("Window 0x%08x: mouse %s %s at %d,%d (world %.2f,%.2f)%s", id,
                      rb_mouse_button_name(ev->button.button),
                      ev->type == RB_EVENT_MOUSE_BUTTON_PRESSED ? "pressed" : "released",
-                     ev->button.x, ev->button.y, format_mods(ev->button.mods, mods, sizeof(mods)));
+                     ev->button.x, ev->button.y, (double)world.x, (double)world.y,
+                     format_mods(ev->button.mods, mods, sizeof(mods)));
+        if (ev->type == RB_EVENT_MOUSE_BUTTON_PRESSED &&
+            ev->button.button == RB_MOUSE_BUTTON_LEFT) {
+            game->marker = world;
+            game->has_marker = true;
+        }
         break;
+    }
     case RB_EVENT_MOUSE_MOVED:
         /* TRACE: one per step while the mouse moves. */
         RB_LOG_TRACE("Window 0x%08x: mouse moved to %d,%d", id, ev->move.x, ev->move.y);
         break;
-    case RB_EVENT_MOUSE_WHEEL:
-        RB_LOG_DEBUG("Window 0x%08x: wheel %.2f,%.2f", id, (double)ev->wheel.x,
-                     (double)ev->wheel.y);
+    case RB_EVENT_MOUSE_WHEEL: {
+        /* A tenth per notch, kept within a range where the field stays recognizable. */
+        f32 zoom = game->camera.zoom * (1.0f + 0.1f * ev->wheel.y);
+        game->camera.zoom = zoom < 0.25f ? 0.25f : zoom > 8.0f ? 8.0f : zoom;
+        RB_LOG_DEBUG("Window 0x%08x: wheel %.2f,%.2f (zoom %.2f)", id, (double)ev->wheel.x,
+                     (double)ev->wheel.y, (double)game->camera.zoom);
         break;
+    }
     default:
         break;
     }
@@ -139,6 +167,7 @@ static bool game_init(void *state, rb_app *app) {
     game->start = rb_time_now();
     game->window_start = game->start;
     game->graph_visible = true;
+    game->camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
     return true;
 }
 
@@ -155,6 +184,10 @@ static void game_update(void *state, rb_app *app, f64 dt) {
     if (rb_key_was_released(platform, RB_KEY_SPACE)) {
         RB_LOG_DEBUG("Query: Space was released this step (down: %d)",
                      rb_key_is_down(platform, RB_KEY_SPACE));
+    }
+    if (rb_key_was_pressed(platform, RB_KEY_Z)) {
+        game->camera.zoom = 1.0f;
+        RB_LOG_INFO("Zoom reset (Z)");
     }
     if (rb_key_was_pressed(platform, RB_KEY_L)) {
         game->graph_visible = !game->graph_visible;
@@ -250,6 +283,55 @@ static void sandbox_draw_quads(rb_app *app, f32 hue, f32 slide) {
 }
 
 /* ============================================================================
+ * World field
+ * ========================================================================== */
+
+#define SANDBOX_FIELD_WIDTH  16.0f
+#define SANDBOX_FIELD_HEIGHT 9.0f
+#define SANDBOX_GRID_LINE    0.04f /* world units */
+
+/*
+ * Through the camera (ADR 0016): a dark field with a grid at every unit, a
+ * square going around the center and the last click's marker. Nothing reaches
+ * the bars, which keep the clear color: resizing the window shows them.
+ */
+static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn) {
+    rb_renderer *renderer = rb_app_renderer(app);
+    rb_renderer_set_camera(renderer, &game->camera);
+
+    rb_renderer_draw_quad(renderer, 0.0f, 0.0f, SANDBOX_FIELD_WIDTH, SANDBOX_FIELD_HEIGHT,
+                          rb_color_srgb(0.08f, 0.09f, 0.12f, 1.0f));
+    rb_color grid = rb_color_srgb(1.0f, 1.0f, 1.0f, 0.12f);
+    for (u32 x = 0; x <= (u32)SANDBOX_FIELD_WIDTH; ++x) {
+        rb_renderer_draw_quad(renderer, (f32)x - SANDBOX_GRID_LINE * 0.5f, 0.0f, SANDBOX_GRID_LINE,
+                              SANDBOX_FIELD_HEIGHT, grid);
+    }
+    for (u32 y = 0; y <= (u32)SANDBOX_FIELD_HEIGHT; ++y) {
+        rb_renderer_draw_quad(renderer, 0.0f, (f32)y - SANDBOX_GRID_LINE * 0.5f,
+                              SANDBOX_FIELD_WIDTH, SANDBOX_GRID_LINE, grid);
+    }
+
+    /* Along a rectangle around the center, one side per quarter turn: no trigonometry yet. */
+    f32     t = turn * 4.0f;
+    u32     side = (u32)t;
+    f32     along = t - (f32)side;
+    rb_vec2 corners[4] = {{4.0f, 2.0f}, {12.0f, 2.0f}, {12.0f, 7.0f}, {4.0f, 7.0f}};
+    rb_vec2 from = corners[side % 4];
+    rb_vec2 to = corners[(side + 1) % 4];
+    rb_vec2 at = rb_vec2_add(from, rb_vec2_scale(rb_vec2_sub(to, from), along));
+    rb_renderer_draw_quad(renderer, at.x - 0.5f, at.y - 0.5f, 1.0f, 1.0f,
+                          rb_color_srgb(0.3f, 0.7f, 1.0f, 1.0f));
+
+    if (game->has_marker) {
+        rb_renderer_draw_quad(renderer, game->marker.x - 0.25f, game->marker.y - 0.25f, 0.5f, 0.5f,
+                              rb_color_srgb(1.0f, 0.35f, 0.3f, 1.0f));
+    }
+
+    /* Back to pixels for the HUD drawn after. */
+    rb_renderer_set_camera(renderer, NULL);
+}
+
+/* ============================================================================
  * Frame-time graph
  * ========================================================================== */
 
@@ -338,7 +420,9 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_record_frame_time(game);
     f32 hue = sandbox_phase(game->start, SANDBOX_HUE_PERIOD_NS);
     rb_renderer_set_clear_color(rb_app_renderer(app), hsv_to_srgb(hue, 0.5f, 0.45f));
-    sandbox_draw_quads(app, hue, sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS));
+    f32 slide = sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS);
+    sandbox_draw_world(game, app, slide);
+    sandbox_draw_quads(app, hue, slide);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }
