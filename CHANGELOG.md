@@ -33,6 +33,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Sandbox: two lines of text placed glyph by glyph three times larger, and the font's atlas.
 - Sandbox: an 8x8 checkerboard enlarged 16 times (T swaps nearest and linear filtering, destroying
   and recreating it) and a soft yellow glow under the mouse instead of the translucent square.
+- Random number generator (ADR 0019), `reborn/random.h`: `rb_rng` (PCG32, 8 bytes) made with
+  `rb_rng_create(seed)`, the same sequence for a seed on every platform; `rb_rng_u32`,
+  `rb_rng_range_u32` in `[min, max)` without modulo bias, `rb_rng_f32` in `[0, 1)`,
+  `rb_rng_range_f32` in `[min, max]`.
+- Sandbox: points and a histogram drawn each frame from a seed taken from the clock and logged; R
+  takes a new seed, B goes back to the previous one, which redraws the same picture.
 
 ### Changed
 - The quad shader receives a view matrix instead of the target size, and the texture region to

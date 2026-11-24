@@ -20,6 +20,7 @@ set(REBORN_SOURCES
     src/core/color.c
     src/core/log.c
     src/core/version.c
+    src/math/random.c
     src/memory/allocator.c
     src/memory/arena.c
     src/memory/heap_allocator.c

@@ -18,6 +18,7 @@ add_executable(reborn_tests
     core/test_log.c
     core/test_version.c
     math/test_math.c
+    math/test_random.c
     memory/test_allocator.c
     memory/test_arena.c
     memory/test_heap_allocator.c

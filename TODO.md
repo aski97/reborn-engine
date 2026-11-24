@@ -85,8 +85,8 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       any glyph source can feed; public `rb_font` (glyph rectangle, offset, advance; ascent,
       descent, line gap); `rb_renderer_draw_texture_region` picks a glyph out of the atlas
       (ADR 0018)
-- [ ] Random number generator with an explicit seed (reproducible runs, replays, tests; algorithm
-      to decide): the square's random spot
+- [x] Random number generator with an explicit seed: PCG32, `rb_rng` owned by the caller, the
+      seed picked and logged by the game; the square's random spot (ADR 0019)
 - [ ] The game in `games/blink/`, as soon as it can run: CMake wiring, where its assets live, how
       it is launched and tested on Linux (ADR 0014); playable without text (squares appear and
       vanish, clicks, speed-up, lives), score and lives logged until the next step. From here on

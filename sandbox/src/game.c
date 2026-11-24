@@ -2,7 +2,7 @@
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
- * code, the builtin font's glyphs.
+ * code, the builtin font's glyphs, numbers drawn from a seed.
  */
 #include "game.h"
 
@@ -13,6 +13,7 @@
 #include <reborn/font.h>
 #include <reborn/log.h>
 #include <reborn/math.h>
+#include <reborn/random.h>
 #include <reborn/renderer.h>
 
 /* Frames shown by the frame-time graph: two seconds at 60 fps. */
@@ -49,6 +50,13 @@ typedef struct sandbox_state {
     rb_texture        glow;
     /* The builtin font (ADR 0018): its atlas and a line of glyphs placed by hand. */
     rb_font *font;
+    /*
+     * Random numbers (ADR 0019): every frame redraws the same picture from
+     * `seed`, which shows that a seed fixes the sequence. R takes a new seed
+     * from the clock, B goes back to the previous one.
+     */
+    u64 seed;
+    u64 previous_seed;
 } sandbox_state;
 
 /* ============================================================================
@@ -235,6 +243,10 @@ static bool game_init(void *state, rb_app *app) {
     game->glow = sandbox_create_glow(rb_app_renderer(app));
     /* NULL on failure (logged): the font's drawing is skipped. */
     game->font = rb_font_create_builtin(rb_app_allocator(app), rb_app_renderer(app));
+    /* Different on every run, and logged: that number repeats the run. */
+    game->seed = rb_time_now();
+    game->previous_seed = game->seed;
+    RB_LOG_INFO("Random seed: %llu", (unsigned long long)game->seed);
     return true;
 }
 
@@ -278,6 +290,18 @@ static void game_update(void *state, rb_app *app, f64 dt) {
         game->checker = sandbox_create_checker(renderer, game->checker_filter);
         RB_LOG_INFO("Checkerboard filter: %s (T)",
                     game->checker_filter == RB_TEXTURE_FILTER_NEAREST ? "nearest" : "linear");
+    }
+    if (rb_key_was_pressed(platform, RB_KEY_R)) {
+        game->previous_seed = game->seed;
+        game->seed = rb_time_now();
+        RB_LOG_INFO("Random seed: %llu (R)", (unsigned long long)game->seed);
+    }
+    if (rb_key_was_pressed(platform, RB_KEY_B)) {
+        u64 seed = game->seed;
+        game->seed = game->previous_seed;
+        game->previous_seed = seed;
+        RB_LOG_INFO("Random seed: %llu, back to the previous one (B)",
+                    (unsigned long long)game->seed);
     }
 
     ++game->steps;
@@ -436,6 +460,76 @@ static void sandbox_draw_font(const sandbox_state *game, rb_app *app) {
 }
 
 /* ============================================================================
+ * Random numbers
+ * ========================================================================== */
+
+#define SANDBOX_RANDOM_SIDE    320.0f /* the scatter's square: 20 glyphs twice as large */
+#define SANDBOX_RANDOM_TOP     192.0f /* under the checkerboard */
+#define SANDBOX_RANDOM_POINTS  1024u
+#define SANDBOX_RANDOM_BINS    16u
+#define SANDBOX_RANDOM_DRAWS   16384u /* 1024 per bin on average */
+#define SANDBOX_RANDOM_BAR_MAX 64.0f  /* pixels for 1.5 times the average */
+
+/*
+ * Right, under the checkerboard, on a dark panel: the seed (up to 20 digits),
+ * then points at random spots in random hues, then a histogram of integers in
+ * [0, 16), bars about level since every value is equally likely. Drawn again
+ * each frame from the seed alone: if the sequence changed between frames, the
+ * points would flicker.
+ */
+static void sandbox_draw_random(const sandbox_state *game, rb_app *app) {
+    rb_renderer   *renderer = rb_app_renderer(app);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    const f32      left = (f32)size.pixel_width - SANDBOX_RANDOM_SIDE - 32.0f;
+    f32            line = 0.0f;
+    f32            ascent = 0.0f;
+    if (game->font != NULL) {
+        rb_font_metrics metrics = rb_font_get_metrics(game->font);
+        line = (metrics.ascent + metrics.descent + metrics.line_gap) * 2.0f;
+        ascent = metrics.ascent * 2.0f;
+    }
+    const f32 top = SANDBOX_RANDOM_TOP + 2.0f * line + 8.0f;
+    const f32 bars_top = top + SANDBOX_RANDOM_SIDE + 8.0f;
+    const f32 bottom = bars_top + SANDBOX_RANDOM_BAR_MAX;
+    rb_rng    rng = rb_rng_create(game->seed);
+
+    rb_renderer_draw_quad(renderer, left - 8.0f, SANDBOX_RANDOM_TOP - 8.0f,
+                          SANDBOX_RANDOM_SIDE + 16.0f, bottom - SANDBOX_RANDOM_TOP + 16.0f,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+    if (game->font != NULL) {
+        char seed[24];
+        snprintf(seed, sizeof(seed), "%llu", (unsigned long long)game->seed);
+        sandbox_draw_glyphs(renderer, game->font, left, SANDBOX_RANDOM_TOP + ascent, 2.0f,
+                            "SEED (R new, B back)", rb_color_srgb(0.7f, 0.7f, 0.7f, 1.0f));
+        sandbox_draw_glyphs(renderer, game->font, left, SANDBOX_RANDOM_TOP + line + ascent, 2.0f,
+                            seed, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    for (u32 i = 0; i < SANDBOX_RANDOM_POINTS; ++i) {
+        f32 x = rb_rng_range_f32(&rng, 0.0f, SANDBOX_RANDOM_SIDE - 3.0f);
+        f32 y = rb_rng_range_f32(&rng, 0.0f, SANDBOX_RANDOM_SIDE - 3.0f);
+        rb_renderer_draw_quad(renderer, left + x, top + y, 3.0f, 3.0f,
+                              hsv_to_srgb(rb_rng_f32(&rng), 0.6f, 1.0f));
+    }
+
+    u32 counts[SANDBOX_RANDOM_BINS] = {0};
+    for (u32 i = 0; i < SANDBOX_RANDOM_DRAWS; ++i) {
+        ++counts[rb_rng_range_u32(&rng, 0, SANDBOX_RANDOM_BINS)];
+    }
+    const f32 average = (f32)SANDBOX_RANDOM_DRAWS / (f32)SANDBOX_RANDOM_BINS;
+    const f32 bar_width = SANDBOX_RANDOM_SIDE / (f32)SANDBOX_RANDOM_BINS;
+    for (u32 i = 0; i < SANDBOX_RANDOM_BINS; ++i) {
+        f32 bar = (f32)counts[i] / (average * 1.5f) * SANDBOX_RANDOM_BAR_MAX;
+        bar = bar < SANDBOX_RANDOM_BAR_MAX ? bar : SANDBOX_RANDOM_BAR_MAX;
+        rb_renderer_draw_quad(renderer, left + (f32)i * bar_width, bottom - bar, bar_width - 2.0f,
+                              bar, rb_color_srgb(0.4f, 0.75f, 1.0f, 1.0f));
+    }
+    /* The average's level: the bars should hover around it. */
+    rb_renderer_draw_quad(renderer, left, bottom - SANDBOX_RANDOM_BAR_MAX / 1.5f,
+                          SANDBOX_RANDOM_SIDE, 1.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 0.5f));
+}
+
+/* ============================================================================
  * World field
  * ========================================================================== */
 
@@ -577,6 +671,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_draw_world(game, app, slide);
     sandbox_draw_quads(game, app, hue, slide);
     sandbox_draw_font(game, app);
+    sandbox_draw_random(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }
