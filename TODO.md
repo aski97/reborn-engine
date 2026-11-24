@@ -72,6 +72,7 @@ every engine feature. "Likely needs" are guesses, not tasks.
 **Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
 up, a miss costs a life; score and lives are shown as text.
 In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
+The game starts as soon as it can run, so later steps answer its real needs instead of guesses.
 No batching yet: a few hundred quads and glyphs fit one draw each.
 - [x] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
       of the window's resolution (ADR 0015, B3); screen-to-world conversion for the mouse; UI and
@@ -84,13 +85,15 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       any glyph source can feed; public `rb_font` (glyph rectangle, offset, advance; ascent,
       descent, line gap); `rb_renderer_draw_texture_region` picks a glyph out of the atlas
       (ADR 0018)
-- [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment;
-      the HUD in window pixels or in a virtual resolution through a HUD camera, so it keeps its
-      proportion on every screen (to decide)
 - [ ] Random number generator with an explicit seed (reproducible runs, replays, tests; algorithm
-      to decide)
-- [ ] The game in `games/blink/`: CMake wiring, where its assets live, how it is launched and
-      tested on Linux (ADR 0014)
+      to decide): the square's random spot
+- [ ] The game in `games/blink/`, as soon as it can run: CMake wiring, where its assets live, how
+      it is launched and tested on Linux (ADR 0014); playable without text (squares appear and
+      vanish, clicks, speed-up, lives), score and lives logged until the next step. From here on
+      Blink drives the engine tasks
+- [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over): strings
+      (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels or in a virtual
+      resolution through a HUD camera, so it keeps its proportion on every screen (to decide)
 
 **Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
 platform and without clicking by hand; the sandbox exposes the same commands). In order.
