@@ -25,7 +25,7 @@ bool blink_input_translate(const rb_event *event, const rb_camera2d *camera, rb_
         if (event->key.key != RB_KEY_SPACE || event->key.repeat) {
             return false;
         }
-        *out = (blink_action){.type = BLINK_ACTION_RESTART};
+        *out = (blink_action){.type = BLINK_ACTION_START};
         return true;
     default:
         return false;

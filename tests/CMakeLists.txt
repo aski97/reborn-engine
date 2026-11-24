@@ -34,6 +34,8 @@ reborn_add_test_executable(reborn_tests
     renderer/vulkan/test_vulkan_swapchain.c
     text/test_font_atlas.c
     text/test_font_builtin.c
+    text/test_text.c
+    text/test_utf8.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c
     support/test_failing_allocator.c

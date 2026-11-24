@@ -30,7 +30,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   atlas texture; `rb_font_get_glyph` (atlas rectangle, offset from the pen, advance),
   `rb_font_get_metrics` (ascent, descent, line gap), `rb_font_get_atlas`, `rb_font_destroy`.
   Memory tag `RB_MEMORY_TAG_TEXT`.
-- Sandbox: two lines of text placed glyph by glyph three times larger, and the font's atlas.
+- Text (ADR 0021), `reborn/text.h`: `rb_text_style` (font, size as the line height in the current
+  space, color, horizontal and vertical alignment), `rb_text_draw` anchored at a point in window
+  pixels or world units, `rb_text_measure` (widest line, block height). `\n` starts a new line,
+  each aligned on its own; strings are decoded as UTF-8, a missing or broken character shows the
+  missing glyph once.
+- Sandbox: two lines of text three times larger (the second with characters the font lacks), the
+  font's atlas, a panel with the horizontal and vertical alignments around their anchors and
+  sharp (x2) next to uneven (x2.5) text, and two centered lines in world units on a measured panel
+  that zoom with the field.
 - Sandbox: an 8x8 checkerboard enlarged 16 times (T swaps nearest and linear filtering, destroying
   and recreating it) and a soft yellow glow under the mouse instead of the translucent square.
 - Random number generator (ADR 0019), `reborn/random.h`: `rb_rng` (PCG32, 8 bytes) made with
@@ -40,9 +48,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Sandbox: points and a histogram drawn each frame from a seed taken from the clock and logged; R
   takes a new seed, B goes back to the previous one, which redraws the same picture.
 - Blink (ADR 0014), the first game, in `games/blink/`: click the square before it shrinks away,
-  each hit shortens the next one's time, three lives shown as pips, game over and restart. No
-  text yet: score and lives are logged. Built in layers (rules, input, view, glue); its rules and
-  input are tested by `blink_tests`. `games/README.md` lists the games; each has a `README.md`
+  each hit shortens the next one's time, three lives, game over and restart. A title screen (the
+  name made of squares, "PRESS SPACE"), the score and lives as a HUD, the final and best score at
+  game over, in window pixels at a whole scale per 180 pixels of height. Score and lives are
+  logged too. Built in layers (rules, input, view, glue); its rules, input and HUD scale are
+  tested by `blink_tests`. `games/README.md` lists the games; each has a `README.md`
   with its rules and how to build and run it.
 - Window icon (ADR 0020): `rb_window_desc.icons` / `icon_count`, one icon at several sizes as
   `rb_image` (`reborn/image.h`: RGBA pixels the caller owns), set before the window shows. Win32

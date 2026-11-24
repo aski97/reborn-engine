@@ -12,6 +12,13 @@ static blink_action click_at(rb_vec2 point) {
     return (blink_action){.type = BLINK_ACTION_CLICK, .point = point};
 }
 
+/* A session past its title: the first game under way. */
+static void begin(blink_state *state, const blink_tuning *tuning, u64 seed) {
+    blink_start(state, tuning, seed);
+    blink_action start = {.type = BLINK_ACTION_START};
+    blink_step(state, &start, 1, 0.0f);
+}
+
 /* A click on the current square's center: always a hit while playing. */
 static blink_events hit(blink_state *state) {
     blink_action action = click_at(state->square.center);
@@ -29,12 +36,41 @@ static bool square_inside_field(const blink_state *state) {
 }
 
 /* ============================================================================
+ * Title
+ * ========================================================================== */
+
+RB_TEST(blink_rules, a_session_starts_on_the_title) {
+    blink_state state;
+    blink_start(&state, &blink_default_tuning, 1);
+    RB_EXPECT(state.phase == BLINK_PHASE_TITLE);
+    RB_EXPECT_EQ_UINT(state.best, 0);
+    /* Time passes without a game starting: the view blinks with it. */
+    RB_EXPECT_EQ_UINT(wait(&state, 10.0f), 0);
+    RB_EXPECT(state.phase == BLINK_PHASE_TITLE);
+    EXPECT_F32_NEAR(state.phase_time, 10.0f);
+}
+
+/* No delay on the title: nothing was being clicked before it. */
+RB_TEST(blink_rules, a_click_or_start_leaves_the_title) {
+    blink_state  state;
+    blink_action click = click_at((rb_vec2){1.0f, 1.0f});
+    blink_start(&state, &blink_default_tuning, 1);
+    RB_EXPECT_EQ_UINT(blink_step(&state, &click, 1, 0.0f), BLINK_EVENT_STARTED);
+    RB_EXPECT(state.phase == BLINK_PHASE_PLAYING);
+
+    blink_action start = {.type = BLINK_ACTION_START};
+    blink_start(&state, &blink_default_tuning, 1);
+    RB_EXPECT_EQ_UINT(blink_step(&state, &start, 1, 0.0f), BLINK_EVENT_STARTED);
+    RB_EXPECT(state.phase == BLINK_PHASE_PLAYING);
+}
+
+/* ============================================================================
  * Start
  * ========================================================================== */
 
 RB_TEST(blink_rules, start_places_the_first_square) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     RB_EXPECT(state.phase == BLINK_PHASE_PLAYING);
     RB_EXPECT_EQ_UINT(state.score, 0);
     RB_EXPECT_EQ_UINT(state.lives, 3);
@@ -48,8 +84,8 @@ RB_TEST(blink_rules, start_places_the_first_square) {
 RB_TEST(blink_rules, same_seed_same_squares) {
     blink_state a;
     blink_state b;
-    blink_start(&a, &blink_default_tuning, 77);
-    blink_start(&b, &blink_default_tuning, 77);
+    begin(&a, &blink_default_tuning, 77);
+    begin(&b, &blink_default_tuning, 77);
     for (u32 i = 0; i < 20; ++i) {
         RB_EXPECT(a.square.center.x == b.square.center.x);
         RB_EXPECT(a.square.center.y == b.square.center.y);
@@ -61,7 +97,7 @@ RB_TEST(blink_rules, same_seed_same_squares) {
 
 RB_TEST(blink_rules, squares_always_fit_the_field) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 3);
+    begin(&state, &blink_default_tuning, 3);
     bool inside = true;
     for (u32 i = 0; i < 1000; ++i) {
         inside = inside && square_inside_field(&state);
@@ -76,7 +112,7 @@ RB_TEST(blink_rules, squares_always_fit_the_field) {
 
 RB_TEST(blink_rules, a_hit_scores_and_speeds_up) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     rb_vec2 first = state.square.center;
     RB_EXPECT_EQ_UINT(hit(&state), BLINK_EVENT_HIT);
     RB_EXPECT_EQ_UINT(state.score, 1);
@@ -87,7 +123,7 @@ RB_TEST(blink_rules, a_hit_scores_and_speeds_up) {
 
 RB_TEST(blink_rules, a_click_elsewhere_does_nothing) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     rb_rect      square = blink_square_rect(&state);
     blink_action action = click_at((rb_vec2){square.x - 0.01f, square.y});
     RB_EXPECT_EQ_UINT(blink_step(&state, &action, 1, 0.0f), 0);
@@ -98,7 +134,7 @@ RB_TEST(blink_rules, a_click_elsewhere_does_nothing) {
 /* What the player sees is what counts: half the time gone, half the side. */
 RB_TEST(blink_rules, the_square_shrinks_and_so_does_its_target) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     rb_rect full = blink_square_rect(&state);
     wait(&state, 0.75f);
     rb_rect half = blink_square_rect(&state);
@@ -113,7 +149,7 @@ RB_TEST(blink_rules, lifetime_stops_at_the_minimum) {
     blink_tuning tuning = blink_default_tuning;
     tuning.lifetime_factor = 0.5f;
     blink_state state;
-    blink_start(&state, &tuning, 1);
+    begin(&state, &tuning, 1);
     hit(&state); /* 0.75 */
     hit(&state); /* 0.375, raised to 0.4 */
     EXPECT_F32_NEAR(state.lifetime, 0.4f);
@@ -127,7 +163,7 @@ RB_TEST(blink_rules, lifetime_stops_at_the_minimum) {
 
 RB_TEST(blink_rules, an_expired_square_costs_a_life) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     RB_EXPECT_EQ_UINT(wait(&state, 1.0f), 0);
     RB_EXPECT_EQ_UINT(wait(&state, 0.5f), BLINK_EVENT_EXPIRED);
     RB_EXPECT_EQ_UINT(state.lives, 2);
@@ -138,7 +174,7 @@ RB_TEST(blink_rules, an_expired_square_costs_a_life) {
 
 RB_TEST(blink_rules, the_last_life_ends_the_game) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     hit(&state);
     hit(&state);
     wait(&state, 2.0f);
@@ -148,6 +184,7 @@ RB_TEST(blink_rules, the_last_life_ends_the_game) {
     RB_EXPECT_EQ_UINT(state.lives, 0);
     RB_EXPECT_EQ_UINT(state.score, 2);
     RB_EXPECT_EQ_UINT(state.best, 2);
+    EXPECT_F32_NEAR(state.phase_time, 0.0f);
     /* Over: time passes without anything else happening. */
     RB_EXPECT_EQ_UINT(wait(&state, 10.0f), 0);
 }
@@ -164,7 +201,7 @@ static void play_until_over(blink_state *state) {
 
 RB_TEST(blink_rules, a_click_restarts_only_after_the_delay) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     play_until_over(&state);
     blink_action action = click_at((rb_vec2){1.0f, 1.0f});
     RB_EXPECT_EQ_UINT(blink_step(&state, &action, 1, 0.5f), 0);
@@ -176,12 +213,12 @@ RB_TEST(blink_rules, a_click_restarts_only_after_the_delay) {
 
 RB_TEST(blink_rules, restart_starts_a_fresh_game_and_keeps_the_best) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     hit(&state);
     hit(&state);
     hit(&state);
     play_until_over(&state);
-    blink_action restart = {.type = BLINK_ACTION_RESTART};
+    blink_action restart = {.type = BLINK_ACTION_START};
     RB_EXPECT_EQ_UINT(blink_step(&state, &restart, 1, 0.0f), BLINK_EVENT_STARTED);
     RB_EXPECT_EQ_UINT(state.score, 0);
     RB_EXPECT_EQ_UINT(state.lives, 3);
@@ -192,9 +229,9 @@ RB_TEST(blink_rules, restart_starts_a_fresh_game_and_keeps_the_best) {
 
 RB_TEST(blink_rules, restart_is_ignored_while_playing) {
     blink_state state;
-    blink_start(&state, &blink_default_tuning, 1);
+    begin(&state, &blink_default_tuning, 1);
     hit(&state);
-    blink_action restart = {.type = BLINK_ACTION_RESTART};
+    blink_action restart = {.type = BLINK_ACTION_START};
     RB_EXPECT_EQ_UINT(blink_step(&state, &restart, 1, 0.0f), 0);
     RB_EXPECT_EQ_UINT(state.score, 1);
 }

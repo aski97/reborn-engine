@@ -1,7 +1,27 @@
-/* Blink's view layer: the window icon (ADR 0020), drawn without a window. */
+/* Blink's view layer without a window: the HUD's scale (ADR 0021) and the window icon (ADR 0020).
+ */
 #include "rb_test.h"
 
 #include "blink_view.h"
+
+#define EXPECT_F32_EQ(a, b) RB_EXPECT_NEAR((f64)(a), (f64)(b), 0.0)
+
+/* Whole numbers only: the builtin font's pixels must cover whole window pixels. */
+RB_TEST(blink_view, hud_scale_is_one_per_180_pixels) {
+    EXPECT_F32_EQ(blink_view_hud_scale(720.0f), 4.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(1080.0f), 6.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(1440.0f), 8.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(2160.0f), 12.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(719.0f), 3.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(562.0f), 3.0f);
+}
+
+/* A tiny or minimized window still gets readable text, not a scale of 0. */
+RB_TEST(blink_view, hud_scale_is_at_least_one) {
+    EXPECT_F32_EQ(blink_view_hud_scale(359.0f), 1.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(100.0f), 1.0f);
+    EXPECT_F32_EQ(blink_view_hud_scale(0.0f), 1.0f);
+}
 
 static const u8 *pixel(const u8 *pixels, u32 side, u32 x, u32 y) {
     return &pixels[(y * side + x) * 4];

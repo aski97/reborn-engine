@@ -14,7 +14,7 @@
 /*
  * The action `event` stands for, if any: a left button press is a click at its
  * world point (through `camera`, for a window of `target` pixels), a Space
- * press a restart. False for every other event.
+ * press a start (a new game). False for every other event.
  */
 bool blink_input_translate(const rb_event *event, const rb_camera2d *camera, rb_vec2 target,
                            blink_action *out);

@@ -36,5 +36,6 @@ its implementation.
 | 0018 | [Bitmap font and glyph atlas](0018-bitmap-font-and-glyph-atlas.md) | Accepted |
 | 0019 | [Random number generator](0019-random-number-generator.md) | Accepted |
 | 0020 | [Window icon](0020-window-icon.md) | Accepted |
+| 0021 | [Text rendering](0021-text-rendering.md) | Accepted |
 
 Template: [`template.md`](template.md).

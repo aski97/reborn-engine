@@ -38,12 +38,12 @@ RB_TEST(blink_input, other_buttons_are_ignored) {
     RB_EXPECT(!blink_input_translate(&ev, &cam, target, &action));
 }
 
-RB_TEST(blink_input, space_press_is_a_restart) {
+RB_TEST(blink_input, space_press_is_a_start) {
     rb_camera2d  cam = camera();
     rb_event     ev = key(RB_EVENT_KEY_PRESSED, RB_KEY_SPACE, false);
     blink_action action;
     RB_EXPECT(blink_input_translate(&ev, &cam, target, &action));
-    RB_EXPECT(action.type == BLINK_ACTION_RESTART);
+    RB_EXPECT(action.type == BLINK_ACTION_START);
 }
 
 RB_TEST(blink_input, repeats_releases_and_other_keys_are_ignored) {

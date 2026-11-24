@@ -13,6 +13,7 @@
 | Vulkan renderer | [renderer.md](renderer.md) | In progress | v0.1.0 | 2026-11-24 |
 | Math & 2D camera | [camera2d.md](camera2d.md) | In progress | v0.2.0 | 2026-11-24 |
 | Fonts | [font.md](font.md) | In progress | v0.2.0 | 2026-11-24 |
+| Text | [text.md](text.md) | In progress | v0.2.0 | 2026-11-24 |
 | Random numbers | [random.md](random.md) | In progress | v0.2.0 | 2026-11-24 |
 | Unit testing | [unit-testing.md](unit-testing.md) | Stable | v0.1.0 | 2026-11-24 |
 

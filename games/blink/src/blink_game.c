@@ -6,6 +6,7 @@
 #include "blink_game.h"
 
 #include <reborn/clock.h>
+#include <reborn/font.h>
 #include <reborn/log.h>
 
 #include "blink_input.h"
@@ -18,6 +19,7 @@
 typedef struct blink_game {
     blink_state  rules;
     rb_camera2d  camera;
+    rb_font     *font;                       /* the builtin one, for the HUD */
     blink_action actions[BLINK_MAX_ACTIONS]; /* gathered by on_event, used by the next update */
     u32          action_count;
 } blink_game;
@@ -47,7 +49,6 @@ static bool game_configure(rb_app_config *config) {
 }
 
 static bool game_init(void *state, rb_app *app) {
-    (void)app;
     blink_game         *game = state;
     const blink_tuning *tuning = &blink_default_tuning;
     /* The whole field, always: the camera adds bars when the window's aspect differs. */
@@ -56,8 +57,19 @@ static bool game_init(void *state, rb_app *app) {
     u64 seed = rb_time_now();
     RB_LOG_INFO("Seed: %llu", (unsigned long long)seed);
     blink_start(&game->rules, tuning, seed);
-    blink_view_report(&game->rules, BLINK_EVENT_STARTED);
+    /* Without text there is no score to show: not worth running (the failure is logged). */
+    game->font = rb_font_create_builtin(rb_app_allocator(app), rb_app_renderer(app));
+    if (game->font == NULL) {
+        return false;
+    }
+    RB_LOG_INFO("Title: click or Space to play");
     return true;
+}
+
+static void game_shutdown(void *state, rb_app *app) {
+    (void)app;
+    blink_game *game = state;
+    rb_font_destroy(game->font);
 }
 
 static void game_on_event(void *state, rb_app *app, const rb_event *event) {
@@ -85,8 +97,10 @@ static void game_update(void *state, rb_app *app, f64 dt) {
 
 static void game_render(void *state, rb_app *app, f64 alpha) {
     (void)alpha;
-    blink_game *game = state;
-    blink_view_draw(&game->rules, &game->camera, rb_app_renderer(app));
+    blink_game    *game = state;
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    blink_view_draw(&game->rules, &game->camera, game->font,
+                    (rb_vec2){(f32)size.pixel_width, (f32)size.pixel_height}, rb_app_renderer(app));
 }
 
 const rb_app_callbacks blink_game_callbacks = {
@@ -95,4 +109,5 @@ const rb_app_callbacks blink_game_callbacks = {
     .on_event = game_on_event,
     .update = game_update,
     .render = game_render,
+    .shutdown = game_shutdown,
 };

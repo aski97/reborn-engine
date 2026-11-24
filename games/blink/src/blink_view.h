@@ -6,18 +6,30 @@
 #define BLINK_VIEW_H
 
 #include <reborn/camera2d.h>
+#include <reborn/font.h>
 #include <reborn/renderer.h>
 
 #include "blink_rules.h"
 
 /*
- * The field through `camera`, the square shrinking with its time, a pip per
- * life in the top left corner; the field turns dark red once the game is over.
+ * The HUD's scale (ADR 0021, G1): how many window pixels one pixel of the
+ * builtin font covers, a whole number so the text stays sharp. One per 180
+ * pixels of window height, at least 1: 4 at 720p, 6 at 1080p, 8 at 1440p, 12
+ * at 2160p, so on common screens the HUD keeps its proportion exactly.
+ */
+f32 blink_view_hud_scale(f32 pixel_height);
+
+/*
+ * The field and the square through `camera`, the field dark red once the
+ * game is over; then the HUD in window pixels for a window of `target`
+ * pixels: the title (a logo of squares, "PRESS SPACE" blinking), the score
+ * and a pip per life while playing, the final score over the field after it.
  * Only inside the game's `render`.
  */
-void blink_view_draw(const blink_state *state, const rb_camera2d *camera, rb_renderer *renderer);
+void blink_view_draw(const blink_state *state, const rb_camera2d *camera, const rb_font *font,
+                     rb_vec2 target, rb_renderer *renderer);
 
-/* A log line per event of the step, with the score and lives after it: the HUD until text. */
+/* A log line per event of the step, with the score and lives after it: what an agent reads. */
 void blink_view_report(const blink_state *state, blink_events events);
 
 /*

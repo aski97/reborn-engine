@@ -11,13 +11,13 @@
 /* Space between glyphs in the atlas (C1): one pixel is all a linear filter reaches. */
 #define RB_FONT_ATLAS_PADDING 1u
 
-struct rb_font {
-    rb_allocator    allocator; /* the font came from it and goes back to it */
-    rb_renderer    *renderer;  /* owns the atlas texture */
-    rb_texture      atlas;
-    rb_font_metrics metrics;
-    rb_glyph        glyphs[RB_FONT_GLYPH_COUNT];
-};
+void rb_font_set_glyphs(rb_font *font, const rb_font_source *source, const rb_rect *rects) {
+    font->metrics = source->metrics;
+    for (u32 i = 0; i < RB_FONT_GLYPH_COUNT; ++i) {
+        font->glyphs[i] = source->glyphs[i];
+        font->glyphs[i].source = rects[i];
+    }
+}
 
 rb_font *rb_font_create_from_source(rb_allocator allocator, rb_renderer *renderer,
                                     const rb_font_source *source) {
@@ -60,11 +60,7 @@ rb_font *rb_font_create_from_source(rb_allocator allocator, rb_renderer *rendere
     font->allocator = allocator;
     font->renderer = renderer;
     font->atlas = atlas;
-    font->metrics = source->metrics;
-    for (u32 i = 0; i < RB_FONT_GLYPH_COUNT; ++i) {
-        font->glyphs[i] = source->glyphs[i];
-        font->glyphs[i].source = rects[i];
-    }
+    rb_font_set_glyphs(font, source, rects);
     RB_LOG_DEBUG("Font created: %u glyphs, %ux%u atlas", RB_FONT_GLYPH_COUNT, width, height);
     return font;
 }

@@ -31,7 +31,8 @@ the rest.
   before the renderer's shutdown, since it destroys the atlas texture. NULL is ignored.
 - **Memory:** the font and the atlas's pixels (freed after the upload) come from the caller's
   allocator, tag `RB_MEMORY_TAG_TEXT`.
-- Not yet: drawing strings (measuring, alignment), UTF-8, other sizes, TrueType, kerning.
+- Strings (measuring, alignment, lines, UTF-8 decoding) are drawn by the [text](text.md) layer.
+- Not yet: glyphs beyond ASCII, other sizes, TrueType, kerning.
 
 ## Design
 ```mermaid
@@ -53,21 +54,23 @@ flowchart LR
   never darkens colored edges), uploads, keeps the glyph table. A new source only fills an
   `rb_font_source`.
 - **Lookup:** a fixed table of 96 entries (missing + ASCII), reached only through
-  `rb_font_get_glyph`, so UTF-8 changes the storage without touching callers.
+  `rb_font_get_glyph`, so more glyphs change the storage without touching callers.
+- **Internal struct:** `struct rb_font` is defined in `text/font_internal.h`, with
+  `rb_font_set_glyphs`, so tests can build a font without a GPU (ADR 0021).
 
 ## API
 ```c
 rb_font *font = rb_font_create_builtin(rb_app_allocator(app), rb_app_renderer(app));
 
-/* "Hi" three times larger, pen on the baseline at (32, 53). */
-f32 pen = 32.0f, baseline = 32.0f + 7.0f * 3.0f;
-for (const char *c = "Hi"; *c != '\0'; ++c) {
-    rb_glyph glyph = rb_font_get_glyph(font, (u8)*c);
-    rb_renderer_draw_texture_region(renderer, pen + glyph.offset.x * 3, baseline + glyph.offset.y * 3,
-                                    glyph.source.width * 3, glyph.source.height * 3,
-                                    rb_font_get_atlas(font), glyph.source, white);
-    pen += glyph.advance * 3;
-}
+/* Strings: through reborn/text.h (text.md). */
+rb_text_style style = {.font = font, .size = 24, .color = white};
+rb_text_draw(renderer, 32, 32, &style, "Hi");
+
+/* One glyph by hand, three times larger, pen on the baseline at (32, 53). */
+rb_glyph glyph = rb_font_get_glyph(font, 'H');
+rb_renderer_draw_texture_region(renderer, 32 + glyph.offset.x * 3, 53 + glyph.offset.y * 3,
+                                glyph.source.width * 3, glyph.source.height * 3,
+                                rb_font_get_atlas(font), glyph.source, white);
 
 rb_font_destroy(font);   /* in shutdown, not in render */
 ```
@@ -81,12 +84,13 @@ rb_font_destroy(font);   /* in shutdown, not in render */
   opaque `rb_font` from an allocator (G1); `engine/src/text/` (H1).
 
 ## Future work
-- Drawing strings: measuring, alignment, the HUD's scale (the next step of Blink).
 - TrueType source: parser and rasterizer of our own, for text at several sizes.
-- UTF-8: a codepoint → glyph map behind `rb_font_get_glyph`.
+- Glyphs beyond ASCII: a codepoint → glyph map behind `rb_font_get_glyph` (strings are already
+  decoded as UTF-8 by the text layer).
 - Packing sorted by height, single-channel atlases (ADR 0017, F3), kerning.
 
 ## History
 | Version | Date | Change |
 |---|---|---|
 | v0.2.0 | 2026-11-24 | First version: builtin 8x8 font, glyph atlas, `rb_font` API |
+| v0.2.0 | 2026-11-24 | `struct rb_font` in the internal header, `rb_font_set_glyphs` (ADR 0021) |

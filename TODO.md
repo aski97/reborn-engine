@@ -94,11 +94,10 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       drives the engine tasks
 - [x] Window icon (ADR 0020): `rb_window_desc.icons` at several sizes, set before the window shows
       (Win32 `WM_SETICON`, X11 `_NET_WM_ICON`); Blink and the sandbox draw theirs in code
-- [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over) and its
-      title screen (a logo made of squares, "PRESS SPACE" in the font; a new title phase in the
-      rules): strings (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels
-      or in a virtual resolution through a HUD camera, so it keeps its proportion on every screen
-      (to decide)
+- [x] Text rendering (ADR 0021): `rb_text_draw` and `rb_text_measure` with a reusable style (size
+      as the line height in the current space), anchors with horizontal and vertical alignment,
+      `\n` lines, UTF-8 decoded. Blink's title screen (a new title phase in the rules), HUD and
+      game over in window pixels at a whole scale per 180 pixels of height
 
 **Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
 platform and without clicking by hand; the sandbox exposes the same commands). In order.
@@ -283,6 +282,10 @@ In order; each gets a version when it starts.
       camera, drawn in layer order whatever the call order; today the call order is the layer order.
       With the batched renderer, which collects the frame's quads anyway; likely Seedling (map,
       characters, interface)
+- [ ] Low-resolution pixel-art rendering: the whole frame (world, HUD, text) drawn into an
+      offscreen image (e.g. 320x180), then enlarged by a whole factor onto the window, every game
+      pixel a perfect square (ADR 0021). Shares the offscreen target with rendering without a
+      window. When a game wants that look (perhaps Seedling)
 - [ ] Several cameras on the world at once (split-screen, minimap): a viewport rectangle in
       `rb_camera2d`, the part of the window its field goes into (today: the largest centered one);
       `rb_camera2d_make` gives it the whole window. When a game shows the world twice
@@ -318,6 +321,14 @@ In order; each gets a version when it starts.
       formats later (own decoder vs external library: to decide)
 
 ### Text and UI
+- [ ] Text layout beyond one line of glyphs: word wrapping to a width, kerning (with TrueType),
+      `rb_text_drawf` if formatting numbers repeats everywhere (ADR 0021). When a game shows
+      paragraphs (dialogue, menus' descriptions)
+- [ ] HUD scale helper in the engine: the whole scale per N pixels of window height that keeps
+      bitmap text sharp (ADR 0021, G1; in Blink today). When a second game computes it
+- [ ] UI scaled from a reference resolution, with elements anchored to the window's edges and a
+      continuous scale (ADR 0021): with smooth TrueType text, whose pixels stay even at any scale
+      (likely Hollow's menus)
 - [ ] TrueType fonts, own parser and rasterizer (ADR 0018): `.ttf` tables (`cmap`, `loca`,
       `glyf`, `hmtx`), quadratic curves flattened to lines, coverage per pixel; a new glyph source
       feeding the existing packer (`rb_font_create_ttf`, a size in pixels). With the first game

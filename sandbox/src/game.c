@@ -2,7 +2,8 @@
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
- * code, the builtin font's glyphs, numbers drawn from a seed.
+ * code, the builtin font's atlas and text drawn with it, numbers drawn from a
+ * seed.
  */
 #include "game.h"
 
@@ -15,6 +16,7 @@
 #include <reborn/math.h>
 #include <reborn/random.h>
 #include <reborn/renderer.h>
+#include <reborn/text.h>
 
 /* Frames shown by the frame-time graph: two seconds at 60 fps. */
 #define SANDBOX_GRAPH_FRAMES 120u
@@ -48,7 +50,7 @@ typedef struct sandbox_state {
     rb_texture        checker;
     rb_texture_filter checker_filter;
     rb_texture        glow;
-    /* The builtin font (ADR 0018): its atlas and a line of glyphs placed by hand. */
+    /* The builtin font (ADR 0018): its atlas, and text (ADR 0021) on screen and in the world. */
     rb_font *font;
     /*
      * Random numbers (ADR 0019): every frame redraws the same picture from
@@ -434,64 +436,112 @@ static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 hue, 
 }
 
 /* ============================================================================
- * Font
+ * Font and text
  * ========================================================================== */
 
-#define SANDBOX_TEXT_SCALE  3.0f /* integer: the 8x8 pixels stay square and sharp */
+#define SANDBOX_TEXT_SIZE   24.0f /* the 8x8 font 3 times larger: its pixels stay square */
 #define SANDBOX_ATLAS_SCALE 2.0f
 
-/*
- * One line placed glyph by glyph with the font's metrics: the pen starts at
- * (x, baseline) and moves by each advance. The engine's own text drawing
- * (strings, measuring, alignment) comes next; this shows what it builds on.
- * Bytes are taken as codepoints: ASCII only, anything else gets the box.
- */
-static void sandbox_draw_glyphs(rb_renderer *renderer, const rb_font *font, f32 x, f32 baseline,
-                                f32 scale, const char *text, rb_color color) {
-    rb_texture atlas = rb_font_get_atlas(font);
-    f32        pen = x;
-    for (const char *c = text; *c != '\0'; ++c) {
-        rb_glyph glyph = rb_font_get_glyph(font, (u8)*c);
-        /* A space has no image: only the pen moves. */
-        if (glyph.source.width > 0.0f) {
-            rb_renderer_draw_texture_region(renderer, pen + glyph.offset.x * scale,
-                                            baseline + glyph.offset.y * scale,
-                                            glyph.source.width * scale, glyph.source.height * scale,
-                                            atlas, glyph.source, color);
-        }
-        pen += glyph.advance * scale;
-    }
+/* A style of the builtin font; the fields left out are left and top aligned. */
+static rb_text_style sandbox_style(const rb_font *font, f32 size, rb_color color) {
+    return (rb_text_style){.font = font, .size = size, .color = color};
 }
 
 /*
- * Under the row of squares: two lines of text, the second with characters the
- * font lacks (a box each), then the whole atlas on a dark panel, glyphs white
- * on transparent, the padding between them visible.
+ * Under the row of squares: two lines of text (ADR 0021), the second with
+ * characters the font lacks (one box each: UTF-8 is decoded), then the whole
+ * atlas on a dark panel, glyphs white on transparent, the padding between
+ * them visible (ADR 0018).
  */
 static void sandbox_draw_font(const sandbox_state *game, rb_app *app) {
     if (game->font == NULL) {
         return;
     }
-    rb_renderer    *renderer = rb_app_renderer(app);
-    rb_font_metrics metrics = rb_font_get_metrics(game->font);
-    const f32 line = (metrics.ascent + metrics.descent + metrics.line_gap) * SANDBOX_TEXT_SCALE;
-    const f32 left = 32.0f;
-    f32       baseline = 128.0f + metrics.ascent * SANDBOX_TEXT_SCALE;
-    sandbox_draw_glyphs(renderer, game->font, left, baseline, SANDBOX_TEXT_SCALE,
-                        "SCORE 120  LIVES 3  Blink!", rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f));
-    baseline += line;
-    sandbox_draw_glyphs(renderer, game->font, left, baseline, SANDBOX_TEXT_SCALE,
-                        "Missing: \x7F \xE8 (ASCII only)", rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_renderer  *renderer = rb_app_renderer(app);
+    const f32     left = 32.0f;
+    rb_text_style yellow =
+        sandbox_style(game->font, SANDBOX_TEXT_SIZE, rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f));
+    rb_text_style white =
+        sandbox_style(game->font, SANDBOX_TEXT_SIZE, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_text_draw(renderer, left, 128.0f, &yellow, "SCORE 120  LIVES 3  Blink!");
+    rb_text_draw(renderer, left, 158.0f, &white, "UTF-8: città, naïve (a box each)");
 
     /* The atlas's size from its last glyph: 14 per row, '~' ends the last one. */
     rb_glyph last = rb_font_get_glyph(game->font, '~');
     f32      width = 128.0f * SANDBOX_ATLAS_SCALE;
     f32      height = (last.source.y + last.source.height) * SANDBOX_ATLAS_SCALE;
-    f32      top = baseline + metrics.descent * SANDBOX_TEXT_SCALE + 16.0f;
+    f32      top = 206.0f;
     rb_renderer_draw_quad(renderer, left - 8.0f, top - 8.0f, width + 16.0f, height + 16.0f,
                           rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
     rb_renderer_draw_texture(renderer, left, top, width, height, rb_font_get_atlas(game->font),
                              rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+}
+
+#define SANDBOX_DEMO_LEFT  320.0f /* right of the atlas */
+#define SANDBOX_DEMO_TOP   206.0f
+#define SANDBOX_DEMO_RIGHT 900.0f /* left of the random numbers' panel */
+
+/* A thin line and a dot: where an anchor is, so the alignment around it shows. */
+static void sandbox_draw_anchor(rb_renderer *renderer, f32 x, f32 y) {
+    rb_renderer_draw_quad(renderer, x - 2.0f, y - 2.0f, 4.0f, 4.0f,
+                          rb_color_srgb(1.0f, 0.35f, 0.3f, 1.0f));
+}
+
+/*
+ * Right of the atlas, on a dark panel (ADR 0021): the three horizontal
+ * alignments on one vertical guide; the same size drawn at a whole multiple
+ * of the font (sharp) and at a fraction (uneven strokes); the four vertical
+ * alignments on one horizontal guide. Red dots are the anchors.
+ */
+static void sandbox_draw_text_demo(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer *renderer = rb_app_renderer(app);
+    const f32    left = SANDBOX_DEMO_LEFT;
+    const f32    top = SANDBOX_DEMO_TOP;
+    rb_color     guide = rb_color_srgb(1.0f, 1.0f, 1.0f, 0.3f);
+    rb_renderer_draw_quad(renderer, left - 8.0f, top - 8.0f, SANDBOX_DEMO_RIGHT - left + 16.0f,
+                          140.0f, rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+
+    /* Horizontal: each line anchored on the same x. */
+    rb_text_style style = sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    const f32     guide_x = left + 128.0f;
+    rb_renderer_draw_quad(renderer, guide_x, top, 1.0f, 64.0f, guide);
+    static const struct {
+        rb_text_align_x align;
+        const char     *name;
+    } horizontal[] = {{RB_TEXT_LEFT, "LEFT"}, {RB_TEXT_CENTER, "CENTER"}, {RB_TEXT_RIGHT, "RIGHT"}};
+    for (u32 i = 0; i < RB_ARRAY_COUNT(horizontal); ++i) {
+        f32 y = top + (f32)i * 22.0f;
+        style.align_x = horizontal[i].align;
+        rb_text_draw(renderer, guide_x, y, &style, horizontal[i].name);
+        sandbox_draw_anchor(renderer, guide_x, y);
+    }
+
+    /* Sharpness: x2 (16) covers 2 screen pixels per font pixel; x2.5 (20) alternates 2 and 3. */
+    style.align_x = RB_TEXT_LEFT;
+    rb_text_draw(renderer, left + 300.0f, top, &style, "SHARP x2");
+    rb_text_style uneven = style;
+    uneven.size = 20.0f;
+    rb_text_draw(renderer, left + 300.0f, top + 26.0f, &uneven, "UNEVEN x2.5");
+
+    /* Vertical: each word anchored on the same y, at its own x. */
+    const f32 guide_y = top + 100.0f;
+    rb_renderer_draw_quad(renderer, left, guide_y, SANDBOX_DEMO_RIGHT - left, 1.0f, guide);
+    static const struct {
+        rb_text_align_y align;
+        const char     *name;
+        f32             x;
+    } vertical[] = {{RB_TEXT_TOP, "TOP", 0.0f},
+                    {RB_TEXT_MIDDLE, "MIDDLE", 80.0f},
+                    {RB_TEXT_BASELINE, "BASELINE", 210.0f},
+                    {RB_TEXT_BOTTOM, "BOTTOM", 370.0f}};
+    for (u32 i = 0; i < RB_ARRAY_COUNT(vertical); ++i) {
+        style.align_y = vertical[i].align;
+        rb_text_draw(renderer, left + vertical[i].x, guide_y, &style, vertical[i].name);
+        sandbox_draw_anchor(renderer, left + vertical[i].x, guide_y);
+    }
 }
 
 /* ============================================================================
@@ -517,11 +567,10 @@ static void sandbox_draw_random(const sandbox_state *game, rb_app *app) {
     rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
     const f32      left = (f32)size.pixel_width - SANDBOX_RANDOM_SIDE - 32.0f;
     f32            line = 0.0f;
-    f32            ascent = 0.0f;
     if (game->font != NULL) {
-        rb_font_metrics metrics = rb_font_get_metrics(game->font);
-        line = (metrics.ascent + metrics.descent + metrics.line_gap) * 2.0f;
-        ascent = metrics.ascent * 2.0f;
+        /* From one line to the next: what a second line adds to the block's height. */
+        rb_text_style style = sandbox_style(game->font, 16.0f, rb_color_srgb(1, 1, 1, 1));
+        line = rb_text_measure(&style, "\n").y - rb_text_measure(&style, "").y;
     }
     const f32 top = SANDBOX_RANDOM_TOP + 2.0f * line + 8.0f;
     const f32 bars_top = top + SANDBOX_RANDOM_SIDE + 8.0f;
@@ -534,10 +583,12 @@ static void sandbox_draw_random(const sandbox_state *game, rb_app *app) {
     if (game->font != NULL) {
         char seed[24];
         snprintf(seed, sizeof(seed), "%llu", (unsigned long long)game->seed);
-        sandbox_draw_glyphs(renderer, game->font, left, SANDBOX_RANDOM_TOP + ascent, 2.0f,
-                            "SEED (R new, B back)", rb_color_srgb(0.7f, 0.7f, 0.7f, 1.0f));
-        sandbox_draw_glyphs(renderer, game->font, left, SANDBOX_RANDOM_TOP + line + ascent, 2.0f,
-                            seed, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+        rb_text_style label =
+            sandbox_style(game->font, 16.0f, rb_color_srgb(0.7f, 0.7f, 0.7f, 1.0f));
+        rb_text_style value =
+            sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+        rb_text_draw(renderer, left, SANDBOX_RANDOM_TOP, &label, "SEED (R new, B back)");
+        rb_text_draw(renderer, left, SANDBOX_RANDOM_TOP + line, &value, seed);
     }
 
     for (u32 i = 0; i < SANDBOX_RANDOM_POINTS; ++i) {
@@ -607,6 +658,27 @@ static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn)
     if (game->has_marker) {
         rb_renderer_draw_quad(renderer, game->marker.x - 0.25f, game->marker.y - 0.25f, 0.5f, 0.5f,
                               rb_color_srgb(1.0f, 0.35f, 0.3f, 1.0f));
+    }
+
+    /*
+     * Text in world units (ADR 0021): lines 0.4 units high, centered on a
+     * point of the field, on a panel as large as the measured block. It grows
+     * and shrinks with the zoom, and its pixels turn uneven when a font pixel
+     * no longer covers a whole number of screen pixels.
+     */
+    if (game->font != NULL) {
+        rb_text_style style = {.font = game->font,
+                               .size = 0.4f,
+                               .color = rb_color_srgb(0.9f, 0.9f, 0.9f, 1.0f),
+                               .align_x = RB_TEXT_CENTER,
+                               .align_y = RB_TEXT_MIDDLE};
+        const char   *text = "WORLD UNITS\nthe wheel zooms";
+        rb_vec2       size = rb_text_measure(&style, text);
+        rb_vec2       anchor = {8.0f, 5.5f};
+        rb_renderer_draw_quad(renderer, anchor.x - size.x * 0.5f - 0.2f,
+                              anchor.y - size.y * 0.5f - 0.2f, size.x + 0.4f, size.y + 0.4f,
+                              rb_color_srgb(0.0f, 0.0f, 0.0f, 0.5f));
+        rb_text_draw(renderer, anchor.x, anchor.y, &style, text);
     }
 
     /* Back to pixels for the HUD drawn after. */
@@ -706,6 +778,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_draw_world(game, app, slide);
     sandbox_draw_quads(game, app, hue, slide);
     sandbox_draw_font(game, app);
+    sandbox_draw_text_demo(game, app);
     sandbox_draw_random(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);

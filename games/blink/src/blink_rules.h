@@ -40,6 +40,7 @@ extern const blink_tuning blink_default_tuning;
  * ========================================================================== */
 
 typedef enum blink_phase {
+    BLINK_PHASE_TITLE, /* before the first game: a click or Space starts it */
     BLINK_PHASE_PLAYING,
     BLINK_PHASE_GAME_OVER,
 } blink_phase;
@@ -64,8 +65,8 @@ typedef struct blink_state {
     f32          lifetime; /* what the next square gets */
     u32          score;
     u32          lives;
-    u32          best;      /* best score of the session */
-    f32          over_time; /* seconds since the game over */
+    u32          best;       /* best score of the session */
+    f32          phase_time; /* seconds in the current phase: the restart delay, the blinking */
 } blink_state;
 
 /* ============================================================================
@@ -73,8 +74,8 @@ typedef struct blink_state {
  * ========================================================================== */
 
 typedef enum blink_action_type {
-    BLINK_ACTION_CLICK,   /* `point`: where, in world units */
-    BLINK_ACTION_RESTART, /* a new game, once the current one is over */
+    BLINK_ACTION_CLICK, /* `point`: where, in world units */
+    BLINK_ACTION_START, /* a new game: from the title, or once the current one is over */
 } blink_action_type;
 
 typedef struct blink_action {
@@ -96,14 +97,15 @@ typedef u32 blink_events;
  * Functions
  * ========================================================================== */
 
-/* A new session: the first game starts at once, its first square already placed. */
+/* A new session, on the title: the first game starts with a click or a start action. */
 void blink_start(blink_state *state, const blink_tuning *tuning, u64 seed);
 
 /*
- * One fixed step: the actions in order, then `dt` seconds pass. While playing,
- * a click inside the square scores and brings the next one, faster; a click
- * elsewhere does nothing. After the game over, a restart action, or a click
- * once restart_delay has passed, starts a new game.
+ * One fixed step: the actions in order, then `dt` seconds pass. On the title,
+ * a click or a start action starts the first game. While playing, a click
+ * inside the square scores and brings the next one, faster; a click elsewhere
+ * does nothing. After the game over, a start action, or a click once
+ * restart_delay has passed, starts a new game.
  */
 blink_events blink_step(blink_state *state, const blink_action *actions, u32 count, f32 dt);
 

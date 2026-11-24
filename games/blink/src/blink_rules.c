@@ -31,7 +31,7 @@ static void blink_new_game(blink_state *state) {
     state->score = 0;
     state->lives = state->tuning.lives;
     state->lifetime = state->tuning.first_lifetime;
-    state->over_time = 0.0f;
+    state->phase_time = 0.0f;
     blink_spawn(state);
 }
 
@@ -42,8 +42,8 @@ void blink_start(blink_state *state, const blink_tuning *tuning, u64 seed) {
     RB_ASSERT(tuning->field.x >= tuning->square_side && tuning->field.y >= tuning->square_side);
     RB_ASSERT(tuning->first_lifetime > 0.0f && tuning->min_lifetime > 0.0f);
     RB_ASSERT(tuning->lives > 0);
-    *state = (blink_state){.tuning = *tuning, .rng = rb_rng_create(seed)};
-    blink_new_game(state);
+    *state =
+        (blink_state){.tuning = *tuning, .rng = rb_rng_create(seed), .phase = BLINK_PHASE_TITLE};
 }
 
 rb_rect blink_square_rect(const blink_state *state) {
@@ -72,13 +72,13 @@ static blink_events blink_apply(blink_state *state, const blink_action *action) 
         return 0;
     }
     /*
-     * The delay keeps the clicks a player was still firing at the last square
-     * from starting the next game unseen; a restart is deliberate.
+     * After a game over, the delay keeps the clicks a player was still firing
+     * at the last square from starting the next game unseen; Space is
+     * deliberate. On the title nothing was being clicked: any click starts.
      */
-    bool restart =
-        action->type == BLINK_ACTION_RESTART ||
-        (action->type == BLINK_ACTION_CLICK && state->over_time >= state->tuning.restart_delay);
-    if (restart) {
+    bool start = action->type == BLINK_ACTION_START || state->phase == BLINK_PHASE_TITLE ||
+                 state->phase_time >= state->tuning.restart_delay;
+    if (start) {
         blink_new_game(state);
         return BLINK_EVENT_STARTED;
     }
@@ -86,8 +86,8 @@ static blink_events blink_apply(blink_state *state, const blink_action *action) 
 }
 
 static blink_events blink_advance(blink_state *state, f32 dt) {
-    if (state->phase == BLINK_PHASE_GAME_OVER) {
-        state->over_time += dt;
+    state->phase_time += dt;
+    if (state->phase != BLINK_PHASE_PLAYING) {
         return 0;
     }
     state->square.remaining -= dt;
@@ -100,7 +100,7 @@ static blink_events blink_advance(blink_state *state, f32 dt) {
         return BLINK_EVENT_EXPIRED;
     }
     state->phase = BLINK_PHASE_GAME_OVER;
-    state->over_time = 0.0f;
+    state->phase_time = 0.0f;
     state->square.remaining = 0.0f;
     state->best = state->score > state->best ? state->score : state->best;
     return BLINK_EVENT_EXPIRED | BLINK_EVENT_GAME_OVER;

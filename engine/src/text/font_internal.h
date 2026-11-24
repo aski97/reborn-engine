@@ -38,6 +38,22 @@ typedef struct rb_font_source {
 } rb_font_source;
 
 /*
+ * Here rather than in font.c so tests can build a font on the stack, without a
+ * GPU, and lay out text with it (ADR 0021): rb_font_set_glyphs fills all but
+ * the atlas, which stays a zero handle.
+ */
+struct rb_font {
+    rb_allocator    allocator; /* the font came from it and goes back to it */
+    rb_renderer    *renderer;  /* owns the atlas texture */
+    rb_texture      atlas;
+    rb_font_metrics metrics;
+    rb_glyph        glyphs[RB_FONT_GLYPH_COUNT];
+};
+
+/* The metrics and glyph table from `source`, each glyph's atlas rectangle from `rects`. */
+void rb_font_set_glyphs(rb_font *font, const rb_font_source *source, const rb_rect *rects);
+
+/*
  * A font from what a source produced: the images are read here and not kept,
  * so they may live on the caller's stack. NULL on failure (logged).
  */

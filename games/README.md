@@ -5,7 +5,7 @@ Each folder has a `README.md` with how the game plays and how to build and run i
 
 | Game | Folder | Since | Status | In short |
 |---|---|---|---|---|
-| Blink | [blink/](blink/README.md) | v0.2.0 | Playable, no text yet | Click the square before it vanishes; it speeds up |
+| Blink | [blink/](blink/README.md) | v0.2.0 | Playable | Click the square before it vanishes; it speeds up |
 
 Planned, in order (see `TODO.md`): Orbit, Seedling, Hollow, Swarm, Gallery, Archipelago.
 

@@ -43,6 +43,8 @@ set(REBORN_SOURCES
     src/text/font.c
     src/text/font_atlas.c
     src/text/font_builtin.c
+    src/text/text.c
+    src/text/utf8.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
