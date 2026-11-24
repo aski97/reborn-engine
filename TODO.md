@@ -92,9 +92,14 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       without text (the square shrinks as its timer, speed-up, lives as pips, game over and
       restart), score and lives logged. Assets deferred: Blink has none. From here on Blink
       drives the engine tasks
-- [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over): strings
-      (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels or in a virtual
-      resolution through a HUD camera, so it keeps its proportion on every screen (to decide)
+- [ ] Window icon: set per window from RGBA pixels (Win32 `WM_SETICON`, X11 `_NET_WM_ICON`); Blink
+      draws its own in code, the sandbox shows one too. The executable's icon and image files
+      stay in the backlog
+- [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over) and its
+      title screen (a logo made of squares, "PRESS SPACE" in the font; a new title phase in the
+      rules): strings (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels
+      or in a virtual resolution through a HUD camera, so it keeps its proportion on every screen
+      (to decide)
 
 **Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
 platform and without clicking by hand; the sandbox exposes the same commands). In order.
@@ -234,9 +239,9 @@ In order; each gets a version when it starts.
 - [ ] Gamepads
 - [ ] Input action mapping (bindings to actions)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
-- [ ] Application icon: on Windows embedded in the executable (`.rc` resource, shown by Explorer
-      and the taskbar) and set per window (`WM_SETICON`); on Linux the `_NET_WM_ICON` property
-      (ARGB pixels, so it needs decoded images, see Assets) and a `.desktop` file when packaging
+- [ ] Application icon beyond the window's (set per window in v0.2.0): on Windows embedded in the
+      executable (`.rc` resource, shown by Explorer and pinned shortcuts), on Linux a `.desktop`
+      file, both with release packaging; icons loaded from image files with image decoding
 - [ ] Win32 modal loop: the game freezes while a window is dragged or resized (the loop clamps
       the frozen time, ADR 0011; running during the drag needs a timer or a window thread)
 - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
