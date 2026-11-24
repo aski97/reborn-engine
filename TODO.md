@@ -387,6 +387,26 @@ state, or see what it draws. The command system, input injection and screenshots
 - [ ] Integration tests for platform/renderer (offscreen render + golden images)
 - [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
 - [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
+- [ ] Tests that open a window show it on screen (`ShowWindow` is unconditional): a hidden-window
+      option in the window config (alternatives and decision in an ADR; also lets a game show its
+      window after the first frame), or render offscreen (see Rendering)
+- [ ] CTest labels `unit` / `window` on discovered tests (the runner reports them in `--list`):
+      `ctest -LE window` is the quick loop. The ADR 0004 placed these tests in `tests/integration/`
+      with their own executable: today they live in `reborn_tests`, to reconcile
+- [ ] Parallel `ctest` by default in the test presets (`jobs` or `CTEST_PARALLEL_LEVEL`): measured
+      23.5 s serial, 11.2 s with `-j8` (392 tests, 2026-11-24)
+- [ ] Find why `vulkan_renderer.textures_fill_every_slot` takes 5 s (each other Vulkan test ~1.2 s)
+- [ ] One Vulkan device per suite (one process per suite) if the window tests stay slow after the
+      above: ~45 tests start instance, device and swapchain from scratch (~53 s of 82 s total);
+      trades away per-test isolation
+- [ ] Runner: filter (`--run 'arena.*'`) to run a suite in one process, quickest to debug
+- [ ] Runner: time per test in its output (`[ OK ] arena.x (12 ms)`) and the slowest tests at the end
+- [ ] `RB_SKIP(reason)` mapped to CTest's `SKIP_RETURN_CODE`: a test without a GPU or display is
+      reported skipped, not passed or failed. When CI arrives
+- [ ] Runner `--shuffle <seed>` (PCG32) to expose tests that depend on global state left by others
+      (e.g. the log); when tests share a process (suite-level device, filter)
+- [ ] Fail a test that leaks, through the tracking allocator (ADR 0012); when more tests start
+      checking leaks by hand
 
 ### Build, CI and tooling
 - [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
