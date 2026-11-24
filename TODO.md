@@ -87,10 +87,11 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       (ADR 0018)
 - [x] Random number generator with an explicit seed: PCG32, `rb_rng` owned by the caller, the
       seed picked and logged by the game; the square's random spot (ADR 0019)
-- [ ] The game in `games/blink/`, as soon as it can run: CMake wiring, where its assets live, how
-      it is launched and tested on Linux (ADR 0014); playable without text (squares appear and
-      vanish, clicks, speed-up, lives), score and lives logged until the next step. From here on
-      Blink drives the engine tasks
+- [x] The game in `games/blink/` (ADR 0014): `REBORN_BUILD_GAMES`, one target per game; layers
+      (rules, input, view, glue) with the rules and input tested by `blink_tests`; playable
+      without text (the square shrinks as its timer, speed-up, lives as pips, game over and
+      restart), score and lives logged. Assets deferred: Blink has none. From here on Blink
+      drives the engine tasks
 - [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over): strings
       (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels or in a virtual
       resolution through a HUD camera, so it keeps its proportion on every screen (to decide)
@@ -287,6 +288,9 @@ In order; each gets a version when it starts.
 - [ ] 3D
 
 ### Assets
+- [ ] Where a game's assets live and how it finds them (ADR 0014, D1: deferred by Blink, which has
+      none), e.g. `games/<name>/assets/` copied next to the executable. With the first game that
+      loads a file: likely Orbit's sounds
 - [ ] File system layer: read/write whole files, paths resolved from the executable's folder
       (not the current directory, which depends on how the game is launched), directory listing
 - [ ] Asset manager: assets referenced by handle (generational pool, ADR 0007), loaded once and

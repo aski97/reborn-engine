@@ -30,6 +30,7 @@ option(REBORN_SHARED              "Build the engine as a shared library (DLL/.so
 option(REBORN_WARNINGS_AS_ERRORS  "Treat compiler warnings as errors"              OFF)
 option(REBORN_ENABLE_SANITIZERS   "Enable AddressSanitizer + UBSan in Debug"       OFF)
 option(REBORN_BUILD_SANDBOX       "Build the sandbox application"                  ON)
+option(REBORN_BUILD_GAMES         "Build the games under games/"                   ON)
 option(REBORN_BUILD_TESTS         "Build the unit tests, registered in CTest"       ON)
 
 # -----------------------------------------------------------------------------
@@ -48,6 +49,15 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 include(RebornCompilerOptions)
+include(RebornTesting)
+
+if(REBORN_BUILD_TESTS)
+    # enable_testing() rather than include(CTest): the latter also adds CDash
+    # dashboard targets and a BUILD_TESTING option we do not use.
+    # Called here, at the top level and before any directory with tests (the
+    # games have theirs), so that `ctest` works from build/<preset>/.
+    enable_testing()
+endif()
 
 add_subdirectory(engine)
 
@@ -55,10 +65,11 @@ if(REBORN_BUILD_SANDBOX)
     add_subdirectory(sandbox)
 endif()
 
+# Each game builds its executable and, with REBORN_BUILD_TESTS, its tests (ADR 0014).
+if(REBORN_BUILD_GAMES)
+    add_subdirectory(games)
+endif()
+
 if(REBORN_BUILD_TESTS)
-    # enable_testing() rather than include(CTest): the latter also adds CDash
-    # dashboard targets and a BUILD_TESTING option we do not use.
-    # Called here, at the top level, so that `ctest` works from build/<preset>/.
-    enable_testing()
     add_subdirectory(tests)
 endif()

@@ -29,7 +29,7 @@ its implementation.
 | 0011 | [Application layer and game loop](0011-application-layer-and-game-loop.md) | Accepted |
 | 0012 | [Allocation tracking](0012-allocation-tracking.md) | Accepted |
 | 0013 | [Vulkan renderer](0013-vulkan-renderer.md) | Accepted |
-| 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Proposed |
+| 0014 | [Games and sandbox](0014-games-and-sandbox.md) | Accepted |
 | 0015 | [Shaders and graphics pipeline](0015-shaders-and-graphics-pipeline.md) | Accepted |
 | 0016 | [Math library and 2D camera](0016-math-and-2d-camera.md) | Accepted |
 | 0017 | [GPU memory and textures](0017-gpu-memory-and-textures.md) | Accepted |

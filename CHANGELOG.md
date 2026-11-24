@@ -39,6 +39,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   `rb_rng_range_f32` in `[min, max]`.
 - Sandbox: points and a histogram drawn each frame from a seed taken from the clock and logged; R
   takes a new seed, B goes back to the previous one, which redraws the same picture.
+- Blink (ADR 0014), the first game, in `games/blink/`: click the square before it shrinks away,
+  each hit shortens the next one's time, three lives shown as pips, game over and restart. No
+  text yet: score and lives are logged. Built in layers (rules, input, view, glue); its rules and
+  input are tested by `blink_tests`. `games/README.md` lists the games; each has a `README.md`
+  with its rules and how to build and run it.
+- `REBORN_BUILD_GAMES` CMake option (on): builds the games under `games/`.
+- `reborn_add_test_executable` (`cmake/RebornTesting.cmake`): a test executable on the engine's
+  framework with CTest discovery, used by the engine's tests and by each game's.
 
 ### Changed
 - The quad shader receives a view matrix instead of the target size, and the texture region to

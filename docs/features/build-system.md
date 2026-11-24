@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-17) |
+| **Updated** | v0.2.0 (2026-11-24) |
 | **Code** | `CMakeLists.txt`, `CMakePresets.json`, `cmake/`, `engine/CMakeLists.txt`, `engine/include/reborn/defines.h`, `docker/`, `scripts/linux-build.*` |
 | **ADRs** | [0001](../adr/0001-build-system-compiler-standard.md), [0002](../adr/0002-static-engine-library.md), [0003](../adr/0003-versioning-and-repo-layout.md), [0005](../adr/0005-linux-build-container.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md) |
 
@@ -90,7 +90,8 @@ WSLg, or a Linux machine), outside these scripts.
 | `rb_version_string()`, `rb_version_number()` | version of the linked engine |
 
 CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANITIZERS`, `REBORN_BUILD_SANDBOX`,
-`REBORN_BUILD_TESTS` (see [unit-testing.md](unit-testing.md)). Each configure preset has a matching test preset.
+`REBORN_BUILD_GAMES` (the games under `games/`, ADR 0014), `REBORN_BUILD_TESTS` (see
+[unit-testing.md](unit-testing.md)). Each configure preset has a matching test preset.
 
 ## Decisions
 - CMake + Ninja + Clang + C17 → [ADR 0001](../adr/0001-build-system-compiler-standard.md).
@@ -111,3 +112,4 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 | v0.1.0 | 2026-11-15 | `libx11-dev` in the Linux container; the sandbox there needs an X server |
 | v0.1.0 | 2026-11-15 | Linux scripts gate on `ctest` only; the sandbox runs on a Linux desktop |
 | v0.1.0 | 2026-11-17 | Shaders compiled by `glslc` at build time and embedded; `glslc` in the Linux container |
+| v0.2.0 | 2026-11-24 | `REBORN_BUILD_GAMES`: the games under `games/` |

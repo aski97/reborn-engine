@@ -66,7 +66,8 @@ The same commands in PowerShell on Windows and in a shell on Linux:
 ```sh
 cmake --preset debug
 cmake --build --preset debug
-./build/debug/bin/sandbox
+./build/debug/bin/sandbox             # every engine feature on show
+./build/debug/bin/blink               # a game: see games/README.md
 ```
 
 Presets: `debug`, `release`, `debug-asan`. Details in [docs/features/build-system.md](docs/features/build-system.md).
@@ -95,8 +96,9 @@ Use `debug-asan` often: AddressSanitizer and UBSan catch bugs that no check asse
 Each `ctest` run also writes a JUnit report to `build/<preset>/junit.xml`.
 
 To add a test, create it under `tests/` at the same path as the code in `engine/src/`
-(e.g. `tests/memory/test_arena.c`), list it in `add_executable(reborn_tests ...)` in
-`tests/CMakeLists.txt`, and rebuild. Macros and design: [docs/features/unit-testing.md](docs/features/unit-testing.md).
+(e.g. `tests/memory/test_arena.c`), list it in `reborn_add_test_executable(reborn_tests ...)` in
+`tests/CMakeLists.txt`, and rebuild. Each game has its own tests (`blink_tests`), run by the same
+`ctest`. Macros and design: [docs/features/unit-testing.md](docs/features/unit-testing.md).
 
 ## Layout
 
@@ -104,6 +106,7 @@ To add a test, create it under `tests/` at the same path as the code in `engine/
 engine/include/reborn/   public API   → #include <reborn/...>
 engine/src/              implementation
 sandbox/                 test application using the engine
+games/                   our games, one folder each (games/README.md)
 tests/                   unit tests (mirrors engine/src/) and the rb_test framework
 cmake/                   CMake modules
 docker/, scripts/        development tooling, not needed to build

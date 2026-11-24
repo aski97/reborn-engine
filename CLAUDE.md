@@ -15,6 +15,9 @@ the owner wants to understand and approve every architectural choice.
   feature or condition that will call for them.
 - From v0.2.0 the roadmap is a ladder of our own games under `games/` (ADR 0014): engine tasks come
   from what the current game needs. The sandbox keeps exercising every engine feature.
+- Every game is built in layers (ADR 0014): rules (pure, actions in, events out), input, view,
+  glue, `main.c`; rules and input tested in `games/<name>/tests/`. Each game has a `README.md`
+  (how it plays, how to build and run it), listed in `games/README.md`.
 - No external libraries without explicit approval.
 - Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date. `[Unreleased]` is the difference
   from the last release (*Added*, *Changed*, *Fixed*, *Removed*): a change to something added
@@ -27,7 +30,8 @@ the owner wants to understand and approve every architectural choice.
 ```sh
 cmake --preset debug && cmake --build --preset debug
 ./build/debug/bin/sandbox
-ctest --preset debug      # unit tests; JUnit in build/debug/junit.xml
+./build/debug/bin/blink   # the games: games/README.md
+ctest --preset debug      # unit tests, the games' too; JUnit in build/debug/junit.xml
 ```
 New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.

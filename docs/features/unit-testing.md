@@ -4,8 +4,8 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-16) |
-| **Code** | `tests/`, `cmake/RebornDiscoverTests.cmake`, `CMakePresets.json` (`testPresets`) |
+| **Updated** | v0.2.0 (2026-11-24) |
+| **Code** | `tests/`, `cmake/RebornTesting.cmake`, `cmake/RebornDiscoverTests.cmake`, `CMakePresets.json` (`testPresets`) |
 | **ADRs** | [0004](../adr/0004-unit-testing.md) |
 
 ## Summary
@@ -34,6 +34,10 @@ flowchart LR
 
 - Test sources are compiled directly into `reborn_tests`, never into a library: the linker would
   drop their objects (nothing references them) and the tests would disappear silently.
+- `reborn_add_test_executable(<target> <sources>...)` (`cmake/RebornTesting.cmake`) makes a test
+  executable: the runner, the sources, the compiler options, the discovery after each build.
+  `reborn_tests` and each game's tests (`games/<name>/tests/`, e.g. `blink_tests`) use it; one
+  `ctest` runs them all.
 - Registry nodes are `static`: no allocation before `main`. The list is kept sorted because
   constructor order across files is unspecified.
 - `stdout` is unbuffered so the output of a crashing test is not lost.
@@ -91,3 +95,4 @@ comparisons, fuzzing (libFuzzer), coverage (`llvm-cov`).
 |---|---|---|
 | v0.1.0 | 2026-11-15 | First version |
 | v0.1.0 | 2026-11-16 | `tests/support/`: failing allocator |
+| v0.2.0 | 2026-11-24 | `reborn_add_test_executable`, shared with the games' tests |
