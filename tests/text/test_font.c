@@ -24,7 +24,8 @@ static rb_renderer *start(void) {
     if (platform == NULL) {
         return NULL;
     }
-    window = rb_window_create(platform, &(rb_window_desc){"Font test", 320, 240});
+    window = rb_window_create(platform,
+                              &(rb_window_desc){.title = "Font test", .width = 320, .height = 240});
     rb_renderer *renderer = NULL;
     if (rb_window_is_valid(platform, window)) {
         renderer = rb_renderer_startup(rb_heap_allocator(),

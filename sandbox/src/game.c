@@ -167,6 +167,36 @@ static void game_on_event(void *state, rb_app *app, const rb_event *ev) {
  * Lifecycle
  * ========================================================================== */
 
+/*
+ * The window icon (ADR 0020): four squares in the hues of the row on screen,
+ * with transparent gaps. Static: the pixels must outlive configure, until the
+ * engine creates the window.
+ */
+static u8             icon_16[16 * 16 * 4];
+static u8             icon_32[32 * 32 * 4];
+static u8             icon_64[64 * 64 * 4];
+static const rb_image icons[] = {{16, 16, icon_16}, {32, 32, icon_32}, {64, 64, icon_64}};
+
+static void sandbox_draw_icon(u32 side, u8 *pixels) {
+    static const u8 colors[4][3] = {{235, 80, 80}, {240, 210, 70}, {80, 200, 110}, {80, 140, 240}};
+    const u32       gap = side / 16; /* 1 pixel at 16 */
+    const u32       half = side / 2;
+    for (u32 y = 0; y < side; ++y) {
+        for (u32 x = 0; x < side; ++x) {
+            u8 *p = &pixels[(y * side + x) * 4];
+            /* Quadrant 0 top left, 1 top right, 2 bottom left, 3 bottom right. */
+            const u8 *color = colors[(y >= half ? 2u : 0u) + (x >= half ? 1u : 0u)];
+            u32       qx = x % half;
+            u32       qy = y % half;
+            bool      in_gap = qx < gap || qx >= half - gap || qy < gap || qy >= half - gap;
+            p[0] = color[0];
+            p[1] = color[1];
+            p[2] = color[2];
+            p[3] = in_gap ? 0 : 255;
+        }
+    }
+}
+
 static bool game_configure(rb_app_config *config) {
     /*
      * Everything, to check events by hand. The file lands in the working
@@ -176,6 +206,11 @@ static bool game_configure(rb_app_config *config) {
     config->log.file_path = "reborn.log.jsonl";
     config->log.file_level = RB_LOG_LEVEL_TRACE;
     config->window.title = "Reborn Sandbox — città";
+    sandbox_draw_icon(16, icon_16);
+    sandbox_draw_icon(32, icon_32);
+    sandbox_draw_icon(64, icon_64);
+    config->window.icons = icons;
+    config->window.icon_count = RB_ARRAY_COUNT(icons);
     RB_APP_STATE(config, sandbox_state);
     return true;
 }

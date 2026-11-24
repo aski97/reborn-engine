@@ -92,9 +92,8 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       without text (the square shrinks as its timer, speed-up, lives as pips, game over and
       restart), score and lives logged. Assets deferred: Blink has none. From here on Blink
       drives the engine tasks
-- [ ] Window icon: set per window from RGBA pixels (Win32 `WM_SETICON`, X11 `_NET_WM_ICON`); Blink
-      draws its own in code, the sandbox shows one too. The executable's icon and image files
-      stay in the backlog
+- [x] Window icon (ADR 0020): `rb_window_desc.icons` at several sizes, set before the window shows
+      (Win32 `WM_SETICON`, X11 `_NET_WM_ICON`); Blink and the sandbox draw theirs in code
 - [ ] Text rendering on the 2D renderer, shaped by Blink's HUD (score, lives, game over) and its
       title screen (a logo made of squares, "PRESS SPACE" in the font; a new title phase in the
       rules): strings (ASCII first, UTF-8 later), measuring, alignment; the HUD in window pixels
@@ -239,6 +238,9 @@ In order; each gets a version when it starts.
 - [ ] Gamepads
 - [ ] Input action mapping (bindings to actions)
 - [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
+- [ ] Changing a window's icon after creation (`rb_window_set_icon`, the same code as at creation,
+      ADR 0020), and new sizes when a window moves to a monitor with another scale. When a game
+      needs it
 - [ ] Application icon beyond the window's (set per window in v0.2.0): on Windows embedded in the
       executable (`.rc` resource, shown by Explorer and pinned shortcuts), on Linux a `.desktop`
       file, both with release packaging; icons loaded from image files with image decoding

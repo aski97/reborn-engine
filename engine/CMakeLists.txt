@@ -50,6 +50,7 @@ if(WIN32)
     list(APPEND REBORN_SOURCES
         src/platform/win32/win32_clock.c
         src/platform/win32/win32_error.c
+        src/platform/win32/win32_icon.c
         src/platform/win32/win32_input.c
         src/platform/win32/win32_library.c
         src/platform/win32/win32_memory.c
@@ -62,6 +63,7 @@ elseif(LINUX)
         src/platform/linux/linux_library.c
         src/platform/linux/linux_memory.c
         src/platform/linux/linux_os.c
+        src/platform/linux/xlib_icon.c
         src/platform/linux/xlib_input.c
         src/platform/linux/xlib_platform.c
     )

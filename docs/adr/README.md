@@ -35,5 +35,6 @@ its implementation.
 | 0017 | [GPU memory and textures](0017-gpu-memory-and-textures.md) | Accepted |
 | 0018 | [Bitmap font and glyph atlas](0018-bitmap-font-and-glyph-atlas.md) | Accepted |
 | 0019 | [Random number generator](0019-random-number-generator.md) | Accepted |
+| 0020 | [Window icon](0020-window-icon.md) | Accepted |
 
 Template: [`template.md`](template.md).

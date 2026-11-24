@@ -21,7 +21,8 @@ static bool open_window(void) {
     if (platform == NULL) {
         return false;
     }
-    window = rb_window_create(platform, &(rb_window_desc){"Renderer test", 320, 240});
+    window = rb_window_create(
+        platform, &(rb_window_desc){.title = "Renderer test", .width = 320, .height = 240});
     if (!rb_window_is_valid(platform, window)) {
         rb_platform_shutdown(platform);
         return false;

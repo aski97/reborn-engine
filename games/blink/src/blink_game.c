@@ -22,8 +22,23 @@ typedef struct blink_game {
     u32          action_count;
 } blink_game;
 
+/*
+ * The icon's sizes (ADR 0020): the title bar at 100% and 200% scale, Alt+Tab
+ * and the taskbar. Static: the pixels must outlive configure, until the engine
+ * creates the window.
+ */
+static u8             icon_16[16 * 16 * 4];
+static u8             icon_32[32 * 32 * 4];
+static u8             icon_64[64 * 64 * 4];
+static const rb_image icons[] = {{16, 16, icon_16}, {32, 32, icon_32}, {64, 64, icon_64}};
+
 static bool game_configure(rb_app_config *config) {
     config->window.title = "Blink";
+    blink_view_draw_icon(16, icon_16);
+    blink_view_draw_icon(32, icon_32);
+    blink_view_draw_icon(64, icon_64);
+    config->window.icons = icons;
+    config->window.icon_count = RB_ARRAY_COUNT(icons);
     /* The working directory: the repository root when run as in the README. */
     config->log.file_path = "blink.log.jsonl";
     config->log.file_level = RB_LOG_LEVEL_DEBUG;

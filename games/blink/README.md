@@ -47,17 +47,18 @@ session. Setting the seed from outside comes with the command system.
 |---|---|
 | `src/blink_rules.c` | Rules: state, tuning (`blink_default_tuning`), `blink_start`, `blink_step(actions, dt)` → events, `blink_square_rect` |
 | `src/blink_input.c` | Input: left press → click in world units, Space → restart |
-| `src/blink_view.c` | View: field, square, lives; a log line per event |
-| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update` |
+| `src/blink_view.c` | View: field, square, lives; a log line per event; the window icon |
+| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update`; the icon drawn in `configure` |
 | `src/main.c` | Entry point |
 
 The field is 16x9 world units through a 2D camera: the whole field is always visible, with bars
-when the window's aspect differs.
+when the window's aspect differs. The window icon (a dark rounded tile with an orange square) is
+drawn in code at 16, 32 and 64 pixels and given to the window at creation (ADR 0020).
 
 ## Tests
 
 `tests/` checks the rules (hits, speed-up, shrinking target, lives, game over, restart, same seed
-same game) and the input mapping, without a window:
+same game), the input mapping and the icon, without a window:
 
 ```sh
 ctest --preset debug -R blink

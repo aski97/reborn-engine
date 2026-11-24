@@ -12,6 +12,7 @@
  * engine reacts to them is still to be decided.
  */
 #include "platform/platform_internal.h"
+#include "platform/linux/xlib_icon.h"
 #include "platform/linux/xlib_input.h"
 
 #include <reborn/assert.h>
@@ -48,6 +49,7 @@ struct rb_platform_state {
     Atom        wm_delete_window;
     Atom        wm_state;
     Atom        net_wm_name;
+    Atom        net_wm_icon;
     Atom        utf8_string;
     xlib_window windows[RB_MAX_WINDOWS];
 };
@@ -339,6 +341,7 @@ static bool xlib_startup(rb_platform_state *state) {
     state->wm_delete_window = XInternAtom(state->display, "WM_DELETE_WINDOW", False);
     state->wm_state = XInternAtom(state->display, "WM_STATE", False);
     state->net_wm_name = XInternAtom(state->display, "_NET_WM_NAME", False);
+    state->net_wm_icon = XInternAtom(state->display, "_NET_WM_ICON", False);
     state->utf8_string = XInternAtom(state->display, "UTF8_STRING", False);
 
     /*
@@ -383,6 +386,31 @@ void rb_platform_shutdown(rb_platform_state *state) {
     /* Copied out first: the free ends the state's life, allocator field included. */
     rb_allocator allocator = state->common.allocator;
     RB_FREE_TYPE(allocator, state, rb_platform_state, RB_MEMORY_TAG_PLATFORM);
+}
+
+/* ============================================================================
+ * Icons (ADR 0020)
+ * ========================================================================== */
+
+/*
+ * Every image in _NET_WM_ICON (EWMH): the window manager picks the size it
+ * shows. The values are built in a temporary block, freed right after:
+ * XChangeProperty copies them into Xlib's request buffer. Allocated and freed
+ * on top of an arena, it costs nothing once freed.
+ */
+static void xlib_set_icon(rb_platform_state *state, Window xid, const rb_window_desc *desc) {
+    usize          length = xlib_icon_length(desc->icons, desc->icon_count);
+    unsigned long *data =
+        RB_ALLOC_ARRAY(state->common.allocator, unsigned long, length, RB_MEMORY_TAG_PLATFORM);
+    if (data == NULL) {
+        RB_LOG_WARN("Window icon skipped: no memory for its %zu values", length);
+        return;
+    }
+    xlib_icon_fill(desc->icons, desc->icon_count, data);
+    XChangeProperty(state->display, xid, state->net_wm_icon, XA_CARDINAL, 32, PropModeReplace,
+                    (const unsigned char *)data, (int)length);
+    RB_FREE_ARRAY(state->common.allocator, data, unsigned long, length, RB_MEMORY_TAG_PLATFORM);
+    RB_LOG_DEBUG("Window icon: %u images, %zu values", desc->icon_count, length);
 }
 
 /* ============================================================================
@@ -439,6 +467,9 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
         return invalid;
     }
     xlib_set_title(state, xid, desc->title != NULL ? desc->title : "");
+    if (rb_platform_common_icon_usable(desc)) {
+        xlib_set_icon(state, xid, desc);
+    }
     XSelectInput(state->display, xid, XLIB_EVENT_MASK);
 
     /*

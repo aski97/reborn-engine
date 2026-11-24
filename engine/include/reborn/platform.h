@@ -5,7 +5,8 @@
  * the platform directly, as below, is for tools and tests.
  *
  *   rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(&engine_arena));
- *   rb_window win = rb_window_create(platform, &(rb_window_desc){"Reborn", 1280, 720});
+ *   rb_window win = rb_window_create(
+ *       platform, &(rb_window_desc){.title = "Reborn", .width = 1280, .height = 720});
  *
  *   for (bool running = true; running;) {
  *       rb_platform_pump(platform);
@@ -26,6 +27,7 @@
 #define RB_PLATFORM_H
 
 #include <reborn/defines.h>
+#include <reborn/image.h>
 #include <reborn/input.h>
 #include <reborn/memory.h>
 
@@ -58,10 +60,24 @@ typedef struct rb_window {
     u32 id;
 } rb_window;
 
+/* Limits of an icon's images (ADR 0020): 256 is the largest Windows icon. */
+#define RB_WINDOW_ICON_MAX_SIDE  256u
+#define RB_WINDOW_ICON_MAX_COUNT 8u
+
 typedef struct rb_window_desc {
     const char *title; /* UTF-8 */
     u32         width; /* client area, without borders and title bar */
     u32         height;
+    /*
+     * The window's icon (ADR 0020): one icon at several sizes (square, as the
+     * systems show them), in any order; the system shows the closest one (title bar 16+, Alt+Tab
+     * and taskbar 32+). NULL / 0: the system's icon. Read by rb_window_create only, which sets it
+     * before the window appears. Images of a zero size or larger than RB_WINDOW_ICON_MAX_SIDE, or
+     * more than RB_WINDOW_ICON_MAX_COUNT of them, are logged and ignored: the window still opens,
+     * with the system's icon.
+     */
+    const rb_image *icons;
+    u32             icon_count;
 } rb_window_desc;
 
 /* Returns a zero handle on failure (no free slot, OS error). The window is shown at once. */

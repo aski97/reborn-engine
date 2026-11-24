@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-15) |
-| **Updated** | v0.1.0 (2026-11-17) |
+| **Updated** | v0.2.0 (2026-11-24) |
 | **Code** | `engine/include/reborn/platform.h`, `engine/src/platform/` |
-| **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md), [0013](../adr/0013-vulkan-renderer.md) |
+| **ADRs** | [0006](../adr/0006-platform-layer.md), [0007](../adr/0007-index-only-containers.md), [0013](../adr/0013-vulkan-renderer.md), [0020](../adr/0020-window-icon.md) |
 
 ## Summary
 Windows and OS events behind one OS-independent API. Game and engine code never include an OS
@@ -36,6 +36,14 @@ header; each OS has its own backend, chosen by CMake.
   window starts with its created size and position (Linux: the requested position; the window
   manager's placement follows as `MOVED`), not focused, not minimized; focus usually follows as an
   event.
+- **Icon** (ADR 0020): `rb_window_desc.icons` / `icon_count`, one icon as `rb_image`s at several
+  sizes (RGBA, straight alpha, rows from the top; `reborn/image.h`), set before the window is
+  shown, so the system's default never flashes. Win32 picks, for the small (title bar) and the big
+  icon (Alt+Tab, taskbar) at the window's DPI, the smallest image at least that large, else the
+  largest; X11 passes every image in `_NET_WM_ICON` and the window manager picks. At most 8
+  images of 1..256 pixels per side: beyond, logged, and the window opens with the system's icon.
+  The pixels are read by `rb_window_create` only. Not yet: changing the icon later, the
+  executable's icon, icons from image files.
 - A minimized window keeps its size (Win32's 0×0 is not reported). Windows can report 0 pixels for
   a window shrunk to its title bar.
 - Backends: **Win32** (Windows), **Xlib** (Linux; X11 or XWayland). Startup fails without an X
@@ -105,7 +113,8 @@ rb_arena engine;
 rb_arena_create(&engine, RB_MIB(64));                /* lives as long as the engine */
 rb_platform_state *platform = rb_platform_startup(rb_arena_allocator(&engine));
 if (platform == NULL) { /* logged */ }
-rb_window win = rb_window_create(platform, &(rb_window_desc){"Reborn", 1280, 720});
+rb_window win = rb_window_create(
+    platform, &(rb_window_desc){.title = "Reborn", .width = 1280, .height = 720});
 
 for (bool running = true; running;) {
     rb_platform_pump(platform);
@@ -140,6 +149,10 @@ rb_arena_destroy(&engine);
 - `UNICODE` is defined in the Win32 backend, so an accidental `-A` call fails to compile.
 - The window is created hidden, sized with the DPI of the monitor it landed on
   (`GetDpiForWindow`, not `GetDpiForSystem`, which is fixed at logon), then shown.
+- Icon at creation, several sizes, RGBA, drawn by each game in code (ADR 0020). Win32 builds each
+  `HICON` from a 32-bit top-down DIB with an alpha mask and an empty AND mask; X11 converts the
+  pixels to `unsigned long` values (64 bits on 64-bit Linux, as Xlib wants format 32), in a block
+  freed right after `XChangeProperty`.
 - Xlib: each window registers `WM_DELETE_WINDOW`, so the close button becomes a `ClientMessage`
   instead of the window manager killing the connection. Titles go to `_NET_WM_NAME` and `WM_NAME`
   as `UTF8_STRING` (`XStoreName` would type them Latin-1). No custom X error handlers yet.
@@ -151,6 +164,7 @@ rb_arena_destroy(&engine);
 ## Future work
 - A native Wayland backend would have no window position (Wayland hides global coordinates).
 - Window commands (set size, minimize, fullscreen); maximized as a state.
+- Changing a window's icon after creation; icon sizes for a new DPI when a window moves monitor.
 - Win32 modal loop: the game freezes while a window is dragged. The game loop clamps the frozen
   time ([app.md](app.md)); running during the drag still needs a solution (backlog).
 - Linux: X error handling, UTF-8 title validation (parity with Windows), HiDPI via `Xft.dpi`.
@@ -169,3 +183,4 @@ rb_arena_destroy(&engine);
 | v0.1.0 | 2026-11-16 | Startup takes an `rb_allocator` and returns the state; `rb_platform_state_size` removed |
 | v0.1.0 | 2026-11-17 | Internal dynamic library loading (`rb_platform_library_*`, [renderer.md](renderer.md)) |
 | v0.1.0 | 2026-11-17 | Vulkan surface creation for the renderer (internal) |
+| v0.2.0 | 2026-11-24 | Window icon at creation (`rb_window_desc.icons`, `rb_image`) |

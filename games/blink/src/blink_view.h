@@ -20,4 +20,11 @@ void blink_view_draw(const blink_state *state, const rb_camera2d *camera, rb_ren
 /* A log line per event of the step, with the score and lives after it: the HUD until text. */
 void blink_view_report(const blink_state *state, blink_events events);
 
+/*
+ * The window icon at `side` pixels (ADR 0020): a dark rounded tile with a light
+ * border and an orange square in the middle, the game in miniature. Writes
+ * side * side RGBA pixels into `pixels`.
+ */
+void blink_view_draw_icon(u32 side, u8 *pixels);
+
 #endif /* BLINK_VIEW_H */

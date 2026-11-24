@@ -96,6 +96,13 @@ bool rb_platform_common_poll_event(rb_platform_common *common, rb_event *out);
  * `id` must be a live window handle.
  * ========================================================================== */
 
+/*
+ * Whether `desc`'s icon can be set (ADR 0020): false, logged, for sizes or a
+ * count outside the limits, and when there is no icon. A NULL `icons` with a
+ * count, or an image without pixels, is a bug in the caller: RB_ASSERT.
+ */
+bool rb_platform_common_icon_usable(const rb_window_desc *desc);
+
 /* Initial state of a new window: `size` and `position`, not focused, not minimized. No event. */
 void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size,
                                       rb_window_position position);

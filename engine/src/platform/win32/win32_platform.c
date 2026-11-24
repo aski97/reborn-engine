@@ -7,6 +7,7 @@
  */
 #include "platform/platform_internal.h"
 #include "platform/win32/win32_error.h"
+#include "platform/win32/win32_icon.h"
 #include "platform/win32/win32_input.h"
 
 #include <reborn/assert.h>
@@ -34,6 +35,10 @@
 typedef struct win32_window {
     HWND hwnd; /* NULL when the slot is free */
     u32  id;   /* handle of this slot, to tag events */
+    /* Set with WM_SETICON (ADR 0020); the window does not own them: destroyed with it. NULL: none.
+     */
+    HICON icon_small;
+    HICON icon_big;
 } win32_window;
 
 struct rb_platform_state {
@@ -452,6 +457,82 @@ void rb_platform_shutdown(rb_platform_state *state) {
 }
 
 /* ============================================================================
+ * Icons (ADR 0020)
+ * ========================================================================== */
+
+/*
+ * The AND mask of a monochrome icon, all zeros. A 32-bit icon with alpha
+ * ignores it, but CreateIconIndirect requires one, and CreateBitmap without
+ * bits leaves its contents undefined. Rows are padded to 16 bits.
+ */
+static const u8 WIN32_EMPTY_MASK[(RB_WINDOW_ICON_MAX_SIDE / 8) * RB_WINDOW_ICON_MAX_SIDE];
+
+/*
+ * A colored icon with transparency: a 32-bit DIB with an alpha mask in its
+ * header (BITMAPV5HEADER), top-down (negative height) like rb_image, plus the
+ * empty mask. CreateIconIndirect copies both bitmaps. NULL on failure (logged).
+ */
+static HICON win32_create_icon(const rb_image *image) {
+    BITMAPV5HEADER header = {
+        .bV5Size = sizeof(header),
+        .bV5Width = (LONG)image->width,
+        .bV5Height = -(LONG)image->height,
+        .bV5Planes = 1,
+        .bV5BitCount = 32,
+        .bV5Compression = BI_BITFIELDS,
+        .bV5RedMask = 0x00FF0000,
+        .bV5GreenMask = 0x0000FF00,
+        .bV5BlueMask = 0x000000FF,
+        .bV5AlphaMask = 0xFF000000,
+    };
+    void   *bits = NULL;
+    HBITMAP color =
+        CreateDIBSection(NULL, (const BITMAPINFO *)&header, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (color == NULL) {
+        WIN32_LOG_LAST_ERROR("CreateDIBSection");
+        return NULL;
+    }
+    win32_icon_to_bgra(image, bits);
+    HBITMAP mask = CreateBitmap((int)image->width, (int)image->height, 1, 1, WIN32_EMPTY_MASK);
+    if (mask == NULL) {
+        WIN32_LOG_LAST_ERROR("CreateBitmap");
+        DeleteObject(color);
+        return NULL;
+    }
+    ICONINFO info = {.fIcon = TRUE, .hbmMask = mask, .hbmColor = color};
+    HICON    icon = CreateIconIndirect(&info);
+    if (icon == NULL) {
+        WIN32_LOG_LAST_ERROR("CreateIconIndirect");
+    }
+    DeleteObject(mask);
+    DeleteObject(color);
+    return icon;
+}
+
+/*
+ * The small icon (title bar) and the big one (Alt+Tab, taskbar), each from the
+ * image closest to its size at the window's DPI. A failed one is left to the
+ * system's default.
+ */
+static void win32_set_icons(win32_window *slot, const rb_window_desc *desc, UINT dpi) {
+    u32             small_side = (u32)GetSystemMetricsForDpi(SM_CXSMICON, dpi);
+    u32             big_side = (u32)GetSystemMetricsForDpi(SM_CXICON, dpi);
+    const rb_image *small =
+        &desc->icons[win32_icon_pick(desc->icons, desc->icon_count, small_side)];
+    const rb_image *big = &desc->icons[win32_icon_pick(desc->icons, desc->icon_count, big_side)];
+    slot->icon_small = win32_create_icon(small);
+    slot->icon_big = win32_create_icon(big);
+    if (slot->icon_small != NULL) {
+        SendMessageW(slot->hwnd, WM_SETICON, ICON_SMALL, (LPARAM)slot->icon_small);
+    }
+    if (slot->icon_big != NULL) {
+        SendMessageW(slot->hwnd, WM_SETICON, ICON_BIG, (LPARAM)slot->icon_big);
+    }
+    RB_LOG_DEBUG("Window 0x%08x icon: %ux%u for the small %u, %ux%u for the big %u", slot->id,
+                 small->width, small->height, small_side, big->width, big->height, big_side);
+}
+
+/* ============================================================================
  * Windows
  * ========================================================================== */
 
@@ -519,6 +600,10 @@ rb_window rb_window_create(rb_platform_state *state, const rb_window_desc *desc)
     win32_window *slot = &state->windows[rb_handle_index(id)];
     slot->hwnd = hwnd;
     slot->id = id;
+    /* Before showing: the system's default icon never appears, not even for a frame. */
+    if (rb_platform_common_icon_usable(desc)) {
+        win32_set_icons(slot, desc, dpi);
+    }
     /* Also activates the window: WM_SETFOCUS becomes RB_EVENT_WINDOW_FOCUS_GAINED. */
     ShowWindow(hwnd, SW_SHOW);
 
@@ -539,10 +624,19 @@ void rb_window_destroy(rb_platform_state *state, rb_window window) {
      * (WM_KILLFOCUS...): the application destroyed the window, it needs no
      * events about it.
      */
-    HWND hwnd = slot->hwnd;
+    HWND  hwnd = slot->hwnd;
+    HICON icon_small = slot->icon_small;
+    HICON icon_big = slot->icon_big;
     rb_platform_common_window_closed(&state->common, window.id);
     *slot = (win32_window){0};
     DestroyWindow(hwnd);
+    /* After the window: it may use them until it is gone. DestroyIcon(NULL) only fails. */
+    if (icon_small != NULL) {
+        DestroyIcon(icon_small);
+    }
+    if (icon_big != NULL) {
+        DestroyIcon(icon_big);
+    }
     rb_handle_pool_free(&state->common.window_pool, window.id);
     RB_LOG_DEBUG("Window 0x%08x destroyed", window.id);
 }

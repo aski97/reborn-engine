@@ -44,6 +44,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   text yet: score and lives are logged. Built in layers (rules, input, view, glue); its rules and
   input are tested by `blink_tests`. `games/README.md` lists the games; each has a `README.md`
   with its rules and how to build and run it.
+- Window icon (ADR 0020): `rb_window_desc.icons` / `icon_count`, one icon at several sizes as
+  `rb_image` (`reborn/image.h`: RGBA pixels the caller owns), set before the window shows. Win32
+  picks the small and the big icon for the window's DPI (`WM_SETICON`); X11 sets `_NET_WM_ICON`
+  with every size.
+- Blink and the sandbox draw their window icons in code at 16, 32 and 64 pixels: Blink a dark
+  rounded tile with an orange square, the sandbox four colored squares.
 - `REBORN_BUILD_GAMES` CMake option (on): builds the games under `games/`.
 - `reborn_add_test_executable` (`cmake/RebornTesting.cmake`): a test executable on the engine's
   framework with CTest discovery, used by the engine's tests and by each game's.

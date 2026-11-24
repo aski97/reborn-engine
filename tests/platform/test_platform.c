@@ -308,3 +308,41 @@ RB_TEST(platform, state_updates_even_when_queue_is_full) {
     RB_EXPECT_EQ_UINT(ws->size.width, 800);
     RB_EXPECT(ws->focused);
 }
+
+/* ============================================================================
+ * Window icon (ADR 0020)
+ * ========================================================================== */
+
+static const u8 ICON_PIXELS[4] = {0};
+
+RB_TEST(platform, icon_absent_is_not_set) {
+    rb_window_desc desc = {.title = "Icon", .width = 320, .height = 240};
+    RB_EXPECT(!rb_platform_common_icon_usable(&desc));
+}
+
+RB_TEST(platform, icon_within_the_limits_is_usable) {
+    rb_image       images[] = {{16, 16, ICON_PIXELS}, {256, 256, ICON_PIXELS}};
+    rb_window_desc desc = {
+        .title = "Icon", .width = 320, .height = 240, .icons = images, .icon_count = 2};
+    RB_EXPECT(rb_platform_common_icon_usable(&desc));
+}
+
+/* Logged and ignored: the window still opens, with the system's icon. */
+RB_TEST(platform, icon_outside_the_limits_is_refused) {
+    rb_image empty[] = {{0, 16, ICON_PIXELS}};
+    rb_image large[] = {{RB_WINDOW_ICON_MAX_SIDE + 1, 16, ICON_PIXELS}};
+    rb_image many[RB_WINDOW_ICON_MAX_COUNT + 1];
+    for (u32 i = 0; i < RB_ARRAY_COUNT(many); ++i) {
+        many[i] = (rb_image){16, 16, ICON_PIXELS};
+    }
+    RB_EXPECT(!rb_platform_common_icon_usable(&(rb_window_desc){
+        .title = "Icon", .width = 320, .height = 240, .icons = empty, .icon_count = 1}));
+    RB_EXPECT(!rb_platform_common_icon_usable(&(rb_window_desc){
+        .title = "Icon", .width = 320, .height = 240, .icons = large, .icon_count = 1}));
+    RB_EXPECT(
+        !rb_platform_common_icon_usable(&(rb_window_desc){.title = "Icon",
+                                                          .width = 320,
+                                                          .height = 240,
+                                                          .icons = many,
+                                                          .icon_count = RB_ARRAY_COUNT(many)}));
+}

@@ -163,6 +163,30 @@ static void rb_platform_common_push_window_event(rb_platform_common *common, u32
     rb_platform_common_push_event(common, &event);
 }
 
+bool rb_platform_common_icon_usable(const rb_window_desc *desc) {
+    RB_ASSERT(desc->icons != NULL || desc->icon_count == 0);
+    if (desc->icon_count == 0) {
+        return false;
+    }
+    if (desc->icon_count > RB_WINDOW_ICON_MAX_COUNT) {
+        RB_LOG_ERROR("Window icon: %u images, at most %u: the system's icon is used",
+                     desc->icon_count, RB_WINDOW_ICON_MAX_COUNT);
+        return false;
+    }
+    for (u32 i = 0; i < desc->icon_count; ++i) {
+        const rb_image *image = &desc->icons[i];
+        RB_ASSERT(image->pixels != NULL);
+        if (image->width == 0 || image->height == 0 || image->width > RB_WINDOW_ICON_MAX_SIDE ||
+            image->height > RB_WINDOW_ICON_MAX_SIDE) {
+            RB_LOG_ERROR("Window icon: image %u is %ux%u, sides must be 1..%u: the system's icon "
+                         "is used",
+                         i, image->width, image->height, RB_WINDOW_ICON_MAX_SIDE);
+            return false;
+        }
+    }
+    return true;
+}
+
 void rb_platform_common_window_opened(rb_platform_common *common, u32 id, rb_window_size size,
                                       rb_window_position position) {
     *rb_platform_common_live_state(common, id) =

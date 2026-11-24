@@ -47,11 +47,13 @@ if(WIN32)
         renderer/test_renderer.c
         renderer/vulkan/test_vulkan_renderer.c
         text/test_font.c
+        platform/win32/test_win32_icon.c
         platform/win32/test_win32_input.c
         platform/win32/test_win32_platform.c
     )
 elseif(LINUX)
     target_sources(reborn_tests PRIVATE
+        platform/linux/test_xlib_icon.c
         platform/linux/test_xlib_input.c
         platform/linux/test_xlib_platform.c
     )

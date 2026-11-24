@@ -72,3 +72,69 @@ void blink_view_report(const blink_state *state, blink_events events) {
                     state->best);
     }
 }
+
+/* ============================================================================
+ * Icon
+ * ========================================================================== */
+
+/* Inside the square [lo, hi] x [lo, hi] with corners rounded by `radius`. */
+static bool in_rounded_square(f32 x, f32 y, f32 lo, f32 hi, f32 radius) {
+    /* The nearest point of the square shrunk by the radius: within it, the distance is 0. */
+    f32 cx = x < lo + radius ? lo + radius : x > hi - radius ? hi - radius : x;
+    f32 cy = y < lo + radius ? lo + radius : y > hi - radius ? hi - radius : y;
+    f32 dx = x - cx;
+    f32 dy = y - cy;
+    return dx * dx + dy * dy <= radius * radius;
+}
+
+/*
+ * Each pixel is sampled 4x4 times: the share of samples inside the tile is
+ * its alpha, so the rounded corners fade instead of stepping, even at 16
+ * pixels. Colors are sRGB bytes, as rb_image wants them.
+ */
+#define ICON_SAMPLES 4u
+
+void blink_view_draw_icon(u32 side, u8 *pixels) {
+    RB_ASSERT(side > 0 && pixels != NULL);
+    static const u8 tile[3] = {24, 27, 38};
+    static const u8 border[3] = {96, 104, 132};
+    static const u8 square[3] = {250, 179, 51}; /* the palette's orange */
+    const f32       s = (f32)side;
+    const f32       radius = s * 0.2f;
+    const f32       edge = s / 16.0f; /* the border: 1 pixel at 16, 4 at 64 */
+    const f32       half_square = s * 0.25f;
+
+    for (u32 y = 0; y < side; ++y) {
+        for (u32 x = 0; x < side; ++x) {
+            u32 sum[3] = {0};
+            u32 covered = 0;
+            for (u32 sy = 0; sy < ICON_SAMPLES; ++sy) {
+                for (u32 sx = 0; sx < ICON_SAMPLES; ++sx) {
+                    /* The sample's center inside the pixel. */
+                    f32 px = (f32)x + ((f32)sx + 0.5f) / (f32)ICON_SAMPLES;
+                    f32 py = (f32)y + ((f32)sy + 0.5f) / (f32)ICON_SAMPLES;
+                    if (!in_rounded_square(px, py, 0.0f, s, radius)) {
+                        continue;
+                    }
+                    const u8 *color = border;
+                    if (px >= s * 0.5f - half_square && px <= s * 0.5f + half_square &&
+                        py >= s * 0.5f - half_square && py <= s * 0.5f + half_square) {
+                        color = square;
+                    } else if (in_rounded_square(px, py, edge, s - edge, radius - edge)) {
+                        color = tile;
+                    }
+                    sum[0] += color[0];
+                    sum[1] += color[1];
+                    sum[2] += color[2];
+                    ++covered;
+                }
+            }
+            u8 *p = &pixels[(y * side + x) * 4];
+            /* Straight alpha: the color of the covered samples, their share as alpha. */
+            for (u32 c = 0; c < 3; ++c) {
+                p[c] = covered > 0 ? (u8)(sum[c] / covered) : 0;
+            }
+            p[3] = (u8)(covered * 255u / (ICON_SAMPLES * ICON_SAMPLES));
+        }
+    }
+}
