@@ -10,6 +10,18 @@ renderer drawing colored quads); it is not yet usable to make a game. See the [r
 - **Every decision is documented** in [`docs/`](docs/README.md).
 - **LLM-friendly**: engine state and logs are designed to be inspected and driven by agents.
 
+## Scope
+
+The engine provides the minimal, general features games need, built with care: what any game of
+its kind would use (windows, input, memory, rendering, text, audio, assets...). The rest lives
+elsewhere:
+
+- **In the game** (`games/<name>/`): its rules, content and logic no other game would use. A piece
+  that may or may not be general starts in the game and moves into the engine when a second game
+  needs it.
+- **Out of scope**: store and platform-service SDKs (Steam, GOG, consoles) and anything tied to a
+  single shipped title. They belong in the repositories of the games that ship with them.
+
 ## Requirements
 
 | Tool       | Version | Notes |
