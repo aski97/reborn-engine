@@ -38,6 +38,7 @@ typedef enum rb_memory_tag {
     RB_MEMORY_TAG_PLATFORM, /* platform state */
     RB_MEMORY_TAG_GAME,     /* the game's own allocations */
     RB_MEMORY_TAG_RENDERER, /* renderer state, Vulkan queries */
+    RB_MEMORY_TAG_TEXT,     /* fonts and their atlas pixels before upload */
     RB_MEMORY_TAG_COUNT
 } rb_memory_tag;
 

@@ -161,6 +161,21 @@ RB_API bool rb_renderer_texture_is_valid(const rb_renderer *renderer, rb_texture
 RB_API void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                                      rb_texture texture, rb_color tint);
 
+/*
+ * Like rb_renderer_draw_texture, with only the `source` region of the texture
+ * stretched over the rectangle (ADR 0018): a glyph out of a font's atlas, a
+ * frame out of a sprite sheet. `source` is in the texture's pixels, origin at
+ * its top left; fractions are allowed. Outside the texture its edge pixels
+ * repeat. A zero or stale handle draws a plain quad of the tint's color.
+ *
+ *   // The 8x8 pixels at (16, 8), drawn 3 times larger.
+ *   rb_renderer_draw_texture_region(renderer, x, y, 24, 24, atlas,
+ *                                   (rb_rect){16, 8, 8, 8}, white);
+ */
+RB_API void rb_renderer_draw_texture_region(rb_renderer *renderer, f32 x, f32 y, f32 width,
+                                            f32 height, rb_texture texture, rb_rect source,
+                                            rb_color tint);
+
 /* Counted since startup. Only messages from the validation layers count, not driver notes. */
 typedef struct rb_renderer_validation_stats {
     bool enabled;  /* requested and available */

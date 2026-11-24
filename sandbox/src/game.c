@@ -2,7 +2,7 @@
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
- * code.
+ * code, the builtin font's glyphs.
  */
 #include "game.h"
 
@@ -10,6 +10,7 @@
 
 #include <reborn/camera2d.h>
 #include <reborn/clock.h>
+#include <reborn/font.h>
 #include <reborn/log.h>
 #include <reborn/math.h>
 #include <reborn/renderer.h>
@@ -46,6 +47,8 @@ typedef struct sandbox_state {
     rb_texture        checker;
     rb_texture_filter checker_filter;
     rb_texture        glow;
+    /* The builtin font (ADR 0018): its atlas and a line of glyphs placed by hand. */
+    rb_font *font;
 } sandbox_state;
 
 /* ============================================================================
@@ -230,6 +233,8 @@ static bool game_init(void *state, rb_app *app) {
     game->checker_filter = RB_TEXTURE_FILTER_NEAREST;
     game->checker = sandbox_create_checker(rb_app_renderer(app), game->checker_filter);
     game->glow = sandbox_create_glow(rb_app_renderer(app));
+    /* NULL on failure (logged): the font's drawing is skipped. */
+    game->font = rb_font_create_builtin(rb_app_allocator(app), rb_app_renderer(app));
     return true;
 }
 
@@ -238,6 +243,7 @@ static void game_shutdown(void *state, rb_app *app) {
     sandbox_state *game = state;
     rb_renderer_destroy_texture(rb_app_renderer(app), game->checker);
     rb_renderer_destroy_texture(rb_app_renderer(app), game->glow);
+    rb_font_destroy(game->font);
 }
 
 static void game_update(void *state, rb_app *app, f64 dt) {
@@ -366,6 +372,67 @@ static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 hue, 
     f32               big = side * 2.0f;
     rb_renderer_draw_texture(renderer, (f32)mouse.x - big * 0.5f, (f32)mouse.y - big * 0.5f, big,
                              big, game->glow, rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f));
+}
+
+/* ============================================================================
+ * Font
+ * ========================================================================== */
+
+#define SANDBOX_TEXT_SCALE  3.0f /* integer: the 8x8 pixels stay square and sharp */
+#define SANDBOX_ATLAS_SCALE 2.0f
+
+/*
+ * One line placed glyph by glyph with the font's metrics: the pen starts at
+ * (x, baseline) and moves by each advance. The engine's own text drawing
+ * (strings, measuring, alignment) comes next; this shows what it builds on.
+ * Bytes are taken as codepoints: ASCII only, anything else gets the box.
+ */
+static void sandbox_draw_glyphs(rb_renderer *renderer, const rb_font *font, f32 x, f32 baseline,
+                                f32 scale, const char *text, rb_color color) {
+    rb_texture atlas = rb_font_get_atlas(font);
+    f32        pen = x;
+    for (const char *c = text; *c != '\0'; ++c) {
+        rb_glyph glyph = rb_font_get_glyph(font, (u8)*c);
+        /* A space has no image: only the pen moves. */
+        if (glyph.source.width > 0.0f) {
+            rb_renderer_draw_texture_region(renderer, pen + glyph.offset.x * scale,
+                                            baseline + glyph.offset.y * scale,
+                                            glyph.source.width * scale, glyph.source.height * scale,
+                                            atlas, glyph.source, color);
+        }
+        pen += glyph.advance * scale;
+    }
+}
+
+/*
+ * Under the row of squares: two lines of text, the second with characters the
+ * font lacks (a box each), then the whole atlas on a dark panel, glyphs white
+ * on transparent, the padding between them visible.
+ */
+static void sandbox_draw_font(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer    *renderer = rb_app_renderer(app);
+    rb_font_metrics metrics = rb_font_get_metrics(game->font);
+    const f32 line = (metrics.ascent + metrics.descent + metrics.line_gap) * SANDBOX_TEXT_SCALE;
+    const f32 left = 32.0f;
+    f32       baseline = 128.0f + metrics.ascent * SANDBOX_TEXT_SCALE;
+    sandbox_draw_glyphs(renderer, game->font, left, baseline, SANDBOX_TEXT_SCALE,
+                        "SCORE 120  LIVES 3  Blink!", rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f));
+    baseline += line;
+    sandbox_draw_glyphs(renderer, game->font, left, baseline, SANDBOX_TEXT_SCALE,
+                        "Missing: \x7F \xE8 (ASCII only)", rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+
+    /* The atlas's size from its last glyph: 14 per row, '~' ends the last one. */
+    rb_glyph last = rb_font_get_glyph(game->font, '~');
+    f32      width = 128.0f * SANDBOX_ATLAS_SCALE;
+    f32      height = (last.source.y + last.source.height) * SANDBOX_ATLAS_SCALE;
+    f32      top = baseline + metrics.descent * SANDBOX_TEXT_SCALE + 16.0f;
+    rb_renderer_draw_quad(renderer, left - 8.0f, top - 8.0f, width + 16.0f, height + 16.0f,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+    rb_renderer_draw_texture(renderer, left, top, width, height, rb_font_get_atlas(game->font),
+                             rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
 }
 
 /* ============================================================================
@@ -509,6 +576,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     f32 slide = sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS);
     sandbox_draw_world(game, app, slide);
     sandbox_draw_quads(game, app, hue, slide);
+    sandbox_draw_font(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }

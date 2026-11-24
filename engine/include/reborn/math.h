@@ -22,6 +22,12 @@ typedef struct rb_vec2 {
     f32 x, y;
 } rb_vec2;
 
+/* An axis-aligned rectangle: its top-left corner and its size, in the space it is used in. */
+typedef struct rb_rect {
+    f32 x, y;
+    f32 width, height;
+} rb_rect;
+
 /*
  * 4x4 matrix, column-major: element (row r, column c) is m[c * 4 + r], the
  * order GLSL reads a mat4 in, so it reaches the GPU as is. A translation is in

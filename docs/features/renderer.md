@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-17) |
-| **Updated** | v0.2.0 (2026-11-23) |
+| **Updated** | v0.2.0 (2026-11-24) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
@@ -59,6 +59,11 @@ created from RGBA pixels and live in GPU memory.
   like a quad, the whole texture stretched over it, its top-left pixel at (x, y), each pixel
   multiplied by `tint`. A zero or stale handle draws a plain quad of the tint's color.
   `rb_renderer_draw_quad` is the same draw with an internal 1x1 white texture.
+- **Texture regions:** `rb_renderer_draw_texture_region(renderer, x, y, width, height, texture,
+  source, tint)`: only the `source` rectangle of the texture (`rb_rect`, in its pixels, origin at
+  the top left, fractions allowed) stretched over the quad: a glyph out of a font's atlas
+  (ADR 0018). Outside the texture its edge pixels repeat; a negative size mirrors.
+  `rb_renderer_draw_texture` is the region covering the whole texture.
 - **Pipeline:** one, built at startup for the swapchain's format (a failure fails the startup),
   rebuilt only if a new swapchain comes with another format (a failure then stops drawing). No
   vertex buffers, no culling, viewport and scissor set at each frame's begin and each change of
@@ -128,7 +133,7 @@ A quad through the pipeline (window 800x600, pixels, `draw_quad(100, 50, 200, 10
 ```mermaid
 flowchart LR
     B0["begin: push view<br/>ortho(0, 800, 0, 600)"] --> C
-    C["draw_quad: bind the white texture's set if another is bound,<br/>push constants from offset 64<br/>{100,50} {200,100} red<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → point → view × point → -1..1<br/>uv = corner"]
+    C["draw_quad: bind the white texture's set if another is bound,<br/>push constants from offset 64<br/>{100,50} {200,100} uv {0,0} {1,1} red<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → point → view × point → -1..1<br/>uv = uv_offset + corner × uv_size"]
     V --> RS["rasterizer<br/>pixels 100..299 x 50..149, uv interpolated"]
     RS --> FS["quad.frag x20000<br/>out = texture(tex, uv) × color"]
     FS --> B["blend: src·a + dst·(1−a)"]
@@ -174,10 +179,11 @@ sequenceDiagram
   nothing back, and the image returning from acquire is the only sign that its present is over.
 - Barriers and the submit use synchronization2 (`vkCmdPipelineBarrier2`, `vkQueueSubmit2`).
 - A quad needs no GPU memory: the vertex shader picks one of six corners with `gl_VertexIndex`
-  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` (96 bytes:
-  view matrix, position, size, color) mirrors the block in `shaders/quad.glsl`, shared by both
+  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` (112 bytes:
+  view matrix, position, size, UV offset and size, color) mirrors the block in `shaders/quad.glsl`, shared by both
   shaders; `_Static_assert`s check offsets and size. The view (64 bytes) is pushed when the space
-  changes, each quad pushes only its 32 bytes: push constants persist across draws.
+  changes, each quad pushes only its 48 bytes: push constants persist across draws. The renderer divides
+  a draw's source rectangle by the texture's size: shaders sample in fractions of the texture.
 - A texture is an image (optimal tiling, `R8G8B8A8_SRGB`), its memory, a view and a descriptor
   set (binding 0: combined image sampler, read by the fragment shader) written once at creation
   with the sampler of its filter. The set layout is set 0 of the pipeline layout; the pool holds
@@ -258,11 +264,11 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 - Public textures with create, destroy and tinted draw (ADR 0017, A2); one device allocation per
   resource (B1); blocking staging upload (C1); one descriptor set per texture (D1); nearest or
   linear per texture (E3); RGBA8 sRGB (F1); destroy waits for the GPU (G1).
+- A source rectangle per textured draw, in texture pixels (ADR 0018, A1).
 
 ## Future work
 - Batched 2D renderer with vertex buffers, when a game draws many sprites; bindless textures or
   atlases with it (ADR 0017, D2).
-- A source rectangle per textured draw, with fonts (ADR 0017, A3).
 - GPU memory block allocator, uploads without a stall, deferred destruction (ADR 0017, B2, C2,
   G2); premultiplied alpha with image decoding.
 - Shaders as files next to the executable, with hot reload (ADR 0015, E2).
@@ -281,3 +287,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.1.0 | 2026-11-17 | Shaders compiled at build time and embedded, quad pipeline, `rb_renderer_draw_quad` |
 | v0.2.0 | 2026-11-23 | `rb_renderer_set_camera`: world units through a 2D camera, letterboxed; a view matrix in the push constants |
 | v0.2.0 | 2026-11-23 | Textures: device memory, staging upload, samplers, descriptor sets; `rb_texture`, `rb_renderer_draw_texture`; plain quads sample a white texture |
+| v0.2.0 | 2026-11-24 | `rb_renderer_draw_texture_region`: a source rectangle per draw; UV offset and size in the push constants (112 bytes) |

@@ -22,6 +22,7 @@ RB_TEST(memory_tracking, tags_have_names) {
     RB_EXPECT_EQ_STR(rb_memory_tag_name(RB_MEMORY_TAG_PLATFORM), "platform");
     RB_EXPECT_EQ_STR(rb_memory_tag_name(RB_MEMORY_TAG_GAME), "game");
     RB_EXPECT_EQ_STR(rb_memory_tag_name(RB_MEMORY_TAG_RENDERER), "renderer");
+    RB_EXPECT_EQ_STR(rb_memory_tag_name(RB_MEMORY_TAG_TEXT), "text");
     RB_EXPECT_EQ_STR(rb_memory_tag_name(RB_MEMORY_TAG_COUNT), "unknown");
     RB_EXPECT_EQ_STR(rb_memory_tag_name((rb_memory_tag)-1), "unknown");
 }

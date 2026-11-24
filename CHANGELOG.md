@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Added
 - Math library (ADR 0016), `reborn/math.h`, header-only: `rb_vec2` (add, sub, scale,
-  component-wise mul), `rb_mat4` column-major, `rb_mat4_ortho`.
+  component-wise mul), `rb_rect`, `rb_mat4` column-major, `rb_mat4_ortho`.
 - 2D camera (ADR 0016), `reborn/camera2d.h`: `rb_camera2d` (center, design size, zoom) made with
   `rb_camera2d_make`; the design area is always shown whole, with bars where the window's aspect
   differs; `rb_camera2d_screen_to_world` converts mouse positions with the same field the
@@ -23,12 +23,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   one memory allocation and one descriptor set per texture. Textures left alive are freed at
   renderer shutdown.
 - The renderer logs the GPU's memory heaps and types at DEBUG.
+- `rb_renderer_draw_texture_region` (ADR 0018): only a rectangle of the texture, in its pixels,
+  stretched over the quad.
+- Fonts (ADR 0018), `reborn/font.h`: `rb_font_create_builtin` makes the engine's own 8x8 bitmap
+  font (ASCII 32-126 and an empty box for any other character) with its glyphs packed into one
+  atlas texture; `rb_font_get_glyph` (atlas rectangle, offset from the pen, advance),
+  `rb_font_get_metrics` (ascent, descent, line gap), `rb_font_get_atlas`, `rb_font_destroy`.
+  Memory tag `RB_MEMORY_TAG_TEXT`.
+- Sandbox: two lines of text placed glyph by glyph three times larger, and the font's atlas.
 - Sandbox: an 8x8 checkerboard enlarged 16 times (T swaps nearest and linear filtering, destroying
   and recreating it) and a soft yellow glow under the mouse instead of the translucent square.
 
 ### Changed
-- The quad shader receives a view matrix instead of the target size: 96 bytes of push constants,
-  the view pushed when the space changes, 32 bytes per quad.
+- The quad shader receives a view matrix instead of the target size, and the texture region to
+  sample: 112 bytes of push constants, the view pushed when the space changes, 48 bytes per quad.
 - The quad shader samples a texture and multiplies it by the quad's color; plain quads use an
   internal 1x1 white texture, so `rb_renderer_draw_quad` draws as before.
 

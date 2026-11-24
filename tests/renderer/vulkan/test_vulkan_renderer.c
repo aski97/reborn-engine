@@ -441,6 +441,46 @@ RB_TEST(vulkan_renderer, textured_quads_are_drawn_without_validation_messages) {
     stop(renderer);
 }
 
+/*
+ * Regions (ADR 0018): one texel, the whole texture, past its edge, mirrored
+ * by a negative size, on a zero and a stale handle, in pixels and through a
+ * camera. Validation would report the push constants overflowing their range.
+ */
+RB_TEST(vulkan_renderer, texture_regions_are_drawn_without_validation_messages) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_texture texture = create_test_texture(renderer, RB_TEXTURE_FILTER_NEAREST);
+    rb_texture stale = create_test_texture(renderer, RB_TEXTURE_FILTER_NEAREST);
+    rb_renderer_destroy_texture(renderer, stale);
+    rb_camera2d camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
+    rb_color    white = rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f);
+    rb_rect     regions[] = {
+        {1.0f, 0.0f, 1.0f, 1.0f},  {0.0f, 0.0f, 2.0f, 2.0f},  {1.5f, 1.5f, 4.0f, 4.0f},
+        {2.0f, 0.0f, -2.0f, 2.0f}, {0.25f, 0.5f, 0.5f, 0.5f},
+    };
+    for (u32 i = 0; i < 2 * RB_VK_FRAMES_IN_FLIGHT + 1; ++i) {
+        if (!rb_renderer_begin_frame(renderer)) {
+            RB_EXPECT(false);
+            break;
+        }
+        for (u32 r = 0; r < sizeof(regions) / sizeof(regions[0]); ++r) {
+            rb_renderer_draw_texture_region(renderer, (f32)r * 40.0f, 0.0f, 32.0f, 32.0f, texture,
+                                            regions[r], white);
+        }
+        rb_renderer_draw_texture_region(renderer, 0.0f, 40.0f, 10.0f, 10.0f, (rb_texture){0},
+                                        regions[0], white);
+        rb_renderer_draw_texture_region(renderer, 20.0f, 40.0f, 10.0f, 10.0f, stale, regions[0],
+                                        white);
+        rb_renderer_set_camera(renderer, &camera);
+        rb_renderer_draw_texture_region(renderer, 1.0f, 1.0f, 2.0f, 2.0f, texture, regions[1],
+                                        white);
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(!renderer->failed);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
 /* Destroying the shared objects with textures alive frees them too: validation sees no leak. */
 RB_TEST(vulkan_renderer, destroying_the_textures_frees_those_alive) {
     rb_renderer *renderer = start(true);

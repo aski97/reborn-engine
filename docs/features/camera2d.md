@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.2.0 (2026-11-23) |
-| **Updated** | v0.2.0 (2026-11-23) |
+| **Updated** | v0.2.0 (2026-11-24) |
 | **Code** | `engine/include/reborn/math.h`, `engine/include/reborn/camera2d.h`, `engine/src/renderer/camera2d.c`, `engine/src/renderer/camera2d_internal.h` |
 | **ADRs** | [0016](../adr/0016-math-and-2d-camera.md) |
 
@@ -15,7 +15,7 @@ where the aspect differs, and the game converts mouse positions back into world 
 
 ## Spec
 - **Math** (`reborn/math.h`, header-only, `static inline`): `rb_vec2` (add, sub, scale,
-  component-wise mul), `rb_mat4` column-major (element row r, column c at `m[c * 4 + r]`, as GLSL
+  component-wise mul), `rb_rect` (top-left corner and size), `rb_mat4` column-major (element row r, column c at `m[c * 4 + r]`, as GLSL
   reads it), `rb_mat4_ortho(left, right, top, bottom)` mapping that rectangle to Vulkan's -1..1, y
   down, z 0. Nothing else yet: multiplication, rotation and the rest arrive with their first user.
 - **Camera** (`reborn/camera2d.h`): `rb_camera2d {center, size, zoom}`, made with
@@ -48,7 +48,7 @@ flowchart LR
 - `camera2d.c` is pure CPU math outside `vulkan/`: any backend uses it, and the mouse conversion
   shares the field computation with the renderer.
 - The view matrix is the first 64 bytes of the push constants, pushed when the space changes; each
-  quad pushes only its 32 bytes after it (push constants persist across draws). In pixels the view
+  quad pushes only its part after it (push constants persist across draws). In pixels the view
   is `rb_mat4_ortho(0, width, 0, height)`.
 - A field squeezed to no pixels (extreme aspect) keeps a 1-pixel viewport, since a viewport must
   not be empty, and an empty scissor: nothing is drawn.
@@ -90,3 +90,4 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
 | Version | Date | Change |
 |---|---|---|
 | v0.2.0 | 2026-11-23 | First version: `rb_vec2`, `rb_mat4`, ortho; `rb_camera2d` with letterbox, zoom, screen-to-world; `rb_renderer_set_camera` |
+| v0.2.0 | 2026-11-24 | `rb_rect`, for texture regions (ADR 0018) |

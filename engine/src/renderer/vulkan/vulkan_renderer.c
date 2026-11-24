@@ -190,10 +190,11 @@ void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *camera) {
 
 /*
  * A quad with `texture`'s pixels multiplied by `color`: its set bound if the
- * last draw used another, its push constants, six vertices.
+ * last draw used another, its push constants, six vertices. `source` is the
+ * region of the texture it shows, in the texture's pixels (ADR 0018).
  */
 static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
-                          const rb_vk_texture *texture, rb_color color) {
+                          const rb_vk_texture *texture, rb_rect source, rb_color color) {
     /* Outside a frame there is no command buffer to record into: a bug in the caller. */
     RB_ASSERT(renderer->in_frame);
     const rb_vk_device_functions *vk = &renderer->device.vk;
@@ -204,9 +205,14 @@ static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 he
                                     renderer->pipeline.layout, 0, 1, &texture->set, 0, NULL);
         renderer->bound_set = texture->set;
     }
+    /* Shaders sample in fractions of the texture: one division here instead of one per caller. */
+    f32             texture_width = (f32)texture->width;
+    f32             texture_height = (f32)texture->height;
     rb_vk_quad_push quad = {
         .position = {x, y},
         .size = {width, height},
+        .uv_offset = {source.x / texture_width, source.y / texture_height},
+        .uv_size = {source.width / texture_width, source.height / texture_height},
         .color = {color.r, color.g, color.b, color.a},
     };
     /* From `position` on: the view pushed by the last change of space stays (ADR 0016). */
@@ -216,19 +222,37 @@ static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 he
     vk->vkCmdDraw(commands, 6, 1, 0, 0);
 }
 
+/* The region covering the whole texture. */
+static rb_rect renderer_whole(const rb_vk_texture *texture) {
+    return (rb_rect){0.0f, 0.0f, (f32)texture->width, (f32)texture->height};
+}
+
 void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                            rb_color color) {
     RB_ASSERT(renderer != NULL);
-    /* White: the shader's texture Ã— color leaves the color as it is (ADR 0017). */
-    renderer_draw(renderer, x, y, width, height, &renderer->textures.white, color);
+    /* White: the shader's texture times color leaves the color as it is (ADR 0017). */
+    const rb_vk_texture *white = &renderer->textures.white;
+    renderer_draw(renderer, x, y, width, height, white, renderer_whole(white), color);
 }
 
 void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                               rb_texture texture, rb_color tint) {
     RB_ASSERT(renderer != NULL);
     /* A zero or stale handle gets the white texture: a plain quad, never a freed set. */
+    const rb_vk_texture *found = rb_vk_textures_get(&renderer->textures, texture.id);
+    renderer_draw(renderer, x, y, width, height, found, renderer_whole(found), tint);
+}
+
+void rb_renderer_draw_texture_region(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+                                     rb_texture texture, rb_rect source, rb_color tint) {
+    RB_ASSERT(renderer != NULL);
+    /*
+     * A zero or stale handle gets the white texture: the source lands far
+     * outside its single pixel, but clamping to the edge reads that pixel
+     * anyway, so it is still a plain quad.
+     */
     renderer_draw(renderer, x, y, width, height,
-                  rb_vk_textures_get(&renderer->textures, texture.id), tint);
+                  rb_vk_textures_get(&renderer->textures, texture.id), source, tint);
 }
 
 /* ============================================================================

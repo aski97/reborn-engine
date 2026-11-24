@@ -20,17 +20,20 @@
  * view when the space changes, the quad (from `position`) with each draw.
  */
 typedef struct rb_vk_quad_push {
-    f32 view[16];    /* the current space to normalized coordinates, column-major (rb_mat4) */
-    f32 position[2]; /* top-left corner, in the current space */
-    f32 size[2];     /* in the current space */
-    f32 color[4];    /* linear, straight alpha; multiplies the texture */
+    f32 view[16];     /* the current space to normalized coordinates, column-major (rb_mat4) */
+    f32 position[2];  /* top-left corner, in the current space */
+    f32 size[2];      /* in the current space */
+    f32 uv_offset[2]; /* the region's top-left corner, as fractions of the texture (ADR 0018) */
+    f32 uv_size[2];   /* the region's size, as fractions of the texture */
+    f32 color[4];     /* linear, straight alpha; multiplies the texture */
 } rb_vk_quad_push;
 
 /* A mismatch would draw garbage without any error: checked at compile time. */
 _Static_assert(offsetof(rb_vk_quad_push, position) == 64, "must match shaders/quad.glsl");
-_Static_assert(offsetof(rb_vk_quad_push, color) == 80, "must match shaders/quad.glsl");
+_Static_assert(offsetof(rb_vk_quad_push, uv_offset) == 80, "must match shaders/quad.glsl");
+_Static_assert(offsetof(rb_vk_quad_push, color) == 96, "must match shaders/quad.glsl");
 /* Vulkan guarantees at least 128 bytes of push constants. */
-_Static_assert(sizeof(rb_vk_quad_push) == 96, "must match shaders/quad.glsl");
+_Static_assert(sizeof(rb_vk_quad_push) == 112, "must match shaders/quad.glsl");
 
 /* The part pushed with each draw. */
 #define RB_VK_QUAD_PUSH_OFFSET offsetof(rb_vk_quad_push, position)

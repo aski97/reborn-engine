@@ -34,6 +34,8 @@ add_executable(reborn_tests
     renderer/vulkan/test_vulkan_loader.c
     renderer/vulkan/test_vulkan_memory.c
     renderer/vulkan/test_vulkan_swapchain.c
+    text/test_font_atlas.c
+    text/test_font_builtin.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c
     support/test_failing_allocator.c
@@ -46,6 +48,7 @@ if(WIN32)
         app/test_app_run.c
         renderer/test_renderer.c
         renderer/vulkan/test_vulkan_renderer.c
+        text/test_font.c
         platform/win32/test_win32_input.c
         platform/win32/test_win32_platform.c
     )

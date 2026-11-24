@@ -80,9 +80,10 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
       a staging buffer, nearest and linear samplers, one descriptor set per texture; public
       `rb_texture` (create from RGBA pixels, destroy, draw tinted); the quad shader samples a
       texture, a 1x1 white one for plain quads (ADR 0017)
-- [ ] Fonts: rasterize glyphs into an atlas texture (own rasterizer vs external library vs
-      pre-baked bitmap font: to decide); a source rectangle per textured draw, to pick a glyph out
-      of the atlas (ADR 0017, A3)
+- [x] Fonts: the engine's own 8x8 bitmap font, glyphs packed into an atlas texture by a packer
+      any glyph source can feed; public `rb_font` (glyph rectangle, offset, advance; ascent,
+      descent, line gap); `rb_renderer_draw_texture_region` picks a glyph out of the atlas
+      (ADR 0018)
 - [ ] Text rendering on the 2D renderer: strings (ASCII first, UTF-8 later), measuring, alignment;
       the HUD in window pixels or in a virtual resolution through a HUD camera, so it keeps its
       proportion on every screen (to decide)
@@ -303,6 +304,13 @@ In order; each gets a version when it starts.
       formats later (own decoder vs external library: to decide)
 
 ### Text and UI
+- [ ] TrueType fonts, own parser and rasterizer (ADR 0018): `.ttf` tables (`cmap`, `loca`,
+      `glyf`, `hmtx`), quadratic curves flattened to lines, coverage per pixel; a new glyph source
+      feeding the existing packer (`rb_font_create_ttf`, a size in pixels). With the first game
+      showing text at several sizes or smooth text (menus: likely Hollow). Needs the `.ttf` file
+      embedded at build time or the file system layer; hinting and kerning later
+- [ ] UTF-8 text: a codepoint to glyph map behind `rb_font_get_glyph` (needs the hash map or a
+      sorted table), glyphs beyond ASCII in the builtin font or from TrueType
 - [ ] Debug UI, immediate mode (rebuilt every frame): panels, buttons, sliders, value inspection.
       Base for the in-game console and the profiler overlay
 

@@ -39,6 +39,9 @@ set(REBORN_SOURCES
     src/renderer/vulkan/vulkan_result.c
     src/renderer/vulkan/vulkan_swapchain.c
     src/renderer/vulkan/vulkan_texture.c
+    src/text/font.c
+    src/text/font_atlas.c
+    src/text/font_builtin.c
 )
 
 # One backend per OS, chosen here rather than with #ifdef in the sources (ADR 0006).
