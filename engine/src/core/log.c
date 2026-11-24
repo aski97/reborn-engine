@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "core/log_internal.h"
+#include "core/text_writer.h"
 #include "platform/platform_os.h"
 
 /* ============================================================================
@@ -89,98 +90,14 @@ const char *rb_log_level_name(rb_log_level level) {
  * ========================================================================== */
 
 /*
- * Appends to a fixed buffer, always NUL-terminated. When the text does not
- * fit, it keeps what does and sets `overflow`, so callers check once at the end
- * instead of after every append.
- */
-typedef struct log_writer {
-    char *data;
-    usize capacity; /* at least 1: the NUL */
-    usize length;
-    bool  overflow;
-} log_writer;
-
-static void writer_bytes(log_writer *w, const char *bytes, usize count) {
-    usize room = w->capacity - 1 - w->length;
-    if (count > room) {
-        count = room;
-        w->overflow = true;
-    }
-    memcpy(w->data + w->length, bytes, count);
-    w->length += count;
-    w->data[w->length] = '\0';
-}
-
-static void writer_str(log_writer *w, const char *text) {
-    writer_bytes(w, text, strlen(text));
-}
-
-static RB_PRINTF_FORMAT(2, 3) void writer_fmt(log_writer *w, const char *fmt, ...) {
-    usize   room = w->capacity - 1 - w->length;
-    va_list args;
-    va_start(args, fmt);
-    /* vsnprintf returns the length the full text needs, even when it cuts. */
-    int needed = vsnprintf(w->data + w->length, room + 1, fmt, args);
-    va_end(args);
-    if (needed < 0) {
-        w->data[w->length] = '\0';
-        return;
-    }
-    if ((usize)needed > room) {
-        w->length += room;
-        w->overflow = true;
-    } else {
-        w->length += (usize)needed;
-    }
-}
-
-/*
  * __FILE__ is the path the compiler was given: on Windows it uses '\'.
  * Logs show '/' on every OS, so the same file reads the same everywhere.
  */
-static void writer_path(log_writer *w, const char *path) {
+static void writer_path(rb_text_writer *w, const char *path) {
     for (const char *c = path; *c != '\0'; ++c) {
         char ch = *c == '\\' ? '/' : *c;
-        writer_bytes(w, &ch, 1);
+        rb_text_writer_bytes(w, &ch, 1);
     }
-}
-
-/*
- * A JSON string: '"' and '\' must be escaped, and so must control characters
- * (below 0x20), which JSON forbids raw. Bytes from 0x80 up are UTF-8 and pass
- * through: JSON text is UTF-8.
- */
-static void writer_json_string(log_writer *w, const char *text, bool is_path) {
-    writer_bytes(w, "\"", 1);
-    for (const unsigned char *c = (const unsigned char *)text; *c != '\0'; ++c) {
-        unsigned char ch = (is_path && *c == '\\') ? '/' : *c;
-        switch (ch) {
-        case '"':
-            writer_str(w, "\\\"");
-            break;
-        case '\\':
-            writer_str(w, "\\\\");
-            break;
-        case '\n':
-            writer_str(w, "\\n");
-            break;
-        case '\r':
-            writer_str(w, "\\r");
-            break;
-        case '\t':
-            writer_str(w, "\\t");
-            break;
-        default:
-            if (ch < 0x20) {
-                writer_fmt(w, "\\u%04x", (unsigned)ch);
-            } else {
-                char byte = (char)ch;
-                writer_bytes(w, &byte, 1);
-            }
-            break;
-        }
-    }
-    writer_bytes(w, "\"", 1);
 }
 
 /* ============================================================================
@@ -194,31 +111,31 @@ usize rb_log_format_console(const rb_log_record *record, bool color, char *out, 
         }
         return 0;
     }
-    log_writer  w = {out, capacity, 0, false};
-    const char *name = rb_log_level_name(record->level);
-    const char *level_color =
+    rb_text_writer w = {out, capacity, 0, false};
+    const char    *name = rb_log_level_name(record->level);
+    const char    *level_color =
         (u32)record->level < RB_LOG_LEVEL_COUNT ? LOG_LEVEL_COLORS[record->level] : LOG_COLOR_RESET;
     out[0] = '\0';
 
     /* %-5s pads every level name to the width of the longest, so messages line up. */
     if (color) {
-        writer_fmt(&w, LOG_COLOR_DIM "%9.3f" LOG_COLOR_RESET " %s%-5s" LOG_COLOR_RESET " ",
-                   record->time, level_color, name);
+        rb_text_writer_fmt(&w, LOG_COLOR_DIM "%9.3f" LOG_COLOR_RESET " %s%-5s" LOG_COLOR_RESET " ",
+                           record->time, level_color, name);
     } else {
-        writer_fmt(&w, "%9.3f %-5s ", record->time, name);
+        rb_text_writer_fmt(&w, "%9.3f %-5s ", record->time, name);
     }
-    writer_str(&w, record->message);
+    rb_text_writer_str(&w, record->message);
 
     /* Below WARN the location is noise on a console; the JSON file always has it. */
     if (record->level >= RB_LOG_LEVEL_WARN) {
-        writer_str(&w, color ? "  " LOG_COLOR_DIM "(" : "  (");
+        rb_text_writer_str(&w, color ? "  " LOG_COLOR_DIM "(" : "  (");
         writer_path(&w, record->file);
-        writer_fmt(&w, ":%" PRIu32 ")", record->line);
+        rb_text_writer_fmt(&w, ":%" PRIu32 ")", record->line);
         if (color) {
-            writer_str(&w, LOG_COLOR_RESET);
+            rb_text_writer_str(&w, LOG_COLOR_RESET);
         }
     }
-    writer_str(&w, "\n");
+    rb_text_writer_str(&w, "\n");
 
     if (w.overflow) {
         /* Cut, but still one line: the next record must not start mid-line. */
@@ -229,22 +146,22 @@ usize rb_log_format_console(const rb_log_record *record, bool color, char *out, 
     return w.length;
 }
 
-static void json_record(log_writer *w, const rb_log_record *record, const char *message) {
-    writer_fmt(w, "{\"t\":%.6f,\"ts\":%" PRId64 ",\"level\":\"%s\",\"file\":", record->time,
-               record->unix_ms, rb_log_level_name(record->level));
-    writer_json_string(w, record->file, true);
-    writer_fmt(w, ",\"line\":%" PRIu32 ",\"func\":", record->line);
-    writer_json_string(w, record->func, false);
-    writer_str(w, ",\"msg\":");
-    writer_json_string(w, message, false);
-    writer_str(w, "}\n");
+static void json_record(rb_text_writer *w, const rb_log_record *record, const char *message) {
+    rb_text_writer_fmt(w, "{\"t\":%.6f,\"ts\":%" PRId64 ",\"level\":\"%s\",\"file\":", record->time,
+                       record->unix_ms, rb_log_level_name(record->level));
+    rb_text_writer_json_string(w, record->file, true);
+    rb_text_writer_fmt(w, ",\"line\":%" PRIu32 ",\"func\":", record->line);
+    rb_text_writer_json_string(w, record->func, false);
+    rb_text_writer_str(w, ",\"msg\":");
+    rb_text_writer_json_string(w, message, false);
+    rb_text_writer_str(w, "}\n");
 }
 
 usize rb_log_format_json(const rb_log_record *record, char *out, usize capacity) {
     if (capacity == 0) {
         return 0;
     }
-    log_writer w = {out, capacity, 0, false};
+    rb_text_writer w = {out, capacity, 0, false};
     out[0] = '\0';
     json_record(&w, record, record->message);
     if (!w.overflow) {
@@ -256,7 +173,7 @@ usize rb_log_format_json(const rb_log_record *record, char *out, usize capacity)
      * Escaping can grow a message up to 6 times ("\u0001"), so this only
      * happens with pathological input or a small buffer.
      */
-    w = (log_writer){out, capacity, 0, false};
+    w = (rb_text_writer){out, capacity, 0, false};
     out[0] = '\0';
     json_record(&w, record, "(message too long for the JSON line buffer)");
     if (w.overflow) {

@@ -16,14 +16,15 @@
  *
  *   static const rb_app_callbacks game = {.configure = game_configure, .update = game_update};
  *
- *   int main(void) {
- *       return rb_app_run(&game);
+ *   int main(int argc, char **argv) {
+ *       return rb_app_run(&game, argc, argv);
  *   }
  *
  * Phases, in order:
  *   configure   before any system starts, the logger included: change the defaults
  *   init        systems, main window, renderer and state ready
- *   loop        per step: on_event for each event, then update(dt);
+ *   loop        per frame: commands (reborn/command.h), then
+ *               per step: on_event for each event, then update(dt);
  *               per frame: render(alpha), skipped while minimized
  *   shutdown    loop over, every system still alive
  *
@@ -33,6 +34,7 @@
 #ifndef RB_APP_H
 #define RB_APP_H
 
+#include <reborn/command.h>
 #include <reborn/defines.h>
 #include <reborn/log.h>
 #include <reborn/memory.h>
@@ -105,20 +107,28 @@ typedef struct rb_app_callbacks {
  * What rb_app_run calls; call rb_app_run instead. `header_version` is the
  * RB_VERSION_NUMBER the game was compiled with, compared with the library's.
  */
-RB_API int rb_app_run_checked(const rb_app_callbacks *callbacks, u32 header_version);
+RB_API int rb_app_run_checked(const rb_app_callbacks *callbacks, int argc, char **argv,
+                              u32 header_version);
 
 /*
- * Checks that the game was compiled against this engine's headers, calls
- * configure, starts the logger and the engine, runs the loop until a quit and
- * shuts everything down, logger last. Returns the exit code for main: 0, or 1
- * when the versions differ, or configure, startup or init failed (logged).
+ * Checks that the game was compiled against this engine's headers, reads the
+ * command line, calls configure, starts the logger and the engine, runs the
+ * loop until a quit and shuts everything down, logger last. Returns the exit
+ * code for main: 0, or 1 when the versions differ, an option is unknown, or
+ * configure, startup or init failed (logged).
  * Do not start the logger before: messages logged earlier go to stderr only.
+ *
+ * `argc` and `argv` as main received them (0 and NULL for none). The engine's
+ * options (ADR 0022):
+ *   --script <file>   run the file's commands, one per line; replies on stdout
+ *   --listen <port>   accept commands on 127.0.0.1:<port> (0: any free port, logged)
+ *   --help            print the options and exit
  *
  * Inline in the header, so it is compiled into the game: RB_VERSION_NUMBER is
  * then the game's headers' value, which the library alone cannot know.
  */
-static inline int rb_app_run(const rb_app_callbacks *callbacks) {
-    return rb_app_run_checked(callbacks, RB_VERSION_NUMBER);
+static inline int rb_app_run(const rb_app_callbacks *callbacks, int argc, char **argv) {
+    return rb_app_run_checked(callbacks, argc, argv, RB_VERSION_NUMBER);
 }
 
 /* ============================================================================
@@ -147,5 +157,25 @@ RB_API rb_allocator rb_app_allocator(rb_app *app);
 
 /* Ends the loop after the current step's events, or after the current frame. */
 RB_API void rb_app_quit(rb_app *app);
+
+/*
+ * Paused by the pause or step command (ADR 0022): no update runs, events and
+ * render still do. Games may show it; they need not.
+ */
+RB_API bool rb_app_is_paused(const rb_app *app);
+
+/* Steps run since the start: the number the step and status commands report. */
+RB_API u64 rb_app_step_index(const rb_app *app);
+
+/* ============================================================================
+ * Commands (ADR 0022)
+ * ========================================================================== */
+
+/*
+ * Adds a game command, from init on. The name needs the game's prefix
+ * ("blink.state"); the strings in `desc` must outlive the run (literals).
+ * False, logged, for a bad or taken name or a full table.
+ */
+RB_API bool rb_app_register_command(rb_app *app, const rb_command_desc *desc);
 
 #endif /* RB_APP_H */

@@ -160,3 +160,40 @@ RB_TEST(camera2d, screen_to_world_without_pixels_returns_the_center) {
         rb_camera2d_screen_to_world(&camera, (rb_vec2){-5.0f, 720.0f}, (rb_vec2){10.0f, 10.0f}),
         3.0f, 7.0f);
 }
+
+/* ============================================================================
+ * World to screen
+ * ========================================================================== */
+
+/* The same 1280 x 1024 window as above, read the other way. */
+RB_TEST(camera2d, world_to_screen_inverts_screen_to_world) {
+    rb_camera2d camera = blink_camera();
+    rb_vec2     target = {1280.0f, 1024.0f};
+    EXPECT_VEC2_NEAR(rb_camera2d_world_to_screen(&camera, target, (rb_vec2){0.0f, 0.0f}), 0.0f,
+                     152.0f);
+    EXPECT_VEC2_NEAR(rb_camera2d_world_to_screen(&camera, target, (rb_vec2){8.0f, 4.5f}), 640.0f,
+                     512.0f);
+    EXPECT_VEC2_NEAR(rb_camera2d_world_to_screen(&camera, target, (rb_vec2){1.5f, 0.5f}), 120.0f,
+                     192.0f);
+    rb_vec2 point = {3.25f, 7.75f};
+    rb_vec2 back = rb_camera2d_screen_to_world(&camera, target,
+                                               rb_camera2d_world_to_screen(&camera, target, point));
+    EXPECT_VEC2_NEAR(back, point.x, point.y);
+}
+
+RB_TEST(camera2d, world_to_screen_follows_zoom) {
+    rb_camera2d camera = blink_camera();
+    camera.zoom = 2.0f;
+    rb_vec2 target = {1280.0f, 720.0f};
+    EXPECT_VEC2_NEAR(rb_camera2d_world_to_screen(&camera, target, (rb_vec2){4.0f, 2.25f}), 0.0f,
+                     0.0f);
+    EXPECT_VEC2_NEAR(rb_camera2d_world_to_screen(&camera, target, (rb_vec2){8.0f, 4.5f}), 640.0f,
+                     360.0f);
+}
+
+RB_TEST(camera2d, world_to_screen_without_pixels_returns_the_origin) {
+    rb_camera2d camera = blink_camera();
+    EXPECT_VEC2_NEAR(
+        rb_camera2d_world_to_screen(&camera, (rb_vec2){0.0f, 0.0f}, (rb_vec2){8.0f, 4.5f}), 0.0f,
+        0.0f);
+}

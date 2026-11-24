@@ -10,7 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - 2D camera (ADR 0016), `reborn/camera2d.h`: `rb_camera2d` (center, design size, zoom) made with
   `rb_camera2d_make`; the design area is always shown whole, with bars where the window's aspect
   differs; `rb_camera2d_screen_to_world` converts mouse positions with the same field the
-  renderer draws into.
+  renderer draws into, `rb_camera2d_world_to_screen` the other way.
 - `rb_renderer_set_camera`: the draws that follow are in world units, clipped to the camera's
   field; `NULL` returns to window pixels, where each frame begins.
 - Sandbox: a 16x9 world field drawn through a camera (grid, a moving square, a marker where the
@@ -61,10 +61,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Blink and the sandbox draw their window icons in code at 16, 32 and 64 pixels: Blink a dark
   rounded tile with an orange square, the sandbox four colored squares.
 - `REBORN_BUILD_GAMES` CMake option (on): builds the games under `games/`.
+- Commands (ADR 0022), `reborn/command.h`: named commands with arguments, each answering with one
+  JSON line (`id`, `ok`, `from`, `line`, then `result` or `error`). They run once per frame,
+  before the steps, from a script (`--script <file>`, replies on stdout) and from a local
+  connection (`--listen <port>` on `127.0.0.1`, polled without a thread). The engine's own:
+  `help`, `status`, `pause`, `resume`, `step [count]`, `quit`, `wait <steps>` (scripts). Games
+  register theirs in `init` with `rb_app_register_command`; argument helpers
+  (`rb_command_arg_u32` / `_u64` / `_f32`) and a typed reply writer (`rb_command_reply_*`, nested
+  objects, floats in their shortest form). Paused, a game still pumps events and renders;
+  `rb_app_is_paused` and `rb_app_step_index` show it.
+- `reborn-cmd` (`tools/`, `REBORN_BUILD_TOOLS` option, on): sends command lines to a game started
+  with `--listen` and prints the replies; the exit code tells whether they all succeeded.
+- Blink: `blink.state` (phase, score, lives, the square in world units and window pixels) and
+  `blink.restart <seed>`.
+- Sandbox: `sandbox.clear [<r> <g> <b>]` fixes the clear color; a panel at the bottom shows the
+  step, the pause (a ticker that moves one cell per step) and the last `sandbox.clear`. The row of
+  squares, the sliding square and the world's square move on game time, so the pause freezes
+  them; the clear color stays on the wall clock.
 - `reborn_add_test_executable` (`cmake/RebornTesting.cmake`): a test executable on the engine's
   framework with CTest discovery, used by the engine's tests and by each game's.
 
 ### Changed
+- `rb_app_run(&callbacks, argc, argv)` takes the command line, for the engine's options
+  (`--script`, `--listen`, `--help`); an unknown option fails the run. Games' `main` passes
+  `argc` and `argv` (or 0 and `NULL`).
 - The quad shader receives a view matrix instead of the target size, and the texture region to
   sample: 112 bytes of push constants, the view pushed when the space changes, 48 bytes per quad.
 - The quad shader samples a texture and multiplies it by the quad's color; plain quads use an

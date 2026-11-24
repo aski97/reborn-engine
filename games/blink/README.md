@@ -45,7 +45,26 @@ The log goes to the console and to `blink.log.jsonl` in the current directory.
 
 The startup log prints `Seed: <number>`. Positions and colors come from one random number generator
 seeded with it (ADR 0019), restarts included: the same seed and the same clicks give the same
-session. Setting the seed from outside comes with the command system.
+session. `blink.restart <seed>` starts a session with a chosen one.
+
+## Commands
+
+Blink takes the engine's commands (`help`, `status`, `pause`, `resume`, `step`, `quit`, `wait`:
+listed in the [main README](../../README.md#commands)) and two of its own, from a script or from
+`reborn-cmd` (ADR 0022, [commands.md](../../docs/features/commands.md)):
+
+| Command | Reply |
+|---|---|
+| `blink.state` | `phase` (`title`, `playing`, `game_over`), `score`, `lives`, `best`, `phase_time`; while playing, `square`: center `x`, `y` and `side` in world units, `remaining` seconds, and `pixels` (`x`, `y`, `width`, `height`, `center_x`, `center_y`) in window pixels |
+| `blink.restart <seed>` | Back to the title, a new session from that seed |
+
+```sh
+./build/debug/bin/blink --listen 7777 &
+./build/debug/bin/reborn-cmd 7777 "blink.restart 42" pause "blink.state"
+```
+
+Paused, the square waits: a click at `pixels.center_x`, `pixels.center_y` followed by `step 1`
+scores (until input injection, the click comes from outside, e.g. `xdotool`).
 
 ## Code
 
@@ -54,7 +73,7 @@ session. Setting the seed from outside comes with the command system.
 | `src/blink_rules.c` | Rules: state, tuning (`blink_default_tuning`), `blink_start`, `blink_step(actions, dt)` → events, `blink_square_rect` |
 | `src/blink_input.c` | Input: left press → click in world units, Space → start |
 | `src/blink_view.c` | View: field and square in world units; title, HUD and game over in window pixels; a log line per event; the window icon |
-| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update`; the icon drawn in `configure`; the builtin font created in `init`, destroyed in `shutdown` |
+| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update`; the icon drawn in `configure`; the builtin font created in `init`, destroyed in `shutdown`; the `blink.*` commands |
 | `src/main.c` | Entry point |
 
 The field is 16x9 world units through a 2D camera: the whole field is always visible, with bars

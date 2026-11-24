@@ -31,7 +31,8 @@ where the aspect differs, and the game converts mouse positions back into world 
 - **Mouse:** `rb_camera2d_screen_to_world(&camera, target, point)` with the window's pixel size
   (`rb_window_get_size`) and a point in window pixels (`rb_mouse_position`); the same field as the
   renderer, so a click lands where it looks. Points on the bars map outside the area shown; a
-  target with no pixels returns `center`.
+  target with no pixels returns `center`. `rb_camera2d_world_to_screen` is the inverse (where a
+  world point is drawn, e.g. for an agent that must click it); no pixels give (0, 0).
 - Not yet: world-to-screen, camera rotation, a bars color of their own.
 
 ## Design
@@ -91,3 +92,4 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
 |---|---|---|
 | v0.2.0 | 2026-11-23 | First version: `rb_vec2`, `rb_mat4`, ortho; `rb_camera2d` with letterbox, zoom, screen-to-world; `rb_renderer_set_camera` |
 | v0.2.0 | 2026-11-24 | `rb_rect`, for texture regions (ADR 0018) |
+| v0.2.0 | 2026-11-24 | `rb_camera2d_world_to_screen`, for Blink's state command (ADR 0022) |

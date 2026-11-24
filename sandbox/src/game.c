@@ -3,7 +3,7 @@
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
  * code, the builtin font's atlas and text drawn with it, numbers drawn from a
- * seed.
+ * seed, and the commands' panel (pause, steps, its own sandbox.clear).
  */
 #include "game.h"
 
@@ -17,6 +17,9 @@
 #include <reborn/random.h>
 #include <reborn/renderer.h>
 #include <reborn/text.h>
+
+/* Steps per second, set in configure: the animations on game time count in steps. */
+#define SANDBOX_UPDATE_RATE 60u
 
 /* Frames shown by the frame-time graph: two seconds at 60 fps. */
 #define SANDBOX_GRAPH_FRAMES 120u
@@ -59,6 +62,13 @@ typedef struct sandbox_state {
      */
     u64 seed;
     u64 previous_seed;
+    /*
+     * Commands (ADR 0022): sandbox.clear fixes the clear color (no arguments:
+     * back to the turning hue); the panel shows its last call.
+     */
+    bool     clear_fixed;
+    rb_color clear_color;
+    char     last_command[64];
 } sandbox_state;
 
 /* ============================================================================
@@ -213,6 +223,7 @@ static bool game_configure(rb_app_config *config) {
     sandbox_draw_icon(64, icon_64);
     config->window.icons = icons;
     config->window.icon_count = RB_ARRAY_COUNT(icons);
+    config->update_rate = SANDBOX_UPDATE_RATE;
     RB_APP_STATE(config, sandbox_state);
     return true;
 }
@@ -268,6 +279,46 @@ static rb_texture sandbox_create_glow(rb_renderer *renderer) {
                                                          .filter = RB_TEXTURE_FILTER_LINEAR});
 }
 
+/* ============================================================================
+ * Commands
+ * ========================================================================== */
+
+static void cmd_clear(void *state, rb_app *app, const rb_command_args *args,
+                      rb_command_reply *reply) {
+    (void)app;
+    sandbox_state *game = state;
+    if (args->count == 0) {
+        game->clear_fixed = false;
+        snprintf(game->last_command, sizeof(game->last_command), "clear (turning)");
+        rb_command_reply_bool(reply, "fixed", false);
+        return;
+    }
+    if (args->count != 3) {
+        rb_command_reply_error(reply, "give r g b from 0 to 1, or nothing for the turning hue");
+        return;
+    }
+    f32 rgb[3];
+    for (u32 i = 0; i < 3; ++i) {
+        if (!rb_command_arg_f32(args, i, &rgb[i], reply)) {
+            return;
+        }
+        if (rgb[i] < 0.0f || rgb[i] > 1.0f) {
+            rb_command_reply_error(reply, "argument %u: %g is outside 0..1", i + 1, (f64)rgb[i]);
+            return;
+        }
+    }
+    game->clear_fixed = true;
+    game->clear_color = rb_color_srgb(rgb[0], rgb[1], rgb[2], 1.0f);
+    snprintf(game->last_command, sizeof(game->last_command), "clear %.2f %.2f %.2f", (f64)rgb[0],
+             (f64)rgb[1], (f64)rgb[2]);
+    rb_command_reply_bool(reply, "fixed", true);
+}
+
+static const rb_command_desc sandbox_commands[] = {
+    {"sandbox.clear", "[<r> <g> <b>]", "fix the clear color (sRGB, 0..1); nothing: turning hue", 0,
+     3, cmd_clear},
+};
+
 static bool game_init(void *state, rb_app *app) {
     sandbox_state *game = state;
     game->start = rb_time_now();
@@ -284,6 +335,11 @@ static bool game_init(void *state, rb_app *app) {
     game->seed = rb_time_now();
     game->previous_seed = game->seed;
     RB_LOG_INFO("Random seed: %llu", (unsigned long long)game->seed);
+    snprintf(game->last_command, sizeof(game->last_command), "none yet");
+    for (u32 i = 0; i < RB_ARRAY_COUNT(sandbox_commands); ++i) {
+        /* A failure is logged; the sandbox goes on without that command. */
+        rb_app_register_command(app, &sandbox_commands[i]);
+    }
     return true;
 }
 
@@ -386,16 +442,30 @@ static rb_color hsv_to_srgb(f32 h, f32 s, f32 v) {
     }
 }
 
-/* One trip across the window and back for the sliding square. */
-#define SANDBOX_SLIDE_PERIOD_NS (4 * RB_NS_PER_S)
+/* One trip across the window and back for the sliding square, in seconds of game time. */
+#define SANDBOX_SLIDE_PERIOD_S 4u
+/* One turn of the row of squares around the hue wheel, in seconds of game time. */
+#define SANDBOX_ROW_PERIOD_S 12u
 
 #define SANDBOX_QUAD_SIDE 64.0f
 
-/* Where `period` has got to since `start`, in [0, 1). */
+/* Where `period` has got to since `start` on the wall clock, in [0, 1). */
 static f32 sandbox_phase(u64 start, u64 period) {
     /* Integer modulo first: the elapsed nanoseconds would lose precision as a float. */
     u64 phase = (rb_time_now() - start) % period;
     return (f32)((f64)phase / (f64)period);
+}
+
+/*
+ * Where a period of `seconds` has got to in game time, in [0, 1): the steps
+ * run so far, plus `alpha`, render's fraction of the next one (ADR 0011, C2),
+ * so the motion stays smooth between steps on any monitor. Paused, neither
+ * the steps nor alpha change (ADR 0022): what moves on game time stands still.
+ */
+static f32 sandbox_game_phase(rb_app *app, f64 alpha, u32 seconds) {
+    u64 period = (u64)seconds * SANDBOX_UPDATE_RATE;
+    u64 step = rb_app_step_index(app) % period;
+    return (f32)(((f64)step + alpha) / (f64)period);
 }
 
 /*
@@ -404,14 +474,14 @@ static f32 sandbox_phase(u64 start, u64 period) {
  * checkerboard enlarged 16 times, sharp or blurred by its filter; a yellow
  * glow under the mouse, blending with whatever it covers (ADR 0017).
  */
-static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 hue, f32 slide) {
+static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 row_hue, f32 slide) {
     rb_renderer       *renderer = rb_app_renderer(app);
     rb_platform_state *platform = rb_app_platform(app);
     rb_window_size     size = rb_window_get_size(platform, rb_app_window(app));
     const f32          side = SANDBOX_QUAD_SIDE;
 
     for (u32 i = 0; i < 6; ++i) {
-        f32 h = hue + (f32)i / 6.0f;
+        f32 h = row_hue + (f32)i / 6.0f;
         h = h >= 1.0f ? h - 1.0f : h;
         rb_renderer_draw_quad(renderer, 32.0f + (f32)i * (side + 16.0f), 32.0f, side, side,
                               hsv_to_srgb(h, 0.7f, 0.9f));
@@ -759,27 +829,87 @@ static void sandbox_draw_frame_graph(const sandbox_state *game, rb_app *app) {
 }
 
 /* ============================================================================
+ * Commands panel
+ * ========================================================================== */
+
+#define SANDBOX_COMMANDS_LEFT   528.0f /* right of the frame-time graph */
+#define SANDBOX_COMMANDS_WIDTH  368.0f /* up to the random numbers' panel */
+#define SANDBOX_COMMANDS_HEIGHT 112.0f
+#define SANDBOX_COMMANDS_TICKS  60u /* steps per ticker round: a second at 60 steps/s */
+
+/*
+ * Bottom, between the graph and the random numbers (ADR 0022): the step count
+ * and the pause, a ticker that advances one cell per step, the last
+ * sandbox.clear. Paused, the ticker stops with everything on game time (the
+ * squares, the world's square), while the clear color, on the wall clock, keeps
+ * turning: rendering goes on, updates do not. `step 1` moves it one cell.
+ */
+static void sandbox_draw_commands(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer   *renderer = rb_app_renderer(app);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    const f32      left = SANDBOX_COMMANDS_LEFT;
+    const f32      top = (f32)size.pixel_height - SANDBOX_GRAPH_MARGIN - SANDBOX_COMMANDS_HEIGHT;
+    rb_renderer_draw_quad(renderer, left, top, SANDBOX_COMMANDS_WIDTH, SANDBOX_COMMANDS_HEIGHT,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+
+    bool     paused = rb_app_is_paused(app);
+    u64      step = rb_app_step_index(app);
+    rb_color state_color =
+        paused ? rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f) : rb_color_srgb(0.3f, 0.85f, 0.4f, 1.0f);
+    rb_text_style style = sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    char          line[48];
+    snprintf(line, sizeof(line), "STEP %llu", (unsigned long long)step);
+    rb_text_draw(renderer, left + 8.0f, top + 8.0f, &style, line);
+    rb_text_style state_style = style;
+    state_style.color = state_color;
+    state_style.align_x = RB_TEXT_RIGHT;
+    rb_text_draw(renderer, left + SANDBOX_COMMANDS_WIDTH - 8.0f, top + 8.0f, &state_style,
+                 paused ? "PAUSED" : "RUNNING");
+
+    /* The ticker: one cell lit per step, the current one brighter. */
+    const f32 cell = (SANDBOX_COMMANDS_WIDTH - 16.0f) / (f32)SANDBOX_COMMANDS_TICKS;
+    u32       current = (u32)(step % SANDBOX_COMMANDS_TICKS);
+    for (u32 i = 0; i <= current; ++i) {
+        rb_color color = i == current ? state_color : rb_color_srgb(1.0f, 1.0f, 1.0f, 0.35f);
+        rb_renderer_draw_quad(renderer, left + 8.0f + (f32)i * cell, top + 36.0f, cell - 1.0f,
+                              16.0f, color);
+    }
+
+    rb_text_draw(renderer, left + 8.0f, top + 64.0f, &style, "sandbox.clear:");
+    style.color = rb_color_srgb(0.7f, 0.85f, 1.0f, 1.0f);
+    rb_text_draw(renderer, left + 8.0f, top + 86.0f, &style, game->last_command);
+}
+
+/* ============================================================================
  * Render
  * ========================================================================== */
 
 /*
- * The clear color turns around the hue wheel, which shows that frames keep
- * reaching the screen. Muted (low saturation and value) so it stays easy on
- * the eyes and the quads stand out. Shows from the next frame.
+ * Two clocks on screen (ADR 0022). The clear color turns around the hue wheel
+ * on the wall clock: it shows that frames keep reaching the screen, paused or
+ * not. Muted (low saturation and value) so it stays easy on the eyes and the
+ * quads stand out; shows from the next frame. The row of squares, the sliding
+ * square and the world's square move on game time, as a game's animations
+ * would: the pause freezes them.
  */
 static void game_render(void *state, rb_app *app, f64 alpha) {
-    (void)alpha;
     sandbox_state *game = state;
     ++game->frames;
     sandbox_record_frame_time(game);
     f32 hue = sandbox_phase(game->start, SANDBOX_HUE_PERIOD_NS);
-    rb_renderer_set_clear_color(rb_app_renderer(app), hsv_to_srgb(hue, 0.5f, 0.45f));
-    f32 slide = sandbox_phase(game->start, SANDBOX_SLIDE_PERIOD_NS);
+    rb_renderer_set_clear_color(rb_app_renderer(app), game->clear_fixed
+                                                          ? game->clear_color
+                                                          : hsv_to_srgb(hue, 0.5f, 0.45f));
+    f32 slide = sandbox_game_phase(app, alpha, SANDBOX_SLIDE_PERIOD_S);
     sandbox_draw_world(game, app, slide);
-    sandbox_draw_quads(game, app, hue, slide);
+    sandbox_draw_quads(game, app, sandbox_game_phase(app, alpha, SANDBOX_ROW_PERIOD_S), slide);
     sandbox_draw_font(game, app);
     sandbox_draw_text_demo(game, app);
     sandbox_draw_random(game, app);
+    sandbox_draw_commands(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }

@@ -17,7 +17,8 @@ the owner wants to understand and approve every architectural choice.
   from what the current game needs. The sandbox keeps exercising every engine feature.
 - Every game is built in layers (ADR 0014): rules (pure, actions in, events out), input, view,
   glue, `main.c`; rules and input tested in `games/<name>/tests/`. Each game has a `README.md`
-  (how it plays, how to build and run it), listed in `games/README.md`.
+  (how it plays, how to build and run it, its commands), listed in `games/README.md`. The engine's
+  commands are listed in the main `README.md`: keep both lists in step with the code.
 - No external libraries without explicit approval.
 - Keep `CHANGELOG.md` (`[Unreleased]`) and `TODO.md` up to date. `[Unreleased]` is the difference
   from the last release (*Added*, *Changed*, *Fixed*, *Removed*): a change to something added
@@ -33,6 +34,9 @@ cmake --preset debug && cmake --build --preset debug
 ./build/debug/bin/blink   # the games: games/README.md
 ctest --preset debug      # unit tests, the games' too; JUnit in build/debug/junit.xml
 ```
+Driving a running game (`docs/features/commands.md`): start it with `--listen <port>` (or
+`--script <file>`), then `./build/debug/bin/reborn-cmd <port> help "blink.state" "step 10"`:
+one JSON reply per line, exit code 0 when all succeeded.
 New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
 Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`

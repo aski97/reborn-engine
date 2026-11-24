@@ -29,6 +29,13 @@ void rb_step_clock_init(rb_step_clock *clock, u64 step_ns, u64 max_delta_ns, u64
 /* Adds the time since the last advance, at most `max_delta_ns`. */
 void rb_step_clock_advance(rb_step_clock *clock, u64 now_ns);
 
+/*
+ * Lets the time since the last advance pass unsimulated (the pause, ADR 0022):
+ * the clock moves on to `now_ns`, the accumulator and the alpha stay. The next
+ * advance then adds only what follows, not a burst of the paused time.
+ */
+void rb_step_clock_hold(rb_step_clock *clock, u64 now_ns);
+
 /* Takes one step from the accumulator; false when less than a step is left. */
 bool rb_step_clock_consume(rb_step_clock *clock);
 

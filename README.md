@@ -72,6 +72,47 @@ cmake --build --preset debug
 
 Presets: `debug`, `release`, `debug-asan`. Details in [docs/features/build-system.md](docs/features/build-system.md).
 
+## Commands
+
+A running game takes commands: the engine's own (`help`, `status`, `pause`, `resume`, `step`,
+`quit`, `wait`) and the game's (`blink.state`...). Each answers with one JSON line. Start the game
+listening on a local port, then send commands with `reborn-cmd`, one argument per command:
+
+```sh
+./build/debug/bin/blink --listen 7777 &       # PowerShell: Start-Process .\build\debug\bin\blink.exe "--listen 7777"
+./build/debug/bin/reborn-cmd 7777 pause "step 10" status
+```
+```text
+{"id":1,"ok":true,"from":"socket","line":"pause","result":{"step":212}}
+{"id":2,"ok":true,"from":"socket","line":"step 10","result":{"ran":10,"step":222}}
+{"id":3,"ok":true,"from":"socket","line":"status","result":{"frame":431,"step":222,"paused":true,...}}
+```
+
+`reborn-cmd` exits with 0 when every command succeeded, 1 when one failed (`"ok":false` and an
+`"error"`), 2 when no game answers. `help` lists every command with its arguments.
+
+The engine's commands, in every game (each game's README lists its own):
+
+| Command | What it does | Result |
+|---|---|---|
+| `help [name]` | every command, or one | `commands`: name → `usage`, `summary` |
+| `status` | the state of the run | `frame`, `step`, `paused`, `game_time`, `step_seconds`, `window` (`width`, `height`, `minimized`) |
+| `pause` | stops the updates; events and rendering go on | `step` |
+| `resume` | starts the updates again | `step` |
+| `step [count]` | pauses, then runs `count` steps (1 by default, at most 100000) at once | `ran`, `step` |
+| `quit` | ends the run | — |
+| `wait <steps>` | scripts only: runs the next line after this many steps | `until_step` |
+
+The same commands can come from a file, one per line (`#` starts a comment), with the replies on
+stdout:
+
+```sh
+printf 'pause\nstep 60\nblink.state\nquit\n' > test.txt
+./build/debug/bin/blink --script test.txt > replies.jsonl
+```
+
+Details and the full list: [docs/features/commands.md](docs/features/commands.md).
+
 ## Tests
 
 Build first: the list of tests is refreshed after every build, so a new test needs no re-configure.
@@ -107,6 +148,7 @@ engine/include/reborn/   public API   → #include <reborn/...>
 engine/src/              implementation
 sandbox/                 test application using the engine
 games/                   our games, one folder each (games/README.md)
+tools/                   programs that work with the games (reborn-cmd)
 tests/                   unit tests (mirrors engine/src/) and the rb_test framework
 cmake/                   CMake modules
 docker/, scripts/        development tooling, not needed to build

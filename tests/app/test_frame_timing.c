@@ -107,3 +107,22 @@ RB_TEST(frame_pacer, very_late_frame_restarts_the_schedule) {
     RB_EXPECT_EQ_UINT(rb_frame_pacer_wait(&pacer, 55), 0);
     RB_EXPECT_EQ_UINT(pacer.deadline_ns, 65);
 }
+
+/* The pause (ADR 0022): paused time is dropped, the leftover and the alpha kept. */
+RB_TEST(step_clock, hold_lets_time_pass_unsimulated) {
+    rb_step_clock clock;
+    rb_step_clock_init(&clock, 10, 1000, 0);
+    RB_REQUIRE(rb_step_clock_consume(&clock));
+    rb_step_clock_advance(&clock, 14);
+    RB_REQUIRE(rb_step_clock_consume(&clock));
+    RB_REQUIRE_NEAR(rb_step_clock_alpha(&clock), 0.4, 1e-12);
+
+    rb_step_clock_hold(&clock, 500);
+    RB_EXPECT(!rb_step_clock_consume(&clock));
+    RB_EXPECT_NEAR(rb_step_clock_alpha(&clock), 0.4, 1e-12);
+
+    /* Resumed: only the 6 after the hold count, 4 + 6 is one step. */
+    rb_step_clock_advance(&clock, 506);
+    RB_EXPECT(rb_step_clock_consume(&clock));
+    RB_EXPECT(!rb_step_clock_consume(&clock));
+}

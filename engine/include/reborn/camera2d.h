@@ -38,4 +38,12 @@ RB_API rb_camera2d rb_camera2d_make(rb_vec2 center, rb_vec2 size);
 RB_API rb_vec2 rb_camera2d_screen_to_world(const rb_camera2d *camera, rb_vec2 target,
                                            rb_vec2 point);
 
+/*
+ * The inverse: where the world point `point` appears in window pixels, for a
+ * window of `target` pixels. Points outside the area shown land on the bars
+ * or off the window. A target with no pixels returns (0, 0).
+ */
+RB_API rb_vec2 rb_camera2d_world_to_screen(const rb_camera2d *camera, rb_vec2 target,
+                                           rb_vec2 point);
+
 #endif /* RB_CAMERA2D_H */

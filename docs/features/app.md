@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.1.0 (2026-11-17) |
+| **Updated** | v0.2.0 (2026-11-24) |
 | **Code** | `engine/include/reborn/app.h`, `engine/src/app/` |
-| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md), [0013](../adr/0013-vulkan-renderer.md) |
+| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md), [0013](../adr/0013-vulkan-renderer.md), [0022](../adr/0022-command-system.md) |
 
 ## Summary
 The engine owns the game loop. A game is a set of callbacks: the engine starts its systems, opens
@@ -16,16 +16,22 @@ and shuts everything down. Timing, frame memory and event handling are written o
 ## Spec
 - **Phases:** `configure` (before any system, receives the defaults) → `init` (systems, window and
   state ready) → loop → `shutdown` (systems still alive). Only `update` is required.
-- **Process setup:** `rb_app_run` first checks that the game was compiled against the linked
-  engine's headers (an inline function in `app.h`, so the game's `RB_VERSION_NUMBER` reaches the
-  library), then calls `configure`, then starts the logger with `config.log` (default: console
-  INFO, no file), and stops it last. `main` is one line; do not start the logger yourself.
+- **Process setup:** `rb_app_run(&callbacks, argc, argv)` first checks that the game was
+  compiled against the linked engine's headers (an inline function in `app.h`, so the game's
+  `RB_VERSION_NUMBER` reaches the library), then reads the engine's options (`--script`,
+  `--listen`, `--help`; anything else fails the run), then calls `configure`, then starts the
+  logger with `config.log` (default: console INFO, no file), and stops it last. `main` is one
+  line; do not start the logger yourself.
+- **Commands:** once per frame, before the steps, from the script and the local server; game
+  commands registered in `init`. The pause stops `update`, not events or `render`. See
+  [commands.md](commands.md).
 - **Renderer:** started after the main window, stopped before it (`rb_app_renderer`), configured
   in `config.renderer`: validation on by default in debug builds of the engine, vsync on. It draws
   into the main window. A machine without Vulkan 1.3 fails the startup. See
   [renderer.md](renderer.md).
-- **Failure:** a version mismatch, `configure` or `init` returning `false`, an invalid config, or a
-  failed startup (Vulkan missing included) make `rb_app_run` return 1 (logged). `shutdown` is not called when `init`
+- **Failure:** a version mismatch, an unknown option, `configure` or `init` returning `false`, an
+  invalid config, or a failed startup (Vulkan missing, script missing, port in use included) make
+  `rb_app_run` return 1 (logged). `shutdown` is not called when `init`
   failed. A log file that cannot be opened is only a warning.
 - **Fixed step:** `update(dt)` runs `update_rate` times per second (1..1000, default 60), with
   `dt = 1 / update_rate`. The first frame runs one step at once. Frame deltas are clamped to
@@ -38,8 +44,8 @@ and shuts everything down. Timing, frame memory and event handling are written o
   `rb_renderer_end_frame` after (submit and present). When begin says nothing can be shown
   (main window minimized or without pixels), render is skipped and the loop sleeps until the next
   step is due.
-- **Quit:** a close request on the main window (after `on_event` saw it) or `rb_app_quit`. The
-  loop ends after the current step's events, or after the current frame.
+- **Quit:** a close request on the main window (after `on_event` saw it), `rb_app_quit` or the
+  `quit` command. The loop ends after the current step's events, or after the current frame.
 - **Logging:** each phase once, never per frame. INFO: the configuration as received (`Config:`
   lines, before validation), `App started`, the quit reason (`Quit: main window close requested` /
   `Quit: requested by the game`), the run's totals. DEBUG: `Game init`, `Loop started`,
@@ -64,8 +70,10 @@ and shuts everything down. Timing, frame memory and event handling are written o
 ```mermaid
 flowchart TD
     V[version check] --> C[configure] --> LG[logger] --> S[arenas, platform, main window, renderer, state] --> I[init]
-    I --> F[frame: advance clock, reset frame arena]
-    F --> Q{full step in accumulator?}
+    I --> F[frame: reset frame arena, run commands]
+    F --> PA{paused?}
+    PA -- yes --> PE[hold clock, pump, on_event] --> R
+    PA -- no --> AC[advance clock] --> Q{full step in accumulator?}
     Q -- yes --> P[pump] --> E[on_event for each event] --> U["update(dt)"] --> Q
     Q -- no --> R["begin frame, render(alpha), end frame; skipped when nothing can be shown"] --> W[sleep to the frame deadline] --> F
     E -. close / quit .-> D[shutdown] --> T[tear down systems, logger last]
@@ -96,13 +104,13 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
 static const rb_app_callbacks game = {
     .configure = game_configure, .update = game_update, .render = game_render};
 
-int main(void) {
-    return rb_app_run(&game);
+int main(int argc, char **argv) {
+    return rb_app_run(&game, argc, argv);
 }
 ```
 Accessors from a callback: `rb_app_platform`, `rb_app_window`, `rb_app_renderer`,
-`rb_app_persistent_arena`,
-`rb_app_frame_arena`, `rb_app_allocator`, `rb_app_quit`.
+`rb_app_persistent_arena`, `rb_app_frame_arena`, `rb_app_allocator`, `rb_app_quit`,
+`rb_app_is_paused`, `rb_app_step_index`, `rb_app_register_command`.
 
 ```c
 /* Objects freed one at a time: freed by shutdown, or reported as a leak. */
@@ -121,7 +129,7 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 
 ## Future work
 - Veto on close; variable `update` for camera/UI if needed (ADR 0011, C4).
-- Hot-reload of game code as a DLL; LLM debug API stepping the simulation.
+- Hot-reload of game code as a DLL.
 - Engine-provided entry point `reborn/entry.h` (`main` / `WinMain`), the game only returns its
   callbacks (ADR 0011, H3).
 - Win32 modal loop: run during window drags.
@@ -134,3 +142,4 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 | v0.1.0 | 2026-11-17 | Starts the renderer (`config.renderer`, `rb_app_renderer`) |
 | v0.1.0 | 2026-11-17 | The renderer gets the main window; render skipped when the renderer cannot show a frame |
 | v0.1.0 | 2026-11-17 | Render inside a renderer frame (begin / end); no frame cap by default, vsync paces |
+| v0.2.0 | 2026-11-24 | `rb_app_run` takes `argc`/`argv`; commands each frame, pause and step (ADR 0022) |

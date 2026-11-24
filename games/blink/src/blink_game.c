@@ -48,6 +48,83 @@ static bool game_configure(rb_app_config *config) {
     return true;
 }
 
+/* ============================================================================
+ * Commands (ADR 0022): what an agent needs to play and check the game
+ * ========================================================================== */
+
+static const char *blink_phase_name(blink_phase phase) {
+    switch (phase) {
+    case BLINK_PHASE_TITLE:
+        return "title";
+    case BLINK_PHASE_PLAYING:
+        return "playing";
+    case BLINK_PHASE_GAME_OVER:
+        return "game_over";
+    }
+    return "unknown";
+}
+
+/*
+ * The square in window pixels too: where a click must land, without the agent
+ * knowing the camera. As drawn now, shrunk by the time left.
+ */
+static void cmd_state(void *state, rb_app *app, const rb_command_args *args,
+                      rb_command_reply *reply) {
+    (void)args;
+    const blink_game  *game = state;
+    const blink_state *rules = &game->rules;
+    rb_command_reply_str(reply, "phase", blink_phase_name(rules->phase));
+    rb_command_reply_u64(reply, "score", rules->score);
+    rb_command_reply_u64(reply, "lives", rules->lives);
+    rb_command_reply_u64(reply, "best", rules->best);
+    rb_command_reply_f32(reply, "phase_time", rules->phase_time);
+    if (rules->phase != BLINK_PHASE_PLAYING) {
+        return;
+    }
+    rb_rect        rect = blink_square_rect(rules);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    rb_vec2        target = {(f32)size.pixel_width, (f32)size.pixel_height};
+    rb_vec2        top_left =
+        rb_camera2d_world_to_screen(&game->camera, target, (rb_vec2){rect.x, rect.y});
+    rb_vec2 bottom_right = rb_camera2d_world_to_screen(
+        &game->camera, target, (rb_vec2){rect.x + rect.width, rect.y + rect.height});
+    rb_command_reply_begin_object(reply, "square");
+    rb_command_reply_f32(reply, "x", rules->square.center.x);
+    rb_command_reply_f32(reply, "y", rules->square.center.y);
+    rb_command_reply_f32(reply, "side", rect.width);
+    rb_command_reply_f32(reply, "remaining", rules->square.remaining);
+    rb_command_reply_begin_object(reply, "pixels");
+    rb_command_reply_f32(reply, "x", top_left.x);
+    rb_command_reply_f32(reply, "y", top_left.y);
+    rb_command_reply_f32(reply, "width", bottom_right.x - top_left.x);
+    rb_command_reply_f32(reply, "height", bottom_right.y - top_left.y);
+    rb_command_reply_f32(reply, "center_x", (top_left.x + bottom_right.x) * 0.5f);
+    rb_command_reply_f32(reply, "center_y", (top_left.y + bottom_right.y) * 0.5f);
+    rb_command_reply_end_object(reply);
+    rb_command_reply_end_object(reply);
+}
+
+/* Back to the title with a chosen seed: the same squares, in the same places, every time. */
+static void cmd_restart(void *state, rb_app *app, const rb_command_args *args,
+                        rb_command_reply *reply) {
+    (void)app;
+    blink_game *game = state;
+    u64         seed;
+    if (!rb_command_arg_u64(args, 0, &seed, reply)) {
+        return;
+    }
+    blink_start(&game->rules, &blink_default_tuning, seed);
+    game->action_count = 0;
+    RB_LOG_INFO("Seed: %llu (restart)", (unsigned long long)seed);
+    rb_command_reply_u64(reply, "seed", seed);
+}
+
+static const rb_command_desc blink_commands[] = {
+    {"blink.state", NULL, "phase, score, lives; the square in world units and window pixels", 0, 0,
+     cmd_state},
+    {"blink.restart", "<seed>", "a new session on the title, with this seed", 1, 1, cmd_restart},
+};
+
 static bool game_init(void *state, rb_app *app) {
     blink_game         *game = state;
     const blink_tuning *tuning = &blink_default_tuning;
@@ -61,6 +138,12 @@ static bool game_init(void *state, rb_app *app) {
     game->font = rb_font_create_builtin(rb_app_allocator(app), rb_app_renderer(app));
     if (game->font == NULL) {
         return false;
+    }
+    for (u32 i = 0; i < RB_ARRAY_COUNT(blink_commands); ++i) {
+        if (!rb_app_register_command(app, &blink_commands[i])) {
+            rb_font_destroy(game->font);
+            return false;
+        }
     }
     RB_LOG_INFO("Title: click or Space to play");
     return true;

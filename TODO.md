@@ -101,11 +101,12 @@ No batching yet: a few hundred quads and glyphs fit one draw each.
 
 **Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
 platform and without clicking by hand; the sandbox exposes the same commands). In order.
-- [ ] Command system: named commands with arguments, registered by the engine and the game
-      (`pause`, `step 10`, `screenshot out.png`...), each answering with a structured result
-      (JSON lines). Starts with the commands Blink needs; each later feature adds its own (e.g.
-      scene save/load with scenes). Reachable from a script file passed at startup and from an agent while the
-      game runs (stdin, local socket or named pipe: to decide); the in-game console comes later
+- [x] Command system (ADR 0022): named commands with arguments, registered by the engine and the
+      game, each answering with one JSON line; from a script (`--script`) and from a local TCP
+      connection (`--listen`, the `reborn-cmd` client); `rb_app_run` takes `argc`/`argv`. Engine
+      commands `help`, `status`, `pause`, `resume`, `step`, `quit`, `wait`; Blink's `blink.state`
+      and `blink.restart`; the sandbox's `sandbox.clear` and its commands panel. Each later
+      feature adds its own (e.g. scene save/load with scenes); the in-game console comes later
       with the debug UI
 - [ ] Input injection: synthetic key and mouse events pushed into the event queue by command or
       script, the same on every platform and without a display (today: xdotool, Linux only)
@@ -132,6 +133,10 @@ these steps put numbers next to it). After Blink's text rendering.
 ring shrinks.
 Likely needs: circle vs arc collisions, rotated quads, sound effects (audio backend, mixer, WAV),
 pause and game states.
+
+**Engine**
+- [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table:
+      with the hash map of the backlog's containers, where optimizations start
 
 ## v0.4.0
 
@@ -178,7 +183,8 @@ In order; each gets a version when it starts.
 ### Core
 - [ ] Engine-provided entry point (ADR 0011, H3): `reborn/entry.h` defines `main` (and `WinMain` for
       a Windows build without a console); the game only defines a function returning its
-      callbacks. When a GUI-subsystem build or command-line arguments are needed
+      callbacks. When a GUI-subsystem build is needed, or command-line arguments in UTF-8 on
+      Windows (`wmain`: `argv` arrives in the ANSI code page today, ADR 0022)
 - [ ] Application: veto on the main window's close ("save before quitting?"); a variable
       `update` next to the fixed one if camera or UI need it (ADR 0011, C4); window events
       between steps if a low update rate makes them lag
@@ -187,7 +193,7 @@ In order; each gets a version when it starts.
       that needs one: likely the batched 2D renderer (sprites per frame) or the asset manager
       (name → handle)
 - [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide), with
-      the hash map
+      the hash map (its first user may be the command registry, v0.3.0)
 - [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
       (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide). With the first feature that
       needs it: likely the audio backend (a thread feeding the device) or asynchronous asset loading
@@ -360,6 +366,10 @@ In order; each gets a version when it starts.
       them with handles (gizmos), edit their fields in a panel (needs type information for the
       fields: reflection, to decide), undo/redo
 - [ ] Scenes created, saved and loaded from the editor; objects created, duplicated and deleted
+- [ ] Commands from the editor (ADR 0022): a menu listing every registered command (engine and
+      game, from the registry, with usage and summary) to run with a click, and a field to type a
+      command line, with the replies shown next to it. Shares the in-game console's input and
+      history (debug UI)
 
 ### LLM and automation tooling
 Today agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`, and drive
@@ -367,6 +377,8 @@ Linux windows from outside (Xvfb, xdotool). They cannot act inside a running gam
 state, or see what it draws. The command system, input injection and screenshots are in v0.2.0
 (driving Blink from an agent); these build on them.
 - [ ] Commands from the in-game console, with the debug UI
+- [ ] Several clients on the command server at once, if agents need them (one at a time today,
+      ADR 0022); replies on stdout without the `\r` the Windows C runtime adds in text mode
 - [ ] Console variables: named, typed values (speeds, toggles, log levels) read and set by
       command and listed with their current value; later loaded from the config file
 - [ ] State inspection: commands that dump engine and game state as JSON (windows, frame timing,

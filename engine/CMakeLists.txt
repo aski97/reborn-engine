@@ -13,12 +13,17 @@ configure_file(
 
 set(REBORN_SOURCES
     src/app/app.c
+    src/app/app_commands.c
     src/app/frame_timing.c
+    src/command/command.c
+    src/command/command_script.c
+    src/command/command_server.c
     src/containers/handle_pool.c
     src/containers/ring.c
     src/core/assert.c
     src/core/color.c
     src/core/log.c
+    src/core/text_writer.c
     src/core/version.c
     src/math/random.c
     src/memory/allocator.c
@@ -58,6 +63,7 @@ if(WIN32)
         src/platform/win32/win32_memory.c
         src/platform/win32/win32_os.c
         src/platform/win32/win32_platform.c
+        src/platform/win32/win32_socket.c
     )
 elseif(LINUX)
     list(APPEND REBORN_SOURCES
@@ -65,6 +71,7 @@ elseif(LINUX)
         src/platform/linux/linux_library.c
         src/platform/linux/linux_memory.c
         src/platform/linux/linux_os.c
+        src/platform/linux/linux_socket.c
         src/platform/linux/xlib_icon.c
         src/platform/linux/xlib_input.c
         src/platform/linux/xlib_platform.c
@@ -137,7 +144,8 @@ target_include_directories(reborn
 if(WIN32)
     # CMake's default library list already contains these, but it is a toolchain
     # convenience: linking them explicitly keeps the dependency visible (ADR 0006).
-    target_link_libraries(reborn PRIVATE user32 gdi32)
+    # ws2_32 is Winsock, for the command server (ADR 0022); not in the default list.
+    target_link_libraries(reborn PRIVATE user32 gdi32 ws2_32)
 elseif(LINUX)
     # Xlib is the only Linux system dependency (ADR 0006, `libx11-dev`). REQUIRED stops at
     # configure time with a clear message when it is missing, instead of a compile error later.

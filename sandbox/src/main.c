@@ -6,6 +6,6 @@
 
 #include "game.h"
 
-int main(void) {
-    return rb_app_run(&sandbox_game);
+int main(int argc, char **argv) {
+    return rb_app_run(&sandbox_game, argc, argv);
 }

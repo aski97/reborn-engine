@@ -5,6 +5,7 @@
  */
 #include "rb_test.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include <reborn/app.h>
@@ -137,7 +138,7 @@ static const rb_app_callbacks test_callbacks = {
 
 RB_TEST(app_run, phases_run_in_order_until_quit) {
     reset_recorder(true, 3);
-    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks), 0);
+    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 0);
     RB_EXPECT_EQ_STR(rec.trace, "ciuuus");
     RB_EXPECT_EQ_UINT(rec.updates, 3);
     RB_EXPECT_NEAR(rec.dt, 0.001, 1e-12);
@@ -145,7 +146,7 @@ RB_TEST(app_run, phases_run_in_order_until_quit) {
 
 RB_TEST(app_run, state_is_zeroed_aligned_and_persistent) {
     reset_recorder(true, 1);
-    RB_REQUIRE_EQ_INT(rb_app_run(&test_callbacks), 0);
+    RB_REQUIRE_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 0);
     RB_EXPECT(rec.state_was_zeroed);
     RB_EXPECT(rec.state_was_aligned);
     RB_EXPECT(rec.state_in_persistent_arena);
@@ -153,7 +154,7 @@ RB_TEST(app_run, state_is_zeroed_aligned_and_persistent) {
 
 RB_TEST(app_run, frame_arena_is_reset_every_frame) {
     reset_recorder(true, 50);
-    RB_REQUIRE_EQ_INT(rb_app_run(&test_callbacks), 0);
+    RB_REQUIRE_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 0);
     RB_REQUIRE(rec.renders > 1);
     RB_EXPECT_EQ_UINT(rec.max_frame_pos_at_render, 0);
     RB_EXPECT(rec.alpha_in_range);
@@ -161,13 +162,13 @@ RB_TEST(app_run, frame_arena_is_reset_every_frame) {
 
 RB_TEST(app_run, failed_init_skips_loop_and_shutdown) {
     reset_recorder(false, 3);
-    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks), 1);
+    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 1);
     RB_EXPECT_EQ_STR(rec.trace, "ci");
 }
 
 RB_TEST(app_run, quit_from_init_still_shuts_down) {
     reset_recorder(true, 0);
-    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks), 0);
+    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 0);
     RB_EXPECT_EQ_STR(rec.trace, "cis");
 }
 
@@ -209,7 +210,7 @@ RB_TEST(app_run, phases_and_quit_reason_are_logged_once) {
     reset_recorder(true, 2);
     phase_log log = {0};
     RB_REQUIRE(rb_log_add_sink(capture_phases, &log, RB_LOG_LEVEL_TRACE));
-    int code = rb_app_run(&test_callbacks);
+    int code = rb_app_run(&test_callbacks, 0, NULL);
     rb_log_remove_sink(capture_phases, &log);
     RB_EXPECT_EQ_INT(code, 0);
     RB_EXPECT_EQ_STR(log.letters, PHASES_LOGGED ? "ilqs" : "q");
@@ -219,7 +220,7 @@ RB_TEST(app_run, quit_from_init_is_logged_before_any_loop) {
     reset_recorder(true, 0);
     phase_log log = {0};
     RB_REQUIRE(rb_log_add_sink(capture_phases, &log, RB_LOG_LEVEL_TRACE));
-    int code = rb_app_run(&test_callbacks);
+    int code = rb_app_run(&test_callbacks, 0, NULL);
     rb_log_remove_sink(capture_phases, &log);
     RB_EXPECT_EQ_INT(code, 0);
     RB_EXPECT_EQ_STR(log.letters, PHASES_LOGGED ? "iqs" : "q");
@@ -251,7 +252,7 @@ RB_TEST(app_run, game_memory_freed_in_shutdown_is_not_a_leak) {
     rec.free_game_block = true;
     memory_log log = {0};
     RB_REQUIRE(rb_log_add_sink(capture_memory, &log, RB_LOG_LEVEL_TRACE));
-    int code = rb_app_run(&test_callbacks);
+    int code = rb_app_run(&test_callbacks, 0, NULL);
     rb_log_remove_sink(capture_memory, &log);
     RB_EXPECT_EQ_INT(code, 0);
     RB_EXPECT_EQ_UINT(log.leak_lines, 0);
@@ -268,11 +269,82 @@ RB_TEST(app_run, game_memory_left_at_shutdown_is_reported) {
     rec.game_block_size = 4096;
     memory_log log = {0};
     RB_REQUIRE(rb_log_add_sink(capture_memory, &log, RB_LOG_LEVEL_TRACE));
-    int code = rb_app_run(&test_callbacks);
+    int code = rb_app_run(&test_callbacks, 0, NULL);
     rb_log_remove_sink(capture_memory, &log);
     /* Reported, not fatal: the run itself went fine. */
     RB_EXPECT_EQ_INT(code, 0);
     RB_EXPECT_EQ_UINT(log.leak_lines, 1);
     RB_EXPECT_EQ_STR(log.leak, "Memory leak (game): 1 block, 4 KiB never freed");
     rb_free(rb_heap_allocator(), rec.game_block, rec.game_block_size, 8, RB_MEMORY_TAG_GAME);
+}
+
+/* ============================================================================
+ * Commands (ADR 0022)
+ * ========================================================================== */
+
+/*
+ * Each test writes its own file, named after it: ctest runs tests in parallel
+ * processes from the same folder, and a shared name would be overwritten.
+ */
+static int run_script(const rb_app_callbacks *callbacks, const char *name, const char *text) {
+    char path[128];
+    snprintf(path, sizeof(path), "test_app_run_%s.txt", name);
+    FILE *file = fopen(path, "wb");
+    if (file == NULL) {
+        return -1;
+    }
+    fputs(text, file);
+    fclose(file);
+    char *argv[] = {"reborn_tests", "--script", path};
+    int   code = rb_app_run(callbacks, 3, argv);
+    remove(path);
+    return code;
+}
+
+/* Paused from the first frame: the updates are exactly the steps asked for. */
+RB_TEST(app_run, script_steps_exactly_while_paused) {
+    reset_recorder(true, 1000);
+    RB_EXPECT_EQ_INT(run_script(&test_callbacks, "steps", "pause\nstep 5\nstep\nquit\n"), 0);
+    RB_EXPECT_EQ_UINT(rec.updates, 6);
+    RB_EXPECT_EQ_STR(rec.trace, "ciuuuuuus");
+}
+
+RB_TEST(app_run, script_wait_lets_steps_run) {
+    reset_recorder(true, 1000);
+    RB_EXPECT_EQ_INT(run_script(&test_callbacks, "wait", "wait 20\nquit\n"), 0);
+    RB_EXPECT(rec.updates >= 20);
+    RB_EXPECT(rec.updates < 1000);
+}
+
+RB_TEST(app_run, missing_script_fails_the_run) {
+    reset_recorder(true, 1000);
+    char *argv[] = {"reborn_tests", "--script", "no/such/script.txt"};
+    RB_EXPECT_EQ_INT(rb_app_run(&test_callbacks, 3, argv), 1);
+    RB_EXPECT_EQ_STR(rec.trace, "c");
+}
+
+static u32 game_command_calls;
+
+static void cmd_count(void *state, rb_app *app, const rb_command_args *args,
+                      rb_command_reply *reply) {
+    (void)state;
+    (void)app;
+    (void)args;
+    rb_command_reply_u64(reply, "calls", ++game_command_calls);
+}
+
+static bool init_with_command(void *state, rb_app *app) {
+    (void)state;
+    game_command_calls = 0;
+    return rb_app_register_command(
+        app, &(rb_command_desc){.name = "test.count", .summary = "counts", .fn = cmd_count});
+}
+
+RB_TEST(app_run, game_commands_run_from_the_script) {
+    reset_recorder(true, 1000);
+    rb_app_callbacks callbacks = test_callbacks;
+    callbacks.init = init_with_command;
+    RB_EXPECT_EQ_INT(
+        run_script(&callbacks, "game", "test.count\n# a comment\n\ntest.count\nquit\n"), 0);
+    RB_EXPECT_EQ_UINT(game_command_calls, 2);
 }

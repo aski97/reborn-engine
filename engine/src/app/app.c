@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "app/app_internal.h"
+#include "app/app_state.h"
 #include "app/frame_timing.h"
 #include "memory/memory_internal.h"
 #include "renderer/renderer_internal.h"
@@ -23,30 +23,6 @@
 #define APP_MAX_FRAME_DELTA_NS (250 * RB_NS_PER_MS)
 
 #define APP_MAX_UPDATE_RATE 1000u
-
-/*
- * Why the loop ends. A value, not the log text: code can branch on it (a close
- * veto, a debug API), and the compiler checks every name.
- */
-typedef enum app_quit_reason {
-    APP_QUIT_NONE,           /* still running */
-    APP_QUIT_WINDOW_CLOSED,  /* close requested on the main window */
-    APP_QUIT_GAME_REQUESTED, /* rb_app_quit */
-} app_quit_reason;
-
-struct rb_app {
-    const rb_app_callbacks *callbacks;
-    void                   *state;
-    rb_arena                persistent;
-    rb_arena                frame;
-    rb_platform_state      *platform;
-    rb_window               window;
-    rb_renderer            *renderer;
-    app_quit_reason         quit_reason;
-    /* Totals for the closing log line. Frames count loop iterations, rendered or not. */
-    u64 frame_count;
-    u64 step_count;
-};
 
 /* ============================================================================
  * Configuration
@@ -188,6 +164,7 @@ static void app_log_memory(const rb_app *app) {
 }
 
 static void app_shutdown(rb_app *app) {
+    rb_app_commands_stop(app);
     rb_renderer_shutdown(app->renderer);
     rb_window_destroy(app->platform, app->window);
     rb_platform_shutdown(app->platform);
@@ -209,20 +186,30 @@ static const char *app_quit_reason_text(app_quit_reason reason) {
         return "main window close requested";
     case APP_QUIT_GAME_REQUESTED:
         return "requested by the game";
+    case APP_QUIT_COMMAND:
+        return "quit command";
     }
     return "unknown";
 }
 
-static bool app_quit_requested(const rb_app *app) {
-    return app->quit_reason != APP_QUIT_NONE;
-}
-
-/* Only the first request counts: it is the one that ends the loop. */
-static void app_request_quit(rb_app *app, app_quit_reason reason) {
+void rb_app_request_quit(rb_app *app, app_quit_reason reason) {
     RB_ASSERT(reason != APP_QUIT_NONE);
-    if (!app_quit_requested(app)) {
+    if (!rb_app_quit_requested(app)) {
         app->quit_reason = reason;
         RB_LOG_INFO("Quit: %s", app_quit_reason_text(reason));
+    }
+}
+
+void rb_app_pump_events(rb_app *app) {
+    rb_platform_pump(app->platform);
+    rb_event event;
+    while (rb_platform_poll_event(app->platform, &event)) {
+        if (app->callbacks->on_event != NULL) {
+            app->callbacks->on_event(app->state, app, &event);
+        }
+        if (event.type == RB_EVENT_WINDOW_CLOSE_REQUESTED && event.window.id == app->window.id) {
+            rb_app_request_quit(app, APP_QUIT_WINDOW_CLOSED);
+        }
     }
 }
 
@@ -232,28 +219,18 @@ static void app_request_quit(rb_app *app, app_quit_reason reason) {
  * previous update: a frame with two steps does not report a press twice, a
  * frame with none does not lose it.
  */
-static void app_step(rb_app *app, f64 dt) {
-    rb_platform_pump(app->platform);
-    rb_event event;
-    while (rb_platform_poll_event(app->platform, &event)) {
-        if (app->callbacks->on_event != NULL) {
-            app->callbacks->on_event(app->state, app, &event);
-        }
-        if (event.type == RB_EVENT_WINDOW_CLOSE_REQUESTED && event.window.id == app->window.id) {
-            app_request_quit(app, APP_QUIT_WINDOW_CLOSED);
-        }
-    }
+void rb_app_step(rb_app *app) {
+    rb_app_pump_events(app);
     /* Every event of the step was still delivered; only the update is skipped. */
-    if (app_quit_requested(app)) {
+    if (rb_app_quit_requested(app)) {
         return;
     }
-    app->callbacks->update(app->state, app, dt);
+    app->callbacks->update(app->state, app, app->step_dt);
     ++app->step_count;
 }
 
 static void app_loop(rb_app *app, const rb_app_config *config) {
     u64 step_ns = RB_NS_PER_S / config->update_rate;
-    f64 dt = rb_time_to_seconds(step_ns);
     u64 frame_ns = config->max_fps == RB_APP_FPS_UNCAPPED ? 0 : RB_NS_PER_S / config->max_fps;
 
     u64            now = rb_time_now();
@@ -263,14 +240,25 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
     rb_frame_pacer_init(&pacer, frame_ns, now);
     RB_LOG_DEBUG("Loop started");
 
-    while (!app_quit_requested(app)) {
-        rb_step_clock_advance(&clock, rb_time_now());
+    while (!rb_app_quit_requested(app)) {
         rb_arena_reset(&app->frame);
-
-        while (!app_quit_requested(app) && rb_step_clock_consume(&clock)) {
-            app_step(app, dt);
+        /* Before the steps: a pause, a step or a quit takes effect in this very frame. */
+        rb_app_commands_run(app);
+        if (rb_app_quit_requested(app)) {
+            break;
         }
-        if (app_quit_requested(app)) {
+
+        if (app->paused) {
+            /* The window stays responsive and can be closed; the game's time stands still. */
+            rb_step_clock_hold(&clock, rb_time_now());
+            rb_app_pump_events(app);
+        } else {
+            rb_step_clock_advance(&clock, rb_time_now());
+            while (!rb_app_quit_requested(app) && rb_step_clock_consume(&clock)) {
+                rb_app_step(app);
+            }
+        }
+        if (rb_app_quit_requested(app)) {
             break;
         }
 
@@ -291,8 +279,12 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
         now = rb_time_now();
         u64 wait = rb_frame_pacer_wait(&pacer, now);
         if (!visible) {
-            /* Even uncapped: without a render, frames before the next step are empty spins. */
-            u64 next_step = rb_step_clock_next_step_at(&clock);
+            /*
+             * Even uncapped: without a render, frames before the next step are
+             * empty spins. Paused, no step is due: wake once per step's time
+             * for commands and window events.
+             */
+            u64 next_step = app->paused ? now + step_ns : rb_step_clock_next_step_at(&clock);
             if (next_step > now && next_step - now > wait) {
                 wait = next_step - now;
             }
@@ -306,16 +298,24 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
  * ========================================================================== */
 
 /* Everything between logger startup and shutdown. */
-static int app_run_logged(const rb_app_callbacks *callbacks, const rb_app_config *config) {
+static int app_run_logged(const rb_app_callbacks *callbacks, const rb_app_config *config,
+                          const rb_app_options *options) {
     app_log_config(config);
     if (!rb_app_config_validate(config)) {
         RB_LOG_FATAL("App config is invalid");
         return 1;
     }
 
-    rb_app app = {.callbacks = callbacks};
+    rb_app app = {.callbacks = callbacks,
+                  .step_dt = rb_time_to_seconds(RB_NS_PER_S / config->update_rate)};
     if (!app_startup(&app, config)) {
         RB_LOG_FATAL("App startup failed");
+        return 1;
+    }
+    /* Before init, which registers the game's commands. */
+    if (!rb_app_commands_start(&app, options)) {
+        RB_LOG_FATAL("App startup failed: commands");
+        app_shutdown(&app);
         return 1;
     }
     RB_LOG_INFO("App started");
@@ -331,7 +331,7 @@ static int app_run_logged(const rb_app_callbacks *callbacks, const rb_app_config
 
     /* A quit from init skips the loop entirely: no "Loop started" for a loop that never runs. */
     u64 start = rb_time_now();
-    if (!app_quit_requested(&app)) {
+    if (!rb_app_quit_requested(&app)) {
         app_loop(&app, config);
     }
     f64 seconds = rb_time_to_seconds(rb_time_now() - start);
@@ -346,8 +346,10 @@ static int app_run_logged(const rb_app_callbacks *callbacks, const rb_app_config
     return 0;
 }
 
-int rb_app_run_checked(const rb_app_callbacks *callbacks, u32 header_version) {
+int rb_app_run_checked(const rb_app_callbacks *callbacks, int argc, char **argv,
+                       u32 header_version) {
     RB_ASSERT(callbacks != NULL);
+    RB_ASSERT(argc >= 0 && (argc == 0 || argv != NULL));
 
     /*
      * First, before reading the callbacks: with other headers even the layout
@@ -362,6 +364,13 @@ int rb_app_run_checked(const rb_app_callbacks *callbacks, u32 header_version) {
     }
     RB_ASSERT(callbacks->update != NULL);
 
+    /* Before configure: a mistyped option stops the run before anything starts. */
+    rb_app_options     options;
+    rb_app_args_result args = rb_app_parse_args(argc, argv, &options);
+    if (args != RB_APP_ARGS_RUN) {
+        return args == RB_APP_ARGS_HELP ? 0 : 1;
+    }
+
     /* Before the logger, so configure can choose its outputs; its own logs go to stderr. */
     rb_app_config config = rb_app_default_config();
     if (callbacks->configure != NULL && !callbacks->configure(&config)) {
@@ -375,7 +384,7 @@ int rb_app_run_checked(const rb_app_callbacks *callbacks, u32 header_version) {
     }
     RB_LOG_INFO("Reborn Engine v%s", rb_version_string());
 
-    int code = app_run_logged(callbacks, &config);
+    int code = app_run_logged(callbacks, &config, &options);
 
     RB_LOG_INFO("Exiting with code %d", code);
     rb_log_shutdown();
@@ -419,5 +428,15 @@ rb_allocator rb_app_allocator(rb_app *app) {
 
 void rb_app_quit(rb_app *app) {
     RB_ASSERT(app != NULL);
-    app_request_quit(app, APP_QUIT_GAME_REQUESTED);
+    rb_app_request_quit(app, APP_QUIT_GAME_REQUESTED);
+}
+
+bool rb_app_is_paused(const rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return app->paused;
+}
+
+u64 rb_app_step_index(const rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return app->step_count;
 }

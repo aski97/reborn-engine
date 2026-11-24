@@ -1,7 +1,8 @@
 # Games
 
 Our own small games, simplest first: each one decides which engine pieces come next (ADR 0014).
-Each folder has a `README.md` with how the game plays and how to build and run it.
+Each folder has a `README.md` with how the game plays, how to build and run it, and the commands
+it adds to the engine's (`--listen` / `reborn-cmd`, see the [main README](../README.md#commands)).
 
 | Game | Folder | Since | Status | In short |
 |---|---|---|---|---|

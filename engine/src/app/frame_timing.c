@@ -29,6 +29,11 @@ void rb_step_clock_advance(rb_step_clock *clock, u64 now_ns) {
     clock->accumulator_ns += delta;
 }
 
+void rb_step_clock_hold(rb_step_clock *clock, u64 now_ns) {
+    RB_ASSERT(clock != NULL);
+    clock->last_ns = now_ns;
+}
+
 bool rb_step_clock_consume(rb_step_clock *clock) {
     RB_ASSERT(clock != NULL);
     if (clock->accumulator_ns < clock->step_ns) {

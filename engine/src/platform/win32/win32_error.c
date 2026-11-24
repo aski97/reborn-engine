@@ -12,7 +12,10 @@
 
 void win32_log_last_error(const char *what, const char *file, u32 line, const char *func) {
     /* First: any call below may overwrite it. */
-    DWORD   error = GetLastError();
+    win32_log_error(what, GetLastError(), file, line, func);
+}
+
+void win32_log_error(const char *what, u32 error, const char *file, u32 line, const char *func) {
     wchar_t wide[512];
     char    text[1024];
     /* In the user's language: the text is for whoever reads the log on this machine. */

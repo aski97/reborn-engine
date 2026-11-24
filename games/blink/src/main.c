@@ -3,6 +3,6 @@
 
 #include "blink_game.h"
 
-int main(void) {
-    return rb_app_run(&blink_game_callbacks);
+int main(int argc, char **argv) {
+    return rb_app_run(&blink_game_callbacks, argc, argv);
 }

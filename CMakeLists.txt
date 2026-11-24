@@ -31,6 +31,7 @@ option(REBORN_WARNINGS_AS_ERRORS  "Treat compiler warnings as errors"           
 option(REBORN_ENABLE_SANITIZERS   "Enable AddressSanitizer + UBSan in Debug"       OFF)
 option(REBORN_BUILD_SANDBOX       "Build the sandbox application"                  ON)
 option(REBORN_BUILD_GAMES         "Build the games under games/"                   ON)
+option(REBORN_BUILD_TOOLS         "Build the tools under tools/ (reborn-cmd)"      ON)
 option(REBORN_BUILD_TESTS         "Build the unit tests, registered in CTest"       ON)
 
 # -----------------------------------------------------------------------------
@@ -68,6 +69,11 @@ endif()
 # Each game builds its executable and, with REBORN_BUILD_TESTS, its tests (ADR 0014).
 if(REBORN_BUILD_GAMES)
     add_subdirectory(games)
+endif()
+
+# Programs that work with the games from outside: reborn-cmd sends them commands (ADR 0022).
+if(REBORN_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()
 
 if(REBORN_BUILD_TESTS)

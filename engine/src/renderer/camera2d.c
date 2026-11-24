@@ -67,3 +67,18 @@ rb_vec2 rb_camera2d_screen_to_world(const rb_camera2d *camera, rb_vec2 target, r
     };
     return rb_vec2_add(top_left, rb_vec2_mul(across, shown));
 }
+
+rb_vec2 rb_camera2d_world_to_screen(const rb_camera2d *camera, rb_vec2 target, rb_vec2 point) {
+    RB_ASSERT(camera != NULL);
+    RB_ASSERT(CAMERA_IS_VALID(camera));
+    if (!(target.x >= 1.0f && target.y >= 1.0f)) {
+        return (rb_vec2){0.0f, 0.0f};
+    }
+    /* The same field as screen_to_world, run backwards: both must agree to the pixel. */
+    rb_camera2d_field field = rb_camera2d_field_rect(camera, (u32)target.x, (u32)target.y);
+    rb_vec2           shown = rb_vec2_scale(camera->size, 1.0f / camera->zoom);
+    rb_vec2           top_left = rb_vec2_sub(camera->center, rb_vec2_scale(shown, 0.5f));
+    rb_vec2           across = {(point.x - top_left.x) / shown.x, (point.y - top_left.y) / shown.y};
+    return (rb_vec2){(f32)field.x + across.x * (f32)field.width,
+                     (f32)field.y + across.y * (f32)field.height};
+}
