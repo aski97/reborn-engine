@@ -7,6 +7,7 @@
 
 #include <reborn/assert.h>
 
+#include <ctype.h>
 #include <string.h>
 
 /* ============================================================================
@@ -149,8 +150,47 @@ const char *rb_mouse_button_name(rb_mouse_button button) {
     return rb_mouse_button_in_range(button) ? RB_MOUSE_BUTTON_NAMES[button] : "Unknown";
 }
 
+/*
+ * Whether `text` names `name`: any case, a space or an '_' alike. A command
+ * line splits words at spaces, so "left_ctrl" is how "Left Ctrl" can be typed.
+ */
+static bool rb_input_name_matches(const char *name, const char *text) {
+    for (; *name != '\0' && *text != '\0'; ++name, ++text) {
+        char expected = *name == ' ' ? '_' : (char)tolower((unsigned char)*name);
+        char got = *text == ' ' ? '_' : (char)tolower((unsigned char)*text);
+        if (expected != got) {
+            return false;
+        }
+    }
+    return *name == '\0' && *text == '\0';
+}
+
+rb_key rb_key_from_name(const char *text) {
+    RB_ASSERT(text != NULL);
+    for (u32 key = 0; key < RB_KEY_COUNT; ++key) {
+        if (RB_KEY_NAMES[key] != NULL && rb_input_name_matches(RB_KEY_NAMES[key], text)) {
+            return (rb_key)key;
+        }
+    }
+    return RB_KEY_UNKNOWN;
+}
+
+bool rb_mouse_button_from_name(const char *text, rb_mouse_button *out) {
+    RB_ASSERT(text != NULL && out != NULL);
+    for (u32 button = 0; button < RB_MOUSE_BUTTON_COUNT; ++button) {
+        if (rb_input_name_matches(RB_MOUSE_BUTTON_NAMES[button], text)) {
+            *out = (rb_mouse_button)button;
+            return true;
+        }
+    }
+    return false;
+}
+
 /* ============================================================================
- * State updates from the backends
+ * State updates
+ *
+ * One function per kind of input serves both sources: the backends' reports
+ * (dropped while real input is off) and the engine's injections (ADR 0023).
  * ========================================================================== */
 
 /* Either key of a pair sets the bit (ADR 0006, R1). */
@@ -181,7 +221,7 @@ void rb_platform_common_begin_pump(rb_platform_common *common) {
     input->wheel = (rb_mouse_wheel){0};
 }
 
-void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool down) {
+static void rb_input_key(rb_platform_common *common, u32 id, rb_key key, bool down, bool injected) {
     /* An out-of-range key would write outside the arrays: a mapping table bug. */
     RB_ASSERT(key != RB_KEY_UNKNOWN && rb_key_in_range(key));
     rb_input_state *input = &common->input;
@@ -196,6 +236,13 @@ void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool
         } else {
             input->keys_released[key] = true;
         }
+        input->keys_injected[key] = down && injected;
+    } else if (!injected) {
+        /*
+         * The keyboard repeats only a key it holds: it takes the key over. An
+         * injected repeat leaves a real key real, so focus loss still releases it.
+         */
+        input->keys_injected[key] = false;
     }
     /* After the state change, so the modifiers include a modifier's own press. */
     rb_event event = {
@@ -206,8 +253,8 @@ void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool
     rb_platform_common_push_event(common, &event);
 }
 
-void rb_platform_common_mouse_button(rb_platform_common *common, u32 id, rb_mouse_button button,
-                                     bool down, rb_mouse_position position) {
+static void rb_input_mouse_button(rb_platform_common *common, u32 id, rb_mouse_button button,
+                                  bool down, rb_mouse_position position, bool injected) {
     RB_ASSERT(rb_mouse_button_in_range(button));
     rb_input_state *input = &common->input;
     /* Buttons do not repeat: a second press or a stray release changes nothing. */
@@ -215,6 +262,7 @@ void rb_platform_common_mouse_button(rb_platform_common *common, u32 id, rb_mous
         return;
     }
     input->buttons_down[button] = down;
+    input->buttons_injected[button] = down && injected;
     if (down) {
         input->buttons_pressed[button] = true;
     } else {
@@ -233,8 +281,7 @@ void rb_platform_common_mouse_button(rb_platform_common *common, u32 id, rb_mous
     rb_platform_common_push_event(common, &event);
 }
 
-void rb_platform_common_mouse_moved(rb_platform_common *common, u32 id,
-                                    rb_mouse_position position) {
+static void rb_input_mouse_moved(rb_platform_common *common, u32 id, rb_mouse_position position) {
     rb_input_state *input = &common->input;
     /* Win32 sends WM_MOUSEMOVE also when nothing moved (activation, cursor changes). */
     if (input->mouse_window == id && input->mouse_position.x == position.x &&
@@ -247,7 +294,7 @@ void rb_platform_common_mouse_moved(rb_platform_common *common, u32 id,
     rb_platform_common_push_event(common, &event);
 }
 
-void rb_platform_common_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse_wheel delta) {
+static void rb_input_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse_wheel delta) {
     rb_input_state *input = &common->input;
     input->wheel.x += delta.x;
     input->wheel.y += delta.y;
@@ -255,19 +302,80 @@ void rb_platform_common_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse
     rb_platform_common_push_event(common, &event);
 }
 
+/* ---- The backends' reports ---- */
+
+void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool down) {
+    if (!common->input.real_input_off) {
+        rb_input_key(common, id, key, down, false);
+    }
+}
+
+void rb_platform_common_mouse_button(rb_platform_common *common, u32 id, rb_mouse_button button,
+                                     bool down, rb_mouse_position position) {
+    if (!common->input.real_input_off) {
+        rb_input_mouse_button(common, id, button, down, position, false);
+    }
+}
+
+void rb_platform_common_mouse_moved(rb_platform_common *common, u32 id,
+                                    rb_mouse_position position) {
+    if (!common->input.real_input_off) {
+        rb_input_mouse_moved(common, id, position);
+    }
+}
+
+void rb_platform_common_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse_wheel delta) {
+    if (!common->input.real_input_off) {
+        rb_input_mouse_wheel(common, id, delta);
+    }
+}
+
+/*
+ * Not through the reporting functions above: they drop everything while real
+ * input is off, and turning it off calls this first.
+ */
 void rb_platform_common_release_input(rb_platform_common *common, u32 id) {
     rb_input_state *input = &common->input;
     for (u32 key = 0; key < RB_KEY_COUNT; ++key) {
-        if (input->keys_down[key]) {
-            rb_platform_common_key(common, id, (rb_key)key, false);
+        if (input->keys_down[key] && !input->keys_injected[key]) {
+            rb_input_key(common, id, (rb_key)key, false, false);
         }
     }
     for (u32 button = 0; button < RB_MOUSE_BUTTON_COUNT; ++button) {
-        if (input->buttons_down[button]) {
-            rb_platform_common_mouse_button(common, id, (rb_mouse_button)button, false,
-                                            input->mouse_position);
+        if (input->buttons_down[button] && !input->buttons_injected[button]) {
+            rb_input_mouse_button(common, id, (rb_mouse_button)button, false, input->mouse_position,
+                                  false);
         }
     }
+}
+
+/* ---- Injections (ADR 0023) ---- */
+
+void rb_platform_common_inject_key(rb_platform_common *common, u32 id, rb_key key, bool down) {
+    rb_input_key(common, id, key, down, true);
+}
+
+void rb_platform_common_inject_mouse_button(rb_platform_common *common, u32 id,
+                                            rb_mouse_button button, bool down,
+                                            rb_mouse_position position) {
+    rb_input_mouse_button(common, id, button, down, position, true);
+}
+
+void rb_platform_common_inject_mouse_moved(rb_platform_common *common, u32 id,
+                                           rb_mouse_position position) {
+    rb_input_mouse_moved(common, id, position);
+}
+
+void rb_platform_common_inject_mouse_wheel(rb_platform_common *common, u32 id,
+                                           rb_mouse_wheel delta) {
+    rb_input_mouse_wheel(common, id, delta);
+}
+
+void rb_platform_common_set_real_input(rb_platform_common *common, u32 id, bool enabled) {
+    if (!enabled && !common->input.real_input_off) {
+        rb_platform_common_release_input(common, id);
+    }
+    common->input.real_input_off = !enabled;
 }
 
 /* ============================================================================

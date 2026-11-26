@@ -7,6 +7,7 @@
 reborn_add_test_executable(reborn_tests
     app/test_app.c
     app/test_frame_timing.c
+    app/test_input_queue.c
     command/test_command.c
     command/test_command_script.c
     command/test_command_server.c

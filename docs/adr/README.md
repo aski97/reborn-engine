@@ -38,5 +38,6 @@ its implementation.
 | 0020 | [Window icon](0020-window-icon.md) | Accepted |
 | 0021 | [Text rendering](0021-text-rendering.md) | Accepted |
 | 0022 | [Command system](0022-command-system.md) | Accepted |
+| 0023 | [Input injection](0023-input-injection.md) | Accepted |
 
 Template: [`template.md`](template.md).

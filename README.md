@@ -75,7 +75,8 @@ Presets: `debug`, `release`, `debug-asan`. Details in [docs/features/build-syste
 ## Commands
 
 A running game takes commands: the engine's own (`help`, `status`, `pause`, `resume`, `step`,
-`quit`, `wait`) and the game's (`blink.state`...). Each answers with one JSON line. Start the game
+`quit`, `wait`, and the `input.*` group) and the game's (`blink.state`...). Each answers with one
+JSON line. Start the game
 listening on a local port, then send commands with `reborn-cmd`, one argument per command:
 
 ```sh
@@ -102,6 +103,18 @@ The engine's commands, in every game (each game's README lists its own):
 | `step [count]` | pauses, then runs `count` steps (1 by default, at most 100000) at once | `ran`, `step` |
 | `quit` | ends the run | — |
 | `wait <steps>` | scripts only: runs the next line after this many steps | `until_step` |
+| `input.key <key> <down\|up>` | presses or releases a key in the next step | `step` |
+| `input.tap <key>` | presses a key in the next step, releases it in the one after | `step`, `release_step` |
+| `input.button <button> <down\|up> [<x> <y>]` | presses or releases a mouse button in the next step, at a point if given | `step` |
+| `input.click <x> <y> [button]` | moves there and presses (left) in the next step, releases in the one after | `step`, `release_step` |
+| `input.mouse <x> <y>` | moves the mouse in the next step | `step` |
+| `input.wheel <dy> [dx]` | turns the wheel in the next step (notches, positive up and right) | `step` |
+| `input.real [on\|off]` | turns keyboard and mouse on or off at once; no argument: as now | `real` |
+| `input.state` | what the engine sees | `keys` and `buttons` down (`real` or `injected`), `mouse` (`x`, `y`, `in_window`), `real`, `waiting`, `next_step` |
+
+Keys are named as `rb_key_name` spells them, any case, `_` for a space (`space`, `a`, `f1`,
+`left_ctrl`, `keypad_1`); buttons `left`, `right`, `middle`, `x1`, `x2`; positions in window
+pixels. Injected input waits for the next step, so a paused game sees it at the next `step`.
 
 The same commands can come from a file, one per line (`#` starts a comment), with the replies on
 stdout:

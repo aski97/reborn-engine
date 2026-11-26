@@ -199,11 +199,14 @@ void rb_platform_common_window_closed(rb_platform_common *common, u32 id) {
     /* Only the down state: the edges still tell what happened during the last pump. */
     if (ws->focused) {
         memset(input->keys_down, 0, sizeof(input->keys_down));
+        memset(input->keys_injected, 0, sizeof(input->keys_injected));
         memset(input->buttons_down, 0, sizeof(input->buttons_down));
+        memset(input->buttons_injected, 0, sizeof(input->buttons_injected));
     }
     /* A held button keeps the mouse in its window even without focus. */
     if (input->mouse_window == id) {
         memset(input->buttons_down, 0, sizeof(input->buttons_down));
+        memset(input->buttons_injected, 0, sizeof(input->buttons_injected));
         input->mouse_window = RB_HANDLE_INVALID;
         input->mouse_position = (rb_mouse_position){0};
     }

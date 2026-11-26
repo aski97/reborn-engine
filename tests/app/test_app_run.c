@@ -348,3 +348,48 @@ RB_TEST(app_run, game_commands_run_from_the_script) {
         run_script(&callbacks, "game", "test.count\n# a comment\n\ntest.count\nquit\n"), 0);
     RB_EXPECT_EQ_UINT(game_command_calls, 2);
 }
+
+/* ============================================================================
+ * Input injection (ADR 0023)
+ * ========================================================================== */
+
+/* What the updates saw of Space, step by step. */
+static char space_trace[TRACE_CAPACITY + 1];
+
+static void update_space(void *state, rb_app *app, f64 dt) {
+    (void)state;
+    (void)dt;
+    const rb_platform_state *platform = rb_app_platform(app);
+    usize                    len = strlen(space_trace);
+    if (len < TRACE_CAPACITY) {
+        /* P pressed, R released, D held, - nothing. */
+        char c = rb_key_was_pressed(platform, RB_KEY_SPACE)    ? 'P'
+                 : rb_key_was_released(platform, RB_KEY_SPACE) ? 'R'
+                 : rb_key_is_down(platform, RB_KEY_SPACE)      ? 'D'
+                                                               : '-';
+        space_trace[len] = c;
+        space_trace[len + 1] = '\0';
+    }
+}
+
+/* The edges survive the step's pump: the update reads them in the steps the replies named. */
+RB_TEST(app_run, injected_tap_is_pressed_then_released_in_the_next_steps) {
+    reset_recorder(true, 1000);
+    space_trace[0] = '\0';
+    rb_app_callbacks callbacks = test_callbacks;
+    callbacks.update = update_space;
+    RB_EXPECT_EQ_INT(run_script(&callbacks, "tap", "pause\ninput.tap space\nstep 3\nquit\n"), 0);
+    RB_EXPECT_EQ_STR(space_trace, "PR-");
+}
+
+RB_TEST(app_run, injected_key_stays_down_until_released) {
+    reset_recorder(true, 1000);
+    space_trace[0] = '\0';
+    rb_app_callbacks callbacks = test_callbacks;
+    callbacks.update = update_space;
+    RB_EXPECT_EQ_INT(run_script(&callbacks, "hold",
+                                "pause\ninput.real off\ninput.key space down\nstep 2\n"
+                                "input.key space up\nstep\nquit\n"),
+                     0);
+    RB_EXPECT_EQ_STR(space_trace, "PDR");
+}

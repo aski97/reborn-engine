@@ -14,7 +14,9 @@ configure_file(
 set(REBORN_SOURCES
     src/app/app.c
     src/app/app_commands.c
+    src/app/app_input.c
     src/app/frame_timing.c
+    src/app/input_queue.c
     src/command/command.c
     src/command/command_script.c
     src/command/command_server.c

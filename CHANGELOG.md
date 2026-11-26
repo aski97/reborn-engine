@@ -80,6 +80,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   them; the clear color stays on the wall clock.
 - `reborn_add_test_executable` (`cmake/RebornTesting.cmake`): a test executable on the engine's
   framework with CTest discovery, used by the engine's tests and by each game's.
+- Input injection (ADR 0023): the `input.*` commands press and release keys (`input.key`,
+  `input.tap`) and mouse buttons (`input.button`, `input.click`), move the mouse (`input.mouse`)
+  and turn the wheel (`input.wheel`) in the next step, the same on every platform and without a
+  display; the reply names that step. Injected input reaches the game as real input does (events
+  and queries) and stays held when the window loses focus. `input.real off` ignores keyboard and
+  mouse, for an agent driving the game on someone's desktop; `input.state` shows what the engine
+  sees. `rb_app_real_input` lets a game show it.
+- Sandbox: an input panel above the commands panel: keys and buttons down, the mouse position,
+  real input on or off.
 
 ### Changed
 - `rb_app_run(&callbacks, argc, argv)` takes the command line, for the engine's options

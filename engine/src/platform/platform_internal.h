@@ -50,6 +50,15 @@ typedef struct rb_input_state {
     u32               mouse_window; /* handle of the window of the last mouse event, 0 if none */
     rb_mouse_position mouse_position;
     rb_mouse_wheel    wheel; /* sum of the last pump */
+    /*
+     * Held because of an injection (ADR 0023): the OS does not know about
+     * them, so focus loss and the OS's own corrections must not release them.
+     */
+    bool keys_injected[RB_KEY_COUNT];
+    bool buttons_injected[RB_MOUSE_BUTTON_COUNT];
+    /* Real input turned off: the backends' reports of keys, buttons, moves and wheel are dropped.
+     */
+    bool real_input_off;
 } rb_input_state;
 
 typedef struct rb_platform_common {
@@ -138,7 +147,8 @@ void rb_platform_common_begin_pump(rb_platform_common *common);
 /*
  * A press of a key already down is a repeat; a release of a key not down (it
  * went down before the window had focus) sends nothing. `key` must be a named
- * key: backends drop RB_KEY_UNKNOWN.
+ * key: backends drop RB_KEY_UNKNOWN. These four drop the report while real
+ * input is off.
  */
 void rb_platform_common_key(rb_platform_common *common, u32 id, rb_key key, bool down);
 
@@ -149,9 +159,41 @@ void rb_platform_common_mouse_moved(rb_platform_common *common, u32 id, rb_mouse
 void rb_platform_common_mouse_wheel(rb_platform_common *common, u32 id, rb_mouse_wheel delta);
 
 /*
- * Releases every held key and button, with events to window `id`: the
- * releases will reach another window or client, never this one.
+ * Releases every key and button held by the devices, with events to window
+ * `id`: the releases will reach another window or client, never this one.
+ * Injected ones stay down: only an injection releases them (ADR 0023).
  */
 void rb_platform_common_release_input(rb_platform_common *common, u32 id);
+
+/* ============================================================================
+ * Injected input (ADR 0023)
+ *
+ * The same state changes and events as the backends' reports, whatever real
+ * input does. Injected keys and buttons are marked until they go up; a real
+ * press or release of one takes it over.
+ * ========================================================================== */
+
+void rb_platform_common_inject_key(rb_platform_common *common, u32 id, rb_key key, bool down);
+void rb_platform_common_inject_mouse_button(rb_platform_common *common, u32 id,
+                                            rb_mouse_button button, bool down,
+                                            rb_mouse_position position);
+void rb_platform_common_inject_mouse_moved(rb_platform_common *common, u32 id,
+                                           rb_mouse_position position);
+void rb_platform_common_inject_mouse_wheel(rb_platform_common *common, u32 id,
+                                           rb_mouse_wheel delta);
+
+/*
+ * Turning real input off first releases what the devices hold (events to
+ * window `id`): their releases would be dropped, leaving keys down for good.
+ */
+void rb_platform_common_set_real_input(rb_platform_common *common, u32 id, bool enabled);
+
+/*
+ * The key or button `text` names, as rb_key_name / rb_mouse_button_name spell
+ * it, ignoring case, a space or '_' alike ("left_ctrl"). RB_KEY_UNKNOWN / false
+ * when nothing matches.
+ */
+rb_key rb_key_from_name(const char *text);
+bool   rb_mouse_button_from_name(const char *text, rb_mouse_button *out);
 
 #endif /* RB_PLATFORM_INTERNAL_H */

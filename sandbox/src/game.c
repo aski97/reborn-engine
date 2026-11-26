@@ -3,11 +3,13 @@
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
  * code, the builtin font's atlas and text drawn with it, numbers drawn from a
- * seed, and the commands' panel (pause, steps, its own sandbox.clear).
+ * seed, the commands' panel (pause, steps, its own sandbox.clear) and the
+ * input panel (keys, buttons and mouse as the engine sees them, injected or not).
  */
 #include "game.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include <reborn/camera2d.h>
 #include <reborn/clock.h>
@@ -884,6 +886,84 @@ static void sandbox_draw_commands(const sandbox_state *game, rb_app *app) {
 }
 
 /* ============================================================================
+ * Input panel
+ * ========================================================================== */
+
+#define SANDBOX_INPUT_HEIGHT 88.0f
+#define SANDBOX_INPUT_CHARS  21u /* 16-pixel glyphs across the panel, after the margins */
+
+/*
+ * Above the commands panel (ADR 0023): the keys and buttons down and the mouse
+ * as the engine sees them, and whether real input is on. Injected input shows
+ * here like real input (input.key, input.click...), and the sandbox's keys
+ * (L, T, R, B, Z) answer it; the glow follows an injected mouse too.
+ */
+static void sandbox_draw_input(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer       *renderer = rb_app_renderer(app);
+    rb_platform_state *platform = rb_app_platform(app);
+    rb_window_size     size = rb_window_get_size(platform, rb_app_window(app));
+    const f32          left = SANDBOX_COMMANDS_LEFT;
+    const f32 top = (f32)size.pixel_height - SANDBOX_GRAPH_MARGIN - SANDBOX_COMMANDS_HEIGHT - 8.0f -
+                    SANDBOX_INPUT_HEIGHT;
+    rb_renderer_draw_quad(renderer, left, top, SANDBOX_COMMANDS_WIDTH, SANDBOX_INPUT_HEIGHT,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+
+    rb_text_style style = sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_text_draw(renderer, left + 8.0f, top + 8.0f, &style, "INPUT");
+    bool          real = rb_app_real_input(app);
+    rb_text_style real_style = style;
+    real_style.align_x = RB_TEXT_RIGHT;
+    real_style.color =
+        real ? rb_color_srgb(0.3f, 0.85f, 0.4f, 1.0f) : rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f);
+    rb_text_draw(renderer, left + SANDBOX_COMMANDS_WIDTH - 8.0f, top + 8.0f, &real_style,
+                 real ? "REAL ON" : "REAL OFF");
+
+    /* Every key down, by name, as many as fit; "..." when more are held. */
+    char  keys[SANDBOX_INPUT_CHARS + 1];
+    usize used = 0;
+    bool  cut = false;
+    for (u32 key = 1; key < RB_KEY_COUNT && !cut; ++key) {
+        if (!rb_key_is_down(platform, (rb_key)key)) {
+            continue;
+        }
+        const char *name = rb_key_name((rb_key)key);
+        usize       need = strlen(name) + (used > 0 ? 1 : 0);
+        if (used + need > SANDBOX_INPUT_CHARS - 3) {
+            cut = true;
+            break;
+        }
+        snprintf(keys + used, sizeof(keys) - used, "%s%s", used > 0 ? " " : "", name);
+        used += need;
+    }
+    if (cut) {
+        snprintf(keys + used, sizeof(keys) - used, "...");
+    } else if (used == 0) {
+        snprintf(keys, sizeof(keys), "-");
+    }
+    rb_text_style value = style;
+    value.color = rb_color_srgb(0.7f, 0.85f, 1.0f, 1.0f);
+    rb_text_draw(renderer, left + 8.0f, top + 34.0f, &value, keys);
+
+    /* The mouse: where it is, then one letter per button, lit while down. */
+    rb_mouse_position mouse = rb_mouse_get_position(platform);
+    char              where[24];
+    snprintf(where, sizeof(where), "%d,%d", mouse.x, mouse.y);
+    rb_text_draw(renderer, left + 8.0f, top + 60.0f, &value, where);
+    static const char *const letters[RB_MOUSE_BUTTON_COUNT] = {"L", "R", "M", "4", "5"};
+    for (u32 button = 0; button < RB_MOUSE_BUTTON_COUNT; ++button) {
+        rb_text_style letter = style;
+        letter.color = rb_mouse_button_is_down(platform, (rb_mouse_button)button)
+                           ? rb_color_srgb(1.0f, 0.85f, 0.2f, 1.0f)
+                           : rb_color_srgb(1.0f, 1.0f, 1.0f, 0.25f);
+        rb_text_draw(renderer, left + SANDBOX_COMMANDS_WIDTH - 8.0f - (f32)(5 - button) * 24.0f,
+                     top + 60.0f, &letter, letters[button]);
+    }
+}
+
+/* ============================================================================
  * Render
  * ========================================================================== */
 
@@ -910,6 +990,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_draw_text_demo(game, app);
     sandbox_draw_random(game, app);
     sandbox_draw_commands(game, app);
+    sandbox_draw_input(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
     }

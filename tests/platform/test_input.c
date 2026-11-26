@@ -336,3 +336,153 @@ RB_TEST(input, key_and_button_names) {
     RB_EXPECT_EQ_STR(rb_mouse_button_name(RB_MOUSE_BUTTON_X2), "X2");
     RB_EXPECT_EQ_STR(rb_mouse_button_name(RB_MOUSE_BUTTON_COUNT), "Unknown");
 }
+
+RB_TEST(input, names_read_back_in_any_case_with_underscores) {
+    RB_EXPECT_EQ_INT(rb_key_from_name("w"), RB_KEY_W);
+    RB_EXPECT_EQ_INT(rb_key_from_name("W"), RB_KEY_W);
+    RB_EXPECT_EQ_INT(rb_key_from_name("space"), RB_KEY_SPACE);
+    RB_EXPECT_EQ_INT(rb_key_from_name("left_ctrl"), RB_KEY_LEFT_CTRL);
+    RB_EXPECT_EQ_INT(rb_key_from_name("Left Ctrl"), RB_KEY_LEFT_CTRL);
+    RB_EXPECT_EQ_INT(rb_key_from_name("keypad_1"), RB_KEY_KP_1);
+    RB_EXPECT_EQ_INT(rb_key_from_name("f12"), RB_KEY_F12);
+    RB_EXPECT_EQ_INT(rb_key_from_name("f1"), RB_KEY_F1);
+    RB_EXPECT_EQ_INT(rb_key_from_name("left"), RB_KEY_LEFT);
+    /* Prefixes and the fallback name are not keys. */
+    RB_EXPECT_EQ_INT(rb_key_from_name("lef"), RB_KEY_UNKNOWN);
+    RB_EXPECT_EQ_INT(rb_key_from_name("left_ctrlx"), RB_KEY_UNKNOWN);
+    RB_EXPECT_EQ_INT(rb_key_from_name("unknown"), RB_KEY_UNKNOWN);
+    RB_EXPECT_EQ_INT(rb_key_from_name(""), RB_KEY_UNKNOWN);
+
+    rb_mouse_button button = RB_MOUSE_BUTTON_COUNT;
+    RB_EXPECT(rb_mouse_button_from_name("right", &button));
+    RB_EXPECT_EQ_INT(button, RB_MOUSE_BUTTON_RIGHT);
+    RB_EXPECT(rb_mouse_button_from_name("X1", &button));
+    RB_EXPECT_EQ_INT(button, RB_MOUSE_BUTTON_X1);
+    RB_EXPECT(!rb_mouse_button_from_name("wheel", &button));
+}
+
+/* ============================================================================
+ * Injected input (ADR 0023)
+ * ========================================================================== */
+
+RB_TEST(input, injected_input_updates_state_and_sends_events_like_real_input) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+
+    rb_platform_common_inject_key(&common, id, RB_KEY_SPACE, true);
+    rb_platform_common_inject_mouse_button(&common, id, RB_MOUSE_BUTTON_LEFT, true, at(10, 20));
+    rb_platform_common_inject_mouse_wheel(&common, id, (rb_mouse_wheel){0.0f, 2.0f});
+
+    RB_EXPECT(common.input.keys_down[RB_KEY_SPACE]);
+    RB_EXPECT(common.input.keys_pressed[RB_KEY_SPACE]);
+    RB_EXPECT(common.input.keys_injected[RB_KEY_SPACE]);
+    RB_EXPECT(common.input.buttons_injected[RB_MOUSE_BUTTON_LEFT]);
+    RB_EXPECT_EQ_INT(common.input.mouse_position.y, 20);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_KEY_PRESSED);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_MOUSE_BUTTON_PRESSED);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_MOUSE_WHEEL);
+
+    rb_platform_common_inject_key(&common, id, RB_KEY_SPACE, false);
+    RB_EXPECT(!common.input.keys_down[RB_KEY_SPACE]);
+    RB_EXPECT(!common.input.keys_injected[RB_KEY_SPACE]);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_KEY_RELEASED);
+}
+
+RB_TEST(input, focus_loss_keeps_injected_keys_and_buttons_down) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+    rb_platform_common_inject_key(&common, id, RB_KEY_LEFT_SHIFT, true);
+    rb_platform_common_inject_mouse_button(&common, id, RB_MOUSE_BUTTON_LEFT, true, at(1, 1));
+    rb_platform_common_key(&common, id, RB_KEY_W, true);
+    count_events(&common);
+
+    rb_platform_common_window_focused(&common, id, false);
+
+    RB_EXPECT(common.input.keys_down[RB_KEY_LEFT_SHIFT]);
+    RB_EXPECT(common.input.buttons_down[RB_MOUSE_BUTTON_LEFT]);
+    RB_EXPECT(!common.input.keys_down[RB_KEY_W]);
+    rb_event ev = next_event(&common);
+    RB_EXPECT_EQ_INT(ev.type, RB_EVENT_KEY_RELEASED);
+    RB_EXPECT_EQ_INT(ev.key.key, RB_KEY_W);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_WINDOW_FOCUS_LOST);
+}
+
+RB_TEST(input, real_press_or_repeat_takes_an_injected_key_over) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+
+    rb_platform_common_inject_key(&common, id, RB_KEY_A, true);
+    rb_platform_common_key(&common, id, RB_KEY_A, true); /* the keyboard's repeat */
+    RB_EXPECT(!common.input.keys_injected[RB_KEY_A]);
+
+    /* An injected repeat of a real key leaves it real: focus loss must still release it. */
+    rb_platform_common_key(&common, id, RB_KEY_B, true);
+    rb_platform_common_inject_key(&common, id, RB_KEY_B, true);
+    RB_EXPECT(!common.input.keys_injected[RB_KEY_B]);
+
+    rb_platform_common_window_focused(&common, id, false);
+    RB_EXPECT(!common.input.keys_down[RB_KEY_A]);
+    RB_EXPECT(!common.input.keys_down[RB_KEY_B]);
+}
+
+RB_TEST(input, real_input_off_drops_reports_but_not_injections_or_window_events) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+    rb_platform_common_set_real_input(&common, id, false);
+
+    rb_platform_common_key(&common, id, RB_KEY_W, true);
+    rb_platform_common_mouse_button(&common, id, RB_MOUSE_BUTTON_LEFT, true, at(5, 5));
+    rb_platform_common_mouse_moved(&common, id, at(7, 7));
+    rb_platform_common_mouse_wheel(&common, id, (rb_mouse_wheel){0.0f, 1.0f});
+    RB_EXPECT(!common.input.keys_down[RB_KEY_W]);
+    RB_EXPECT(!common.input.buttons_down[RB_MOUSE_BUTTON_LEFT]);
+    RB_EXPECT_EQ_INT(common.input.mouse_position.x, 0);
+    RB_EXPECT_EQ_UINT(count_events(&common), 0);
+
+    rb_platform_common_inject_mouse_moved(&common, id, at(3, 4));
+    RB_EXPECT_EQ_INT(common.input.mouse_position.x, 3);
+    rb_platform_common_window_resized(&common, id, (rb_window_size){800, 600, 800, 600});
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_MOUSE_MOVED);
+    RB_EXPECT_EQ_INT(next_event(&common).type, RB_EVENT_WINDOW_RESIZED);
+
+    rb_platform_common_set_real_input(&common, id, true);
+    rb_platform_common_key(&common, id, RB_KEY_W, true);
+    RB_EXPECT(common.input.keys_down[RB_KEY_W]);
+}
+
+/* Their releases would be dropped: without this they would stay down for good. */
+RB_TEST(input, turning_real_input_off_releases_what_the_devices_hold) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+    rb_platform_common_key(&common, id, RB_KEY_W, true);
+    rb_platform_common_inject_key(&common, id, RB_KEY_S, true);
+    count_events(&common);
+
+    rb_platform_common_set_real_input(&common, id, false);
+    RB_EXPECT(!common.input.keys_down[RB_KEY_W]);
+    RB_EXPECT(common.input.keys_down[RB_KEY_S]);
+    rb_event ev = next_event(&common);
+    RB_EXPECT_EQ_INT(ev.type, RB_EVENT_KEY_RELEASED);
+    RB_EXPECT_EQ_INT(ev.key.key, RB_KEY_W);
+
+    /* Already off: nothing more to release. */
+    rb_platform_common_set_real_input(&common, id, false);
+    RB_EXPECT_EQ_UINT(count_events(&common), 0);
+}
+
+RB_TEST(input, closing_the_window_clears_the_injected_marks) {
+    rb_platform_common common;
+    RB_REQUIRE(rb_platform_common_init(&common));
+    u32 id = open_focused_window(&common);
+    rb_platform_common_inject_key(&common, id, RB_KEY_S, true);
+    rb_platform_common_inject_mouse_button(&common, id, RB_MOUSE_BUTTON_LEFT, true, at(1, 1));
+
+    rb_platform_common_window_closed(&common, id);
+    RB_EXPECT(!common.input.keys_injected[RB_KEY_S]);
+    RB_EXPECT(!common.input.buttons_injected[RB_MOUSE_BUTTON_LEFT]);
+}

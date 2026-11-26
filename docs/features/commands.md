@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.2.0 (2026-11-24) |
-| **Updated** | v0.2.0 (2026-11-24) |
-| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
-| **ADRs** | [0022](../adr/0022-command-system.md) |
+| **Updated** | v0.2.0 (2026-11-26) |
+| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/app/app_input.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
+| **ADRs** | [0022](../adr/0022-command-system.md), [0023](../adr/0023-input-injection.md) |
 
 ## Summary
 Named actions with arguments (`step 10`, `blink.state`), each answering with one JSON line. They
@@ -31,13 +31,22 @@ script can pause a game, advance it step by step and read its state, on Windows 
 - **Engine commands:** `help [name]`, `status`, `pause`, `resume`, `step [count]` (pauses, runs
   1..100000 steps at once, each with a fresh frame arena), `quit`, `wait <steps>` (scripts only,
   refused while paused).
+- **Input commands** (ADR 0023): `input.key <key> <down|up>`, `input.tap <key>`,
+  `input.button <button> <down|up> [<x> <y>]`, `input.click <x> <y> [button]`,
+  `input.mouse <x> <y>`, `input.wheel <dy> [dx]` queue input for the next step and reply with it
+  (`step`, plus `release_step` for a tap or a click, the step after); at most 64 wait at once.
+  `input.real [on|off]` ignores keyboard and mouse at once; `input.state` shows the keys and
+  buttons down (real or injected), the mouse, real input and what waits. Details in
+  [input.md](input.md).
+- **Names:** the commands that drive the run have none (`help`, `step`...); every other engine
+  command lives in its subsystem's group (`input.*`); game commands carry the game's prefix.
 - **Game commands:** registered in `init` with `rb_app_register_command`; names lowercase with
   the game's prefix (`blink.state`). At most 64 commands in all. Each game's README lists its
   own; the main README lists the engine's. The sandbox has `sandbox.clear [<r> <g> <b>]`.
 - **Client:** `reborn-cmd <port> <line>...` prints each reply; exit code 0 all succeeded, 1 one
   failed, 2 no game or no reply within 60 s.
-- **Not yet:** input injection and screenshots (the next steps), the in-game console, console
-  variables, several clients at once, a hash map for the names.
+- **Not yet:** screenshots (the next step), the in-game console, console variables, several
+  clients at once, a hash map for the names.
 
 ## Design
 ```mermaid
@@ -45,7 +54,7 @@ flowchart LR
     S["--script file"] --> R[app_commands.c<br/>once per frame]
     N["reborn-cmd"] -- "TCP 127.0.0.1" --> SV[command_server.c] --> R
     R --> RUN["command.c<br/>split, find, check, call, reply"]
-    RUN --> E["engine commands<br/>pause, step..."]
+    RUN --> E["engine commands<br/>pause, step, input.*..."]
     RUN --> G["game commands<br/>blink.state..."]
     RUN -- "JSON line" --> OUT["stdout / connection"]
 ```
@@ -86,9 +95,10 @@ Arguments: `rb_command_arg_u32` / `_u64` / `_f32` (write the error and return fa
 - Command-line options passed through `rb_app_run` (B1); text lines in, JSON lines out (C1).
 - `argc`/`argv`-style arguments with parsing helpers (D1); a typed reply writer (E1).
 - Fixed table (F1); commands at the start of the frame, pause in the engine (G1).
+- Engine commands grouped by subsystem, input queued for the next step (ADR 0023, E2, B1).
 
 ## Future work
-- Input injection, screenshots, then golden images and unattended runs on top of scripts.
+- Screenshots, then golden images and unattended runs on top of scripts.
 - The in-game console with the debug UI; console variables; state inspection commands.
 - A hash map for the registry (v0.3.0); several clients at once if agents need it.
 
@@ -96,3 +106,4 @@ Arguments: `rb_command_arg_u32` / `_u64` / `_f32` (write the error and return fa
 | Version | Date | Change |
 |---|---|---|
 | v0.2.0 | 2026-11-24 | First version: registry, script, local server, `reborn-cmd`, pause and step; Blink's and the sandbox's commands |
+| v0.2.0 | 2026-11-26 | `input.*` commands (ADR 0023); engine commands outside the run's control grouped by subsystem |

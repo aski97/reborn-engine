@@ -200,8 +200,7 @@ void rb_app_request_quit(rb_app *app, app_quit_reason reason) {
     }
 }
 
-void rb_app_pump_events(rb_app *app) {
-    rb_platform_pump(app->platform);
+static void app_deliver_events(rb_app *app) {
     rb_event event;
     while (rb_platform_poll_event(app->platform, &event)) {
         if (app->callbacks->on_event != NULL) {
@@ -213,6 +212,12 @@ void rb_app_pump_events(rb_app *app) {
     }
 }
 
+/* Without the injected input: that waits for a step (ADR 0023). */
+void rb_app_pump_events(rb_app *app) {
+    rb_platform_pump(app->platform);
+    app_deliver_events(app);
+}
+
 /*
  * One fixed step: pump, events, update (ADR 0011, D1). Pumping per step, not
  * per frame, makes rb_key_was_pressed cover exactly the time since the
@@ -220,7 +225,10 @@ void rb_app_pump_events(rb_app *app) {
  * frame with none does not lose it.
  */
 void rb_app_step(rb_app *app) {
-    rb_app_pump_events(app);
+    rb_platform_pump(app->platform);
+    /* After the pump, which clears the edges, and before the events go out (ADR 0023, B1). */
+    rb_app_input_apply(app);
+    app_deliver_events(app);
     /* Every event of the step was still delivered; only the update is skipped. */
     if (rb_app_quit_requested(app)) {
         return;
@@ -434,6 +442,11 @@ void rb_app_quit(rb_app *app) {
 bool rb_app_is_paused(const rb_app *app) {
     RB_ASSERT(app != NULL);
     return app->paused;
+}
+
+bool rb_app_real_input(const rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return !rb_platform_common_of_const(app->platform)->input.real_input_off;
 }
 
 u64 rb_app_step_index(const rb_app *app) {

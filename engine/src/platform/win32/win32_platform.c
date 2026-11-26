@@ -188,8 +188,12 @@ static void win32_release_stuck_shifts(rb_platform_state *state) {
         int    vk;
     } shifts[] = {{RB_KEY_LEFT_SHIFT, VK_LSHIFT}, {RB_KEY_RIGHT_SHIFT, VK_RSHIFT}};
     for (u32 i = 0; i < RB_ARRAY_COUNT(shifts); ++i) {
-        /* The high bit of GetKeyState's result is set while the key is down. */
-        if (state->common.input.keys_down[shifts[i].key] &&
+        /*
+         * The high bit of GetKeyState's result is set while the key is down.
+         * An injected Shift is down only for us: Windows never saw it (ADR 0023).
+         */
+        const rb_input_state *input = &state->common.input;
+        if (input->keys_down[shifts[i].key] && !input->keys_injected[shifts[i].key] &&
             (GetKeyState(shifts[i].vk) & 0x8000) == 0) {
             rb_platform_common_key(&state->common, window->id, shifts[i].key, false);
         }

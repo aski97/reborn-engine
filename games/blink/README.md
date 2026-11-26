@@ -49,8 +49,9 @@ session. `blink.restart <seed>` starts a session with a chosen one.
 
 ## Commands
 
-Blink takes the engine's commands (`help`, `status`, `pause`, `resume`, `step`, `quit`, `wait`:
-listed in the [main README](../../README.md#commands)) and two of its own, from a script or from
+Blink takes the engine's commands (`help`, `status`, `pause`, `resume`, `step`, `quit`, `wait`,
+`input.*`: listed in the [main README](../../README.md#commands)) and two of its own, from a script
+or from
 `reborn-cmd` (ADR 0022, [commands.md](../../docs/features/commands.md)):
 
 | Command | Reply |
@@ -58,13 +59,15 @@ listed in the [main README](../../README.md#commands)) and two of its own, from 
 | `blink.state` | `phase` (`title`, `playing`, `game_over`), `score`, `lives`, `best`, `phase_time`; while playing, `square`: center `x`, `y` and `side` in world units, `remaining` seconds, and `pixels` (`x`, `y`, `width`, `height`, `center_x`, `center_y`) in window pixels |
 | `blink.restart <seed>` | Back to the title, a new session from that seed |
 
+An agent plays it with injected input (ADR 0023): paused, the square waits, and a click at
+`pixels.center_x`, `pixels.center_y` scores in the next step.
+
 ```sh
 ./build/debug/bin/blink --listen 7777 &
-./build/debug/bin/reborn-cmd 7777 "blink.restart 42" pause "blink.state"
+./build/debug/bin/reborn-cmd 7777 "input.real off" pause "blink.restart 42" "input.tap space" \
+    "step 2" "blink.state"                     # playing: the square's pixels
+./build/debug/bin/reborn-cmd 7777 "input.click 1330.5 222.1" "step 2" "blink.state"   # those pixels: score 1
 ```
-
-Paused, the square waits: a click at `pixels.center_x`, `pixels.center_y` followed by `step 1`
-scores (until input injection, the click comes from outside, e.g. `xdotool`).
 
 ## Code
 

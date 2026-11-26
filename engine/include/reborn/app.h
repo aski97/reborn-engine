@@ -167,6 +167,13 @@ RB_API bool rb_app_is_paused(const rb_app *app);
 /* Steps run since the start: the number the step and status commands report. */
 RB_API u64 rb_app_step_index(const rb_app *app);
 
+/*
+ * Whether keyboard and mouse reach the game: false after `input.real off`
+ * (ADR 0023), while an agent drives it with injected input alone. Games may
+ * show it; injected input looks like real input to them either way.
+ */
+RB_API bool rb_app_real_input(const rb_app *app);
+
 /* ============================================================================
  * Commands (ADR 0022)
  * ========================================================================== */

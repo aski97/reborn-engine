@@ -8,6 +8,7 @@
 #include <reborn/app.h>
 
 #include "app/app_internal.h"
+#include "app/input_queue.h"
 #include "command/command_internal.h"
 #include "command/command_server.h"
 
@@ -46,6 +47,9 @@ struct rb_app {
     bool              script_waiting;
     u64               script_wait_until; /* the step count that ends the wait */
     bool              running_script;    /* the command running came from the script */
+
+    /* Input injection (ADR 0023). */
+    rb_input_queue input_queue;
 };
 
 RB_INLINE bool rb_app_quit_requested(const rb_app *app) {
@@ -70,5 +74,11 @@ void rb_app_commands_stop(rb_app *app);
 
 /* Once per frame, before the steps: the script's next lines, then what the server received. */
 void rb_app_commands_run(rb_app *app);
+
+/* The input.* commands (app_input.c, ADR 0023), into the registry. */
+void rb_app_input_commands_add(rb_app *app);
+
+/* Right after a step's pump: the injections due by this step. */
+void rb_app_input_apply(rb_app *app);
 
 #endif /* RB_APP_STATE_H */

@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.1.0 (2026-11-16) |
-| **Code** | `engine/include/reborn/input.h`, `engine/include/reborn/platform.h`, `engine/src/platform/input.c`, `engine/src/platform/*/` `*_input.c` |
-| **ADRs** | [0006](../adr/0006-platform-layer.md) (F1, O–U) |
+| **Updated** | v0.2.0 (2026-11-26) |
+| **Code** | `engine/include/reborn/input.h`, `engine/include/reborn/platform.h`, `engine/src/platform/input.c`, `engine/src/platform/*/` `*_input.c`, `engine/src/app/input_queue.c`, `engine/src/app/app_input.c` |
+| **ADRs** | [0006](../adr/0006-platform-layer.md) (F1, O–U), [0023](../adr/0023-input-injection.md) |
 
 ## Summary
 Keys by physical position and the mouse, as events in the platform queue and as a per-pump state
@@ -42,6 +42,15 @@ for game code. Same behaviour on Win32 and Xlib.
   not enter the window menu mode (Alt+Space opens no system menu). Alt+F4 still closes.
 - **Linux:** keycodes are read as evdev + 8 (Xorg, XWayland, Xvfb, WSLg); detectable auto-repeat
   is requested at startup (a warning if the server lacks it).
+- **Injected input** (ADR 0023): the `input.*` commands ([commands.md](commands.md)) queue keys,
+  buttons, moves and wheel for the next step, which applies them right after its pump: the same
+  state changes and events as real input, on every platform, without a display. A paused frame
+  applies nothing. Injected keys and buttons are marked while down: focus loss, an X keyboard grab
+  and Win32's stuck-Shift fix release only real ones; a real press, repeat or release of a marked
+  key takes it over.
+- **Real input off** (`input.real off`): the backends' keys, buttons, moves and wheel are dropped;
+  window events and the OS's shortcuts (Alt+F4) still work. Turning it off first releases what
+  the devices hold. `rb_app_real_input` tells a game.
 - Not yet: text input, relative mouse motion and cursor lock, key labels of the current layout,
   mouse enter/leave, cursor shape, gamepads.
 
@@ -60,6 +69,9 @@ flowchart LR
     ST -- "event on a real change" --> Q
     ST --> QRY["rb_key_is_down / was_pressed ..."]
 ```
+Injected input enters at the common code, next to the backends' reports
+(`rb_platform_common_inject_*`), from a queue the application applies after each step's pump.
+
 Backends map OS codes to `rb_key` / `rb_mouse_button` and report them; the common code keeps the
 state, decides repeats and modifiers, and queues the events, so both backends behave the same and
 the logic is unit-tested without windows. `rb_platform_pump` clears the edges and the wheel sum
@@ -93,6 +105,8 @@ if (rb_mouse_button_was_pressed(platform, RB_MOUSE_BUTTON_LEFT)) {
 - Mouse capture while a button is held (`SetCapture`; implicit grab on X11).
 - Input code in its own files (`input.c`, `*_input.c`) rather than growing `platform.c` and the
   backends.
+- Injection at the common code, applied after the step's pump; injected keys marked; real input
+  can be turned off (ADR 0023, A1, B1, F2).
 
 ## Future work
 - Text input events (Unicode), separate from keys.
@@ -100,9 +114,11 @@ if (rb_mouse_button_was_pressed(platform, RB_MOUSE_BUTTON_LEFT)) {
 - Key labels of the current layout for prompts.
 - Mouse enter/leave, cursor shape, gamepads.
 - Action mapping (bindings) once the game lifecycle exists.
+- Recorded input played back through the injection queue, with real input off (record and replay).
 
 ## History
 | Version | Date | Change |
 |---|---|---|
 | v0.1.0 | 2026-11-16 | First version: keys, mouse buttons, moves, wheel; state queries; Win32 and Xlib |
 | v0.1.0 | 2026-11-16 | Under the application layer the pump, hence the edges, follow the update step |
+| v0.2.0 | 2026-11-26 | Injected input (`input.*` commands), marked while held; real input can be turned off |

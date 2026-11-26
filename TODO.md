@@ -108,8 +108,12 @@ platform and without clicking by hand; the sandbox exposes the same commands). I
       and `blink.restart`; the sandbox's `sandbox.clear` and its commands panel. Each later
       feature adds its own (e.g. scene save/load with scenes); the in-game console comes later
       with the debug UI
-- [ ] Input injection: synthetic key and mouse events pushed into the event queue by command or
-      script, the same on every platform and without a display (today: xdotool, Linux only)
+- [x] Input injection (ADR 0023): the `input.*` commands (key, tap, button, click, mouse, wheel)
+      queue input for the next step, applied after its pump as real input would be, on every
+      platform and without a display; injected keys survive focus loss; `input.real off` ignores
+      keyboard and mouse (an agent on someone's desktop), `input.state` shows what the engine
+      sees. Engine commands outside the run's control are grouped by subsystem. The sandbox's input
+      panel; Blink played by an agent on Windows and under Xvfb without xdotool
 - [ ] Screenshots on command: copy the presented image to a file the agent can open (agents read
       PNG, not raw formats like BMP or PPM: own minimal PNG encoder vs external library, to
       decide); later the base for golden-image tests
@@ -372,10 +376,10 @@ In order; each gets a version when it starts.
       history (debug UI)
 
 ### LLM and automation tooling
-Today agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`, and drive
-Linux windows from outside (Xvfb, xdotool). They cannot act inside a running game, ask it for its
-state, or see what it draws. The command system, input injection and screenshots are in v0.2.0
-(driving Blink from an agent); these build on them.
+Agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`; with the
+commands they pause and step a running game, ask it for its state and play it with injected input.
+They cannot yet see what it draws. The command system, input injection and screenshots are in
+v0.2.0 (driving Blink from an agent); these build on them.
 - [ ] Commands from the in-game console, with the debug UI
 - [ ] Several clients on the command server at once, if agents need them (one at a time today,
       ADR 0022); replies on stdout without the `\r` the Windows C runtime adds in text mode
@@ -388,7 +392,12 @@ state, or see what it draws. The command system, input injection and screenshots
       once the renderer can run without a window (see Rendering). Runs a scenario in CI or Docker
 - [ ] Record and replay: each fixed step's input (and the seed) written to a file and played back
       to reproduce a run exactly, e.g. a bug; needs a deterministic simulation (seeded random
-      number generator, fixed step)
+      number generator, fixed step); played back through the injection queue with real input off
+      (ADR 0023)
+- [ ] Real input off from the first frame (`--no-real-input`), if the frames before an agent's first
+      command ever matter (ADR 0023, F2: a command today)
+- [ ] `help <group>` (`help input`): the commands of a group, when the list grows past a screen
+      (ADR 0023, E2)
 - [ ] Golden-image tests: screenshots compared with reference images (see Testing)
 - [ ] Frame number on every log line, to match log lines, commands and screenshots
 - [ ] A page for agents listing commands, variables and output formats, linked from `CLAUDE.md`
