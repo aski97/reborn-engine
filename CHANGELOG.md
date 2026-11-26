@@ -101,6 +101,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   panel at the top, with its number and file size.
 
 ### Changed
+- Test presets run the tests in parallel on every core (`jobs: 0`): about 13 s instead of 31 s on
+  Windows; `-j1` runs them one at a time.
 - `rb_app_run(&callbacks, argc, argv)` takes the command line, for the engine's options
   (`--script`, `--listen`, `--help`); an unknown option fails the run. Games' `main` passes
   `argc` and `argv` (or 0 and `NULL`).

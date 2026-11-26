@@ -90,8 +90,10 @@ WSLg, or a Linux machine), outside these scripts.
 | `rb_version_string()`, `rb_version_number()` | version of the linked engine |
 
 CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANITIZERS`, `REBORN_BUILD_SANDBOX`,
-`REBORN_BUILD_GAMES` (the games under `games/`, ADR 0014), `REBORN_BUILD_TESTS` (see
-[unit-testing.md](unit-testing.md)). Each configure preset has a matching test preset.
+`REBORN_BUILD_GAMES` (the games under `games/`, ADR 0014), `REBORN_BUILD_TOOLS` (`tools/`:
+`reborn-cmd`, ADR 0022), `REBORN_BUILD_TESTS` (see [unit-testing.md](unit-testing.md)). Each
+configure preset has a matching test preset, which runs the tests in parallel on every core
+(`jobs: 0`; `-j1` runs them one at a time).
 
 ## Decisions
 - CMake + Ninja + Clang + C17 → [ADR 0001](../adr/0001-build-system-compiler-standard.md).
@@ -113,3 +115,5 @@ CMake options: `REBORN_SHARED`, `REBORN_WARNINGS_AS_ERRORS`, `REBORN_ENABLE_SANI
 | v0.1.0 | 2026-11-15 | Linux scripts gate on `ctest` only; the sandbox runs on a Linux desktop |
 | v0.1.0 | 2026-11-17 | Shaders compiled by `glslc` at build time and embedded; `glslc` in the Linux container |
 | v0.2.0 | 2026-11-24 | `REBORN_BUILD_GAMES`: the games under `games/` |
+| v0.2.0 | 2026-11-24 | `REBORN_BUILD_TOOLS`: `reborn-cmd` under `tools/` |
+| v0.2.0 | 2026-11-26 | Test presets run in parallel on every core |

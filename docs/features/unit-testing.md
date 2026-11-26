@@ -68,8 +68,8 @@ RB_TEST(arena, push_returns_aligned_memory) {
 | `_NEAR(a, b, eps)` | `fabs(a - b) <= eps`; NaN fails |
 
 ```sh
-ctest --preset debug                # all tests (debug-asan for sanitizers)
-ctest --preset debug -R arena -j8   # filter, parallel
+ctest --preset debug                # all tests, in parallel (debug-asan for sanitizers)
+ctest --preset debug -R arena -j1   # filter, one at a time
 ./build/debug/bin/reborn_tests      # all tests in one process, quickest to debug
 ./build/debug/bin/reborn_tests --list | --run suite.name
 ```
@@ -96,3 +96,4 @@ comparisons, fuzzing (libFuzzer), coverage (`llvm-cov`).
 | v0.1.0 | 2026-11-15 | First version |
 | v0.1.0 | 2026-11-16 | `tests/support/`: failing allocator |
 | v0.2.0 | 2026-11-24 | `reborn_add_test_executable`, shared with the games' tests |
+| v0.2.0 | 2026-11-26 | Test presets run the tests in parallel on every core |

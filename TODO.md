@@ -1,137 +1,108 @@
 # Roadmap
 
-## v0.1.0 — Foundations (released 2026-11-23)
-
-**Project setup**
-- [x] Folder layout, git, `.gitignore` / `.gitattributes`
-- [x] CMake + presets (Clang, Ninja, C17)
-- [x] Single-source version + generated `version.h`
-- [x] Docs: changelog, roadmap, ADRs, feature pages, `CLAUDE.md`
-- [x] Verify CMake build on Windows (all presets)
-- [x] Verify CMake build on Linux (Docker, all presets — ADR 0005)
-
-**Unit testing**
-- [x] `rb_test.h`: test macros, expectations, auto-registration (`__attribute__((constructor))`)
-- [x] CTest integration (`ctest --preset debug`, one entry per test, JUnit output — ADR 0004)
-- [x] `tests/` layout mirroring `engine/src/`, first test for `version`
-- [x] Feature page + ADR
-
-**Application layer and windows**
-- [x] Platform abstraction + Win32 backend (ADR 0006)
-- [x] Generational handle pool and index-only ring buffer (ADR 0007)
-- [x] Linux backend: Xlib (ADR 0006)
-- [x] Linux build scripts gate on `ctest`; the sandbox runs on a Linux desktop
-- [x] Window lifecycle: resize, focus, minimize (events + queries, ADR 0006)
-- [x] Event queue (fixed-size ring buffer, ADR 0006)
-- [x] Basic keyboard/mouse input by physical key position (ADR 0006)
-
-**Game lifecycle**
-- [x] High-resolution monotonic timer and sleep (done before Memory, ADR 0009); the logger's `t` moves
-      to it (ADR 0008, H); the sandbox loop stops spinning a CPU core
-- [x] Application interface (configure / init / on_event / update / render / shutdown); the
-      engine allocates the game's state through the allocators (ADR 0011)
-- [x] Game loop: frame timing, per-frame arena reset, frame cap until vsync (ADR 0011)
-- [x] Timestep strategy: fixed step with accumulator, one pump per step (ADR 0011)
-
-**Logging** (done before finishing the windows, to see their events)
-- [x] Levels (TRACE → FATAL), console with colors, file output (ADR 0008)
-- [x] `RB_ASSERT`
-- [x] Structured output (JSON lines) for LLM consumption
-
-**Memory**
-- [x] OS allocation: reserve / commit / decommit / release (VirtualAlloc / mmap, ADR 0010)
-- [x] Arena allocator: virtual memory or caller buffer, temp scopes (ADR 0010)
-- [x] Allocator interface, arena adapter, heap allocator; system startup takes an allocator
-      instead of a size query (ADR 0006, B3; ADR 0010)
-- [x] ASan integration for custom allocators (`ASAN_POISON_MEMORY_REGION` / `ASAN_UNPOISON_MEMORY_REGION`),
-      otherwise overflows between objects inside an arena go undetected
-- [x] Failing test allocator (fails at the N-th allocation) to cover error paths
-- [x] Allocation tracking by tag, leak report, arena high-water mark (ADR 0012)
-
-**Rendering (Vulkan)**
-- [x] Vulkan loading: loader opened at run time, function tables (ADR 0013)
-- [x] Instance (Vulkan 1.3), validation layers, debug messenger; public `rb_renderer` started
-      by the app (ADR 0013)
-- [x] Surface (created by the platform), GPU ranked by type with lavapipe as last resort, device
-      with one graphics + present queue, swapchain (sRGB, vsync option) recreated when the window's
-      pixel size changes; `rb_renderer_startup` takes the platform and window (ADR 0013, J–Q)
-- [x] Command buffers, synchronization, two frames in flight; each frame cleared and presented,
-      clear color set by the game (`reborn/color.h`); no frame cap by default (ADR 0013, R–Z)
-- [x] Shaders and pipeline: first triangle, then `rb_renderer_draw_quad` in window pixels; GLSL
-      compiled by `glslc` at build time and embedded; quad data as push constants (ADR 0015)
-
-## Games
-
 From v0.2.0 the roadmap follows a ladder of small games of our own, simplest first (ADR 0014).
 Engine tasks come out of building them: a piece (container, thread, file format...) is added when
 a game needs it, and moves from the backlog into that game's version. The sandbox keeps exercising
 every engine feature. "Likely needs" are guesses, not tasks.
 
-## v0.2.0
+A task with parts lists them as sub-tasks; the parts already done are checked, so what is left
+shows at a glance. A trigger ("when...", "with...") says which feature will call for the task.
+Details live in the ADRs, the feature pages and the changelog: here, the concepts.
+
+## v0.2.0 (current)
 
 **Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
 up, a miss costs a life; score and lives are shown as text.
 In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
 The game starts as soon as it can run, so later steps answer its real needs instead of guesses.
 No batching yet: a few hundred quads and glyphs fit one draw each.
-- [x] Math library and 2D camera: vectors and matrices; the game draws in world units, independent
-      of the window's resolution (ADR 0015, B3); screen-to-world conversion for the mouse; UI and
-      debug drawing stay in window pixels next to the world (ADR 0016)
-- [x] GPU memory and textures: one device memory allocation per resource, images uploaded through
-      a staging buffer, nearest and linear samplers, one descriptor set per texture; public
-      `rb_texture` (create from RGBA pixels, destroy, draw tinted); the quad shader samples a
-      texture, a 1x1 white one for plain quads (ADR 0017)
-- [x] Fonts: the engine's own 8x8 bitmap font, glyphs packed into an atlas texture by a packer
-      any glyph source can feed; public `rb_font` (glyph rectangle, offset, advance; ascent,
-      descent, line gap); `rb_renderer_draw_texture_region` picks a glyph out of the atlas
-      (ADR 0018)
-- [x] Random number generator with an explicit seed: PCG32, `rb_rng` owned by the caller, the
-      seed picked and logged by the game; the square's random spot (ADR 0019)
-- [x] The game in `games/blink/` (ADR 0014): `REBORN_BUILD_GAMES`, one target per game; layers
-      (rules, input, view, glue) with the rules and input tested by `blink_tests`; playable
-      without text (the square shrinks as its timer, speed-up, lives as pips, game over and
-      restart), score and lives logged. Assets deferred: Blink has none. From here on Blink
-      drives the engine tasks
-- [x] Window icon (ADR 0020): `rb_window_desc.icons` at several sizes, set before the window shows
-      (Win32 `WM_SETICON`, X11 `_NET_WM_ICON`); Blink and the sandbox draw theirs in code
-- [x] Text rendering (ADR 0021): `rb_text_draw` and `rb_text_measure` with a reusable style (size
-      as the line height in the current space), anchors with horizontal and vertical alignment,
-      `\n` lines, UTF-8 decoded. Blink's title screen (a new title phase in the rules), HUD and
-      game over in window pixels at a whole scale per 180 pixels of height
+- [x] 2D math and camera (ADR 0016)
+  - [x] Vectors, rectangles, matrices, orthographic projection
+  - [x] World units independent of the window's resolution, the design area always whole
+        (letterbox), zoom
+  - [x] Screen-to-world and world-to-screen conversion
+  - [x] World and window pixels in the same frame (UI and debug drawing in pixels)
+- [x] GPU memory and textures (ADR 0017)
+  - [x] One device memory allocation per resource
+  - [x] Uploads through a staging buffer
+  - [x] Nearest and linear samplers, one descriptor set per texture
+  - [x] Texture handles: create from RGBA pixels, destroy, validity, a cap on live textures
+  - [x] Tinted textured quads; plain quads through a 1x1 white texture
+- [x] Fonts (ADR 0018)
+  - [x] The engine's own 8x8 bitmap font: ASCII, a box for the rest
+  - [x] Glyph sources feeding a shelf packer into one atlas
+  - [x] Glyph and font metrics
+  - [x] Drawing a region of a texture
+- [x] Random number generator (ADR 0019)
+  - [x] PCG32 with an explicit seed, the same sequence everywhere, owned by the caller
+  - [x] Integers in a range without modulo bias, floats
+  - [x] The engine-wide rule for header-only code
+- [x] Blink, the first game (ADR 0014). Assets deferred: Blink has none. From here on Blink drives
+      the engine tasks
+  - [x] Layers (rules, input, view, glue), rules and input tested
+  - [x] Playable without text: the shrinking square, speed-up, lives, game over, restart
+  - [x] Seed, score and lives logged
+  - [x] Games in the build, one target each; one test runner for the engine and the games
+  - [x] A README per game, a list of the games
+- [x] Window icon (ADR 0020)
+  - [x] One icon at several sizes, set before the window shows
+  - [x] Sizes picked for the window's DPI (Win32), every size given (X11)
+  - [x] An image type for RGBA pixels, later shared by the PNG writer and captures
+  - [x] Icons drawn in code by Blink and the sandbox
+- [x] Text rendering (ADR 0021)
+  - [x] Drawing and measuring with a reusable style: size, color, alignment
+  - [x] Anchors with horizontal and vertical alignment, several lines
+  - [x] UTF-8 decoding, the missing glyph for unknown characters
+  - [x] In window pixels or world units
+  - [x] Layout apart from the drawing, tested without a GPU
+  - [x] Blink's title screen, HUD and game over at a whole pixel scale
 
 **Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
 platform and without clicking by hand; the sandbox exposes the same commands). In order.
-- [x] Command system (ADR 0022): named commands with arguments, registered by the engine and the
-      game, each answering with one JSON line; from a script (`--script`) and from a local TCP
-      connection (`--listen`, the `reborn-cmd` client); `rb_app_run` takes `argc`/`argv`. Engine
-      commands `help`, `status`, `pause`, `resume`, `step`, `quit`, `wait`; Blink's `blink.state`
-      and `blink.restart`; the sandbox's `sandbox.clear` and its commands panel. Each later
-      feature adds its own (e.g. scene save/load with scenes); the in-game console comes later
-      with the debug UI
-- [x] Input injection (ADR 0023): the `input.*` commands (key, tap, button, click, mouse, wheel)
-      queue input for the next step, applied after its pump as real input would be, on every
-      platform and without a display; injected keys survive focus loss; `input.real off` ignores
-      keyboard and mouse (an agent on someone's desktop), `input.state` shows what the engine
-      sees. Engine commands outside the run's control are grouped by subsystem. The sandbox's input
-      panel; Blink played by an agent on Windows and under Xvfb without xdotool
-- [x] Screen capture (ADR 0024): `screen.capture [path]` renders a frame and saves it as PNG;
-      `rb_renderer_capture_frame` / `rb_renderer_captured_image` copy the swapchain image back
-      (`TRANSFER_SRC` where offered); own PNG writer, `rb_image_write_png`, on reusable layers
-      (CRC-32 and Adler-32, DEFLATE with fixed Huffman codes, zlib). The sandbox's P key and
-      capture panel; Blink seen by an agent on Windows and under Xvfb
+- [x] Command system (ADR 0022)
+  - [x] Named commands with arguments, one JSON line per reply
+  - [x] Registered by the engine and by each game
+  - [x] Scripts run at startup
+  - [x] A local TCP server, polled without a thread; sockets in the platform layer
+  - [x] The engine's command-line options
+  - [x] Run control: pause, resume, step, wait, quit; status and help
+  - [x] A command-line client
+  - [x] Blink's state and a restart with a seed
+- [x] Input injection (ADR 0023)
+  - [x] Keys, buttons, mouse and wheel queued for the next step, seen as real input
+  - [x] The same on every platform, without a display
+  - [x] Injected input kept through focus loss
+  - [x] Real input turned off, input state shown
+  - [x] Keys and buttons by name
+  - [x] Engine commands grouped by subsystem
+  - [x] Blink played by an agent on Windows and under Xvfb
+- [x] Screen capture (ADR 0024)
+  - [x] A frame captured on command and saved as PNG
+  - [x] Swapchain readback
+  - [x] Own PNG writer
+  - [x] Reusable layers: checksums (CRC-32, Adler-32), DEFLATE, zlib
+  - [x] A test-only inflate; captured pixels checked by tests
+  - [x] Blink seen by an agent on Windows and under Xvfb
+
+**Tests**
+- [x] Tests in parallel by default, none sharing a file or a port with another
 
 **Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
-these steps put numbers next to it). After Blink's text rendering.
-- [ ] Numbers in the overlay: frames per second, average and worst frame time, steps per second,
-      memory per tag, validation counts, GPU, vsync and swapchain size
+these steps put numbers next to it, now that text can be drawn).
+- [ ] Numbers in the overlay
+  - [ ] Frames per second, average and worst frame time
+  - [ ] Steps per second
+  - [ ] Memory per tag
+  - [ ] Validation counts
+  - [ ] GPU, vsync and swapchain size
 - [ ] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
       toggle (the profiling overlay in the backlog): then the engine needs a place to draw after
       the game's `render` and a way to expose frame timing
 
-**Continuous integration**
-- [ ] GitHub Actions (Windows + Linux), tests on every push; reuse `docker/linux.Dockerfile`,
-      decide whether to publish the image (GHCR) or build it per run. Needed before the
-      refactoring
+**Continuous integration** (needed before the refactoring)
+- [ ] GitHub Actions, tests on every push
+  - [ ] Windows job
+  - [ ] Linux job on the build container: publish the image (GHCR) or build it per run, to decide
 
 ## v0.3.0
 
@@ -147,21 +118,28 @@ pause and game states.
 ## v0.4.0
 
 **Refactoring** (after Blink and Orbit, and threading if one of them brought it)
-- [ ] File by file: drop comments that restate the code, review function, variable and file names
+- [ ] File by file
+  - [ ] Drop comments that restate the code
+  - [ ] Review function, variable and file names
 - [ ] Interfaces and duplication: logic repeated across backends moves to common code (platform
       startup/shutdown and window slots are identical in Win32 and Xlib)
-- [ ] Components behind interfaces with swappable backends (renderer, audio...; compile time vs
-      function table vs dynamic plugins: to decide), a null backend next to each real one; the
-      platform hands out native window handles instead of creating Vulkan surfaces
-      (`platform_vulkan.h` makes the platform depend on the renderer); subsystem startup in the app
-- [ ] Directory layout and file names: `engine/include/reborn/` is one flat folder mixing
-      foundations (`defines.h`, `assert.h`, `log.h`), memory, platform, renderer, camera and math;
-      public headers grouped by subsystem like `engine/src/` (e.g. `reborn/core/log.h`,
-      `reborn/renderer/camera2d.h`), plus an umbrella header if games want one (to decide). Review
-      where each file lives on both sides (clock and input under `platform/`, color under `core/`,
-      camera under `renderer/`), and the top-level folders (`docker/`, `scripts/`, `cmake/`,
-      `games/`). Stateless OS services (`linux_*`) apart from the window system (`xlib_*`), so a
-      Wayland backend replaces only the latter
+- [ ] Components behind interfaces
+  - [ ] Swappable backends (renderer, audio...): compile time vs function table vs dynamic
+        plugins, to decide
+  - [ ] A null backend next to each real one
+  - [ ] The platform hands out native window handles instead of creating Vulkan surfaces
+        (`platform_vulkan.h` makes the platform depend on the renderer)
+  - [ ] Subsystem startup in the app
+- [ ] Directory layout and file names
+  - [ ] Public headers grouped by subsystem like `engine/src/` (e.g. `reborn/core/log.h`,
+        `reborn/renderer/camera2d.h`): `engine/include/reborn/` is one flat folder mixing
+        foundations (`defines.h`, `assert.h`, `log.h`), memory, platform, renderer, camera and math
+  - [ ] An umbrella header, if games want one (to decide)
+  - [ ] Where each file lives on both sides (clock and input under `platform/`, color under
+        `core/`, camera under `renderer/`)
+  - [ ] The top-level folders (`docker/`, `scripts/`, `cmake/`, `games/`, `tools/`)
+  - [ ] Stateless OS services (`linux_*`) apart from the window system (`xlib_*`), so a Wayland
+        backend replaces only the latter
 
 ## v0.5.0
 
@@ -187,36 +165,57 @@ In order; each gets a version when it starts.
 ## Backlog
 
 ### Core
-- [ ] Engine-provided entry point (ADR 0011, H3): `reborn/entry.h` defines `main` (and `WinMain` for
-      a Windows build without a console); the game only defines a function returning its
-      callbacks. When a GUI-subsystem build is needed, or command-line arguments in UTF-8 on
-      Windows (`wmain`: `argv` arrives in the ANSI code page today, ADR 0022)
-- [ ] Application: veto on the main window's close ("save before quitting?"); a variable
-      `update` next to the fixed one if camera or UI need it (ADR 0011, C4); window events
-      between steps if a low update rate makes them lag
-- [ ] Containers that own memory: dynamic array, hash map, string/string builder (allocator-aware,
-      ADR 0010; macros vs `void*` + size to decide in their ADR — ADR 0007). With the first feature
-      that needs one: likely the batched 2D renderer (sprites per frame) or the asset manager
-      (name → handle)
+- [ ] Engine-provided entry point (ADR 0011, H3): `reborn/entry.h`; the game only defines a
+      function returning its callbacks. When a GUI-subsystem build is needed, or command-line
+      arguments in UTF-8 on Windows
+  - [ ] `main` defined by the engine
+  - [ ] `WinMain` for a Windows build without a console
+  - [ ] `wmain`: `argv` in UTF-8 (it arrives in the ANSI code page today, ADR 0022)
+- [ ] Application (ADR 0011)
+  - [ ] Veto on the main window's close ("save before quitting?")
+  - [ ] A variable `update` next to the fixed one, if camera or UI need it (C4)
+  - [ ] Window events between steps, if a low update rate makes them lag
+- [ ] Containers that own memory (allocator-aware, ADR 0010; macros vs `void*` + size to decide
+      in their ADR, ADR 0007). With the first feature that needs one: likely the batched 2D
+      renderer (sprites per frame) or the asset manager (name → handle)
+  - [x] Generational handle pool and index-only ring buffer (v0.1.0, ADR 0007: they own no memory)
+  - [ ] Dynamic array
+  - [ ] Hash map (its first user may be the command registry, v0.3.0)
+  - [ ] String / string builder
 - [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide), with
-      the hash map (its first user may be the command registry, v0.3.0)
-- [ ] Threading: threads, mutexes, condition variables, atomics, then a job system
-      (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide). With the first feature that
-      needs it: likely the audio backend (a thread feeding the device) or asynchronous asset loading
-- [ ] Thread safety: decide which public functions must be callable from any thread (logger first,
-      then event queue, allocators...), state the guarantee in each function's doc comment,
-      protection per case (mutex, lock-free, per-thread data: to decide). With threading
+      the hash map. CRC-32 and Adler-32 exist (`core/checksum`), but are checksums for file
+      formats, not hash functions for tables
+- [ ] Threading (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide). With the first
+      feature that needs it: likely the audio backend (a thread feeding the device) or
+      asynchronous asset loading
+  - [ ] Threads
+  - [ ] Mutexes and condition variables
+  - [ ] Atomics
+  - [ ] Job system
+- [ ] Thread safety, with threading
+  - [ ] Decide which public functions must be callable from any thread (logger first, then event
+        queue, allocators...)
+  - [ ] State the guarantee in each function's doc comment
+  - [ ] Protection per case (mutex, lock-free, per-thread data: to decide)
 - [ ] Configuration separate from code: values hard-coded today (window size and title, log level
-      and file, capacities...) read from a config file and/or command line (format and parser to decide)
-- [ ] Logging: categories with their own level, in-memory history for an in-game console / LLM
-      debug API (ADR 0008)
+      and file, capacities...)
+  - [x] A command-line parser for the engine's options (`--script`, `--listen`, `--help`,
+        ADR 0022)
+  - [ ] Command-line options of the game's own (e.g. `--seed`): an option the engine does not know
+        fails the run today. When a game needs one
+  - [ ] A config file (format and parser to decide)
+- [ ] Logging (ADR 0008)
+  - [ ] Categories with their own level
+  - [ ] In-memory history, for the in-game console and the agents (see State inspection)
 - [ ] Log file size cap and rotation: today the file is overwritten at startup and grows without
-      limit during a run (a long session at TRACE, or a message logged every frame, fills the disk).
-      A maximum size per file; past it the file is closed and the next one opened
-      (`reborn.log.jsonl`, `reborn.log.1.jsonl`...), at most N files kept, the oldest deleted. Each
-      file starts with the clock anchor line, so it can be read alone. To decide: sizes and count
-      (config), naming, whether earlier runs are kept the same way instead of overwritten, and
-      collapsing a repeated message into one line ("repeated N times")
+      limit during a run (a long session at TRACE, or a message logged every frame, fills the disk)
+  - [ ] A maximum size per file; past it the file is closed and the next one opened
+        (`reborn.log.jsonl`, `reborn.log.1.jsonl`...)
+  - [ ] At most N files kept, the oldest deleted
+  - [ ] Each file starts with the clock anchor line, so it can be read alone
+  - [ ] Earlier runs kept the same way instead of overwritten (to decide)
+  - [ ] A repeated message collapsed into one line ("repeated N times")
+  - [ ] Sizes and count from the config
 - [ ] Chained arena blocks (ADR 0010, B3), inside `rb_arena` without an API change. Only when one
       of these shows up: an arena whose size depends on content with no sensible upper bound
       (editor, mods, long sessions); reservations failing in a real environment (`ulimit -v`,
@@ -227,15 +226,22 @@ In order; each gets a version when it starts.
       error codes to react (missing vs corrupt file, out of memory), and how they are named
 - [ ] Fatal errors shown to the player: a message box when startup fails (no Vulkan driver, no
       window), not only a log line nobody reads
-- [ ] Crash handling: catch crashes (unhandled exceptions on Windows, signals on Linux), write the
-      stack trace to the log and flush it; minidumps on Windows
+- [ ] Crash handling
+  - [ ] Catch crashes: unhandled exceptions on Windows, signals on Linux
+  - [ ] Write the stack trace to the log and flush it
+  - [ ] Minidumps on Windows
 
 ### Profiling and performance
-- [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find bottlenecks
-      (own implementation vs external tool: to decide)
-- [ ] Resource usage: memory by tag (builds on the allocation tracking: current, peak, allocation
-      count per subsystem), process CPU and memory from the OS, later GPU
-- [ ] Viewer: in-game overlay and/or export (JSON lines for LLMs, trace format for external viewers)
+- [ ] Profiler: timed scopes per subsystem and per frame, to see where time goes and find
+      bottlenecks (own implementation vs external tool: to decide)
+- [ ] Resource usage
+  - [x] Memory by tag: current, peak, allocation count per subsystem (ADR 0012, v0.1.0), logged at
+        the end of the run
+  - [ ] Process CPU and memory from the OS
+  - [ ] GPU, later
+- [ ] Viewer
+  - [ ] In-game overlay (see the sandbox stats overlay)
+  - [ ] Export: JSON lines for LLMs, trace format for external viewers
 - [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
       executable (ADR 0004), release build, timings not pass/fail (timer and approach to decide)
 
@@ -243,69 +249,94 @@ In order; each gets a version when it starts.
 - [ ] More platforms
 - [ ] Wayland backend, selected at runtime next to Xlib (only if XWayland falls short, ADR 0006)
 - [ ] Text input events (Unicode), separate from key events
-- [ ] Relative mouse motion with a locked, hidden cursor (raw input / XInput2), for first-person cameras
-- [ ] Key labels of the current layout, for prompts ("press Z" on AZERTY)
-- [ ] Mouse enter/leave events, cursor shape
+- [ ] Relative mouse motion with a locked, hidden cursor (raw input / XInput2), for first-person
+      cameras
+- [ ] Key labels of the current layout, for prompts ("press Z" on AZERTY); key names exist for the
+      US QWERTY positions (`rb_key_name`, `rb_key_from_name`)
+- [ ] Mouse
+  - [ ] Enter/leave events
+  - [ ] Cursor shape
 - [ ] Gamepads
 - [ ] Input action mapping (bindings to actions)
-- [ ] Window commands: set size, minimize, fullscreen; maximized as a state (ADR 0006, G3)
-- [ ] Changing a window's icon after creation (`rb_window_set_icon`, the same code as at creation,
-      ADR 0020), and new sizes when a window moves to a monitor with another scale. When a game
-      needs it
-- [ ] Application icon beyond the window's (set per window in v0.2.0): on Windows embedded in the
-      executable (`.rc` resource, shown by Explorer and pinned shortcuts), on Linux a `.desktop`
-      file, both with release packaging; icons loaded from image files with image decoding
+- [ ] Window commands (ADR 0006, G3)
+  - [ ] Set size
+  - [ ] Minimize
+  - [ ] Fullscreen
+  - [ ] Maximized as a state
+- [ ] Window icon beyond creation (ADR 0020). When a game needs it
+  - [x] Icon at creation, at several sizes (v0.2.0)
+  - [ ] Changing it after creation (`rb_window_set_icon`, the same code as at creation)
+  - [ ] New sizes when a window moves to a monitor with another scale
+- [ ] Application icon beyond the window's, with release packaging
+  - [ ] Windows: embedded in the executable (`.rc` resource, shown by Explorer and pinned
+        shortcuts)
+  - [ ] Linux: a `.desktop` file
+  - [ ] Icons loaded from image files (needs image decoding)
 - [ ] Win32 modal loop: the game freezes while a window is dragged or resized (the loop clamps
       the frozen time, ADR 0011; running during the drag needs a timer or a window thread)
-- [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
-- [ ] Linux title parity with Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
-- [ ] Linux HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
+- [ ] Linux parity
+  - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
+  - [ ] Titles like on Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
+  - [ ] HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
 
 ### Rendering
-- [ ] Rendering without a window (ADR 0013, K): `rb_renderer_startup` accepts a NULL platform and
-      creates a device without surface or swapchain, drawing to offscreen images. For tools (asset
-      baking, thumbnails), golden-image tests and CI machines without a display. Captures then read
-      the offscreen image, which also covers GPUs whose window images cannot be copied (ADR 0024, B2)
+- [ ] Rendering without a window (ADR 0013, K): for tools (asset baking, thumbnails), golden-image
+      tests and CI machines without a display
+  - [ ] `rb_renderer_startup` accepts a NULL platform: a device without surface or swapchain
+  - [ ] Drawing to offscreen images
+  - [ ] Captures read the offscreen image, which also covers GPUs whose window images cannot be
+        copied (ADR 0024, B2)
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
-- [ ] Batched 2D renderer (sprites, textures): the frame's quads collected into a vertex buffer and
-      drawn with few draw calls instead of one per quad (ADR 0015, F1). `quad.vert` reads vertices
-      instead of push constants; `rb_renderer_draw_quad` and `_draw_texture` keep their
-      signatures. A texture change breaks a batch: decide between atlases and bindless textures
-      (one array of every texture bound once per frame, its index per vertex; ADR 0017, D2)
-- [ ] GPU memory block allocator (ADR 0017, B2): a few large `vkAllocateMemory` blocks (e.g.
-      64 MiB) per memory type, carved into the resources' allocations by our own code (offsets,
-      alignment, `bufferImageGranularity` between buffers and images sharing a block), returned to
-      the block when freed. Why it will be needed: today every texture and buffer has its own
-      allocation; Vulkan guarantees only 4096 alive at once (many Windows drivers allow exactly
-      that), each allocation is a slow call into the OS kernel (a stutter if done mid-game), and
-      drivers may round each one up to a large granularity, wasting memory on small resources.
-      Blink's handful of textures is far from that; hundreds of sprites, glyph pages, per-frame
-      vertex buffers and later meshes are not. With the batched renderer or the asset manager
-      (Seedling), or earlier if the live allocation count nears the cap
+- [ ] Batched 2D renderer (sprites, textures): few draw calls instead of one per quad (ADR 0015,
+      F1). `rb_renderer_draw_quad` and `_draw_texture` keep their signatures
+  - [ ] The frame's quads collected into a vertex buffer
+  - [ ] `quad.vert` reads vertices instead of push constants
+  - [ ] A texture change breaks a batch: atlases vs bindless textures (one array of every texture
+        bound once per frame, its index per vertex; ADR 0017, D2), to decide
+- [ ] GPU memory block allocator (ADR 0017, B2). Why it will be needed: today every texture and
+      buffer has its own allocation; Vulkan guarantees only 4096 alive at once (many Windows
+      drivers allow exactly that), each allocation is a slow call into the OS kernel (a stutter if
+      done mid-game), and drivers may round each one up to a large granularity, wasting memory on
+      small resources. Blink's handful of textures is far from that; hundreds of sprites, glyph
+      pages, per-frame vertex buffers and later meshes are not. With the batched renderer or the
+      asset manager (Seedling), or earlier if the live allocation count nears the cap
+  - [ ] A few large `vkAllocateMemory` blocks (e.g. 64 MiB) per memory type
+  - [ ] Carved into the resources' allocations by our own code: offsets, alignment,
+        `bufferImageGranularity` between buffers and images sharing a block
+  - [ ] Allocations returned to the block when freed
 - [ ] Texture uploads without a stall (ADR 0017, C2): a persistent staging buffer, copies recorded
-      into the frame instead of a submit and wait each. With asynchronous asset loading / streaming
+      into the frame instead of a submit and wait each. With asynchronous asset loading /
+      streaming
 - [ ] Deferred texture destruction (ADR 0017, G2): queued until the frames in flight that may use
       it are done, instead of waiting for the whole GPU. With streaming
 - [ ] Premultiplied alpha for textures: with straight alpha, linear filtering blends the color of
       transparent pixels into a sprite's edge (dark fringes). Decide with image decoding (PNG)
 - [ ] Texture formats other than RGBA8 sRGB (single-channel font atlases, linear data): when
       memory or a feature needs them (ADR 0017, F3)
-- [ ] Layers: each draw tagged with a layer (background, world, HUD, menus), each layer with its
-      camera, drawn in layer order whatever the call order; today the call order is the layer order.
-      With the batched renderer, which collects the frame's quads anyway; likely Seedling (map,
-      characters, interface)
-- [ ] Low-resolution pixel-art rendering: the whole frame (world, HUD, text) drawn into an
-      offscreen image (e.g. 320x180), then enlarged by a whole factor onto the window, every game
-      pixel a perfect square (ADR 0021). Shares the offscreen target with rendering without a
-      window. When a game wants that look (perhaps Seedling)
+- [ ] Layers: today the call order is the layer order. With the batched renderer, which collects
+      the frame's quads anyway; likely Seedling (map, characters, interface)
+  - [ ] Each draw tagged with a layer (background, world, HUD, menus)
+  - [ ] Each layer with its camera
+  - [ ] Drawn in layer order whatever the call order
+- [ ] Low-resolution pixel-art rendering: every game pixel a perfect square (ADR 0021). When a
+      game wants that look (perhaps Seedling)
+  - [ ] The whole frame (world, HUD, text) drawn into an offscreen image (e.g. 320x180), shared
+        with rendering without a window
+  - [ ] Enlarged by a whole factor onto the window
 - [ ] Several cameras on the world at once (split-screen, minimap): a viewport rectangle in
       `rb_camera2d`, the part of the window its field goes into (today: the largest centered one);
       `rb_camera2d_make` gives it the whole window. When a game shows the world twice
-- [ ] Rotated quads: an angle (or a 2D transform) in the quad's data, when a game turns objects
-      (Orbit's arc may be the first)
-- [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its config
-- [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them (ADR 0013)
+- [ ] Rotation, when a game turns objects (Orbit's arc may be the first; ADR 0016)
+  - [ ] Rotated quads: an angle (or a 2D transform) in the quad's data
+  - [ ] Matrix multiplication
+  - [ ] Camera rotation
+- [ ] A color of their own for the camera's bars, where the window's aspect differs from the
+      design area (today the clear color shows there). When a game wants it
+- [ ] The game's name in `VkApplicationInfo` (drivers use it for per-game profiles), from its
+      config
+- [ ] Vulkan host allocations through `rb_allocator` (`pAllocator`), if tracking needs them
+      (ADR 0013)
 - [ ] Device lost: today the renderer logs it and stops drawing (ADR 0013); recreate the device
       and every GPU resource if a real driver reset shows up
 - [ ] 3D
@@ -314,44 +345,74 @@ In order; each gets a version when it starts.
 - [ ] Where a game's assets live and how it finds them (ADR 0014, D1: deferred by Blink, which has
       none), e.g. `games/<name>/assets/` copied next to the executable. With the first game that
       loads a file: likely Orbit's sounds
-- [ ] File system layer: read/write whole files, paths resolved from the executable's folder
-      (not the current directory, which depends on how the game is launched), directory listing
-- [ ] Asset manager: assets referenced by handle (generational pool, ADR 0007), loaded once and
-      shared, unloaded when no longer used (reference counting vs explicit lifetimes: to decide)
-- [ ] Image decoding (PNG at least) for textures and the icon: the inflate in `tests/support/`
-      (stored and fixed-Huffman blocks) grows into the engine's, with dynamic Huffman codes (what
-      other encoders write); the PNG writer's filters run backwards (ADR 0024)
+- [ ] File system layer
+  - [ ] Read and write whole files
+  - [ ] Paths resolved from the executable's folder (not the current directory, which depends on
+        how the game is launched)
+  - [ ] Directory listing
+- [ ] Asset manager
+  - [ ] Assets referenced by handle (generational pool, ADR 0007)
+  - [ ] Loaded once and shared
+  - [ ] Unloaded when no longer used (reference counting vs explicit lifetimes: to decide)
+- [ ] Image decoding (PNG at least) for textures and the icon (ADR 0024)
+  - [x] CRC-32 and Adler-32 (`core/checksum`), zlib framing (`compression/`), with the PNG writer
+  - [x] An inflate for stored and fixed-Huffman blocks, in `tests/support/`
+  - [ ] The inflate moves into the engine, with dynamic Huffman codes (what other encoders write)
+  - [ ] PNG chunks read and the writer's filters run backwards
 - [ ] Asynchronous loading on the job system (see Threading)
-- [ ] Hot reload: watch asset files and reload them while the game runs (shaders first: embedded in
-      the engine today, they become `.spv` files next to the executable, ADR 0015, E2)
-- [ ] Asset baking: convert source files into engine-ready formats at build time, packed into
-      one archive for release builds (format to decide)
+- [ ] Hot reload: watch asset files and reload them while the game runs
+  - [ ] Shaders first: embedded in the engine today, they become `.spv` files next to the
+        executable (ADR 0015, E2)
+  - [ ] The other assets
+- [ ] Asset baking
+  - [ ] Source files converted into engine-ready formats at build time
+  - [ ] Packed into one archive for release builds (format to decide)
 
 ### Audio
-- [ ] Backend per platform: WASAPI on Windows, PulseAudio or ALSA on Linux (to decide), on its own
-      thread feeding the device
-- [ ] Mixer: several sounds at once, volume per sound and per group (music, effects)
-- [ ] Sound effects (loaded whole) and music (streamed from disk); decoding WAV first, compressed
-      formats later (own decoder vs external library: to decide)
+- [ ] Backend per platform, on its own thread feeding the device
+  - [ ] WASAPI on Windows
+  - [ ] PulseAudio or ALSA on Linux (to decide)
+- [ ] Mixer
+  - [ ] Several sounds at once
+  - [ ] Volume per sound and per group (music, effects)
+- [ ] Sounds (own decoder vs external library: to decide)
+  - [ ] WAV decoding
+  - [ ] Sound effects, loaded whole
+  - [ ] Music, streamed from disk
+  - [ ] Compressed formats, later
 
 ### Text and UI
-- [ ] Text layout beyond one line of glyphs: word wrapping to a width, kerning (with TrueType),
-      `rb_text_drawf` if formatting numbers repeats everywhere (ADR 0021). When a game shows
-      paragraphs (dialogue, menus' descriptions)
+- [ ] Text layout beyond lines of glyphs (ADR 0021). When a game shows paragraphs (dialogue,
+      menus' descriptions)
+  - [x] `\n` lines, each aligned on its own; measuring (v0.2.0)
+  - [ ] Word wrapping to a width
+  - [ ] Kerning (with TrueType)
+  - [ ] Colors per character
+  - [ ] `rb_text_drawf`, if formatting numbers repeats everywhere
 - [ ] HUD scale helper in the engine: the whole scale per N pixels of window height that keeps
       bitmap text sharp (ADR 0021, G1; in Blink today). When a second game computes it
 - [ ] UI scaled from a reference resolution, with elements anchored to the window's edges and a
       continuous scale (ADR 0021): with smooth TrueType text, whose pixels stay even at any scale
       (likely Hollow's menus)
-- [ ] TrueType fonts, own parser and rasterizer (ADR 0018): `.ttf` tables (`cmap`, `loca`,
-      `glyf`, `hmtx`), quadratic curves flattened to lines, coverage per pixel; a new glyph source
-      feeding the existing packer (`rb_font_create_ttf`, a size in pixels). With the first game
-      showing text at several sizes or smooth text (menus: likely Hollow). Needs the `.ttf` file
-      embedded at build time or the file system layer; hinting and kerning later
-- [ ] UTF-8 text: a codepoint to glyph map behind `rb_font_get_glyph` (needs the hash map or a
-      sorted table), glyphs beyond ASCII in the builtin font or from TrueType
-- [ ] Debug UI, immediate mode (rebuilt every frame): panels, buttons, sliders, value inspection.
-      Base for the in-game console and the profiler overlay
+- [ ] TrueType fonts, own parser and rasterizer (ADR 0018): a new glyph source feeding the
+      existing packer (`rb_font_create_ttf`, a size in pixels). With the first game showing text
+      at several sizes or smooth text (menus: likely Hollow)
+  - [x] The glyph source interface and the shelf packer (v0.2.0)
+  - [ ] The `.ttf` file embedded at build time, or read through the file system layer
+  - [ ] Tables `cmap`, `loca`, `glyf`, `hmtx`
+  - [ ] Quadratic curves flattened to lines, coverage per pixel
+  - [ ] The packer sorted by height, for TrueType's varied glyphs
+  - [ ] Hinting and kerning, later
+- [ ] Glyphs beyond ASCII
+  - [x] Strings decoded as UTF-8, a missing or broken character shown as the missing glyph
+        (ADR 0021)
+  - [ ] A codepoint to glyph map behind `rb_font_get_glyph` (needs the hash map or a sorted table)
+  - [ ] Glyphs beyond ASCII in the builtin font or from TrueType
+- [ ] Debug UI, immediate mode (rebuilt every frame): base for the in-game console and the
+      profiler overlay
+  - [ ] Panels
+  - [ ] Buttons and sliders
+  - [ ] Value inspection
 
 ### Scene
 - [ ] Game object model: ECS vs object hierarchy vs plain arrays per type (to decide in its ADR)
@@ -361,92 +422,188 @@ In order; each gets a version when it starts.
       decide)
 
 ### Editor
-- [ ] Editor mode and play mode: the game starts in one or the other and switches at run time
-      (e.g. a key). In editor mode the simulation is paused and the world can be explored and
-      changed; play starts the game from the edited scene, and going back restores the scene as it
-      was before play (a snapshot through serialization). Editor built into the game's executable
-      (debug builds only) vs a separate editor executable loading the game as a DLL (see game code
-      hot-reload): to decide. Needs the debug UI, the game object model and scene serialization;
-      likely with Hollow, whose levels are painful to write by hand
-- [ ] Free editor camera, independent of the game's: in 2D pan by dragging and zoom with the
-      wheel; in 3D fly with the mouse (needs relative mouse motion)
-- [ ] Selection and editing: pick objects with the mouse (screen-to-world conversion exists), move
-      them with handles (gizmos), edit their fields in a panel (needs type information for the
-      fields: reflection, to decide), undo/redo
-- [ ] Scenes created, saved and loaded from the editor; objects created, duplicated and deleted
-- [ ] Commands from the editor (ADR 0022): a menu listing every registered command (engine and
-      game, from the registry, with usage and summary) to run with a click, and a field to type a
-      command line, with the replies shown next to it. Shares the in-game console's input and
-      history (debug UI)
+Needs the debug UI, the game object model and scene serialization; likely with Hollow, whose
+levels are painful to write by hand.
+- [ ] Editor mode and play mode
+  - [ ] Built into the game's executable (debug builds only) vs a separate editor executable
+        loading the game as a DLL (see game code hot-reload): to decide
+  - [ ] The game starts in one or the other and switches at run time (e.g. a key)
+  - [ ] Editor mode: the simulation paused (the commands' pause exists, ADR 0022), the world
+        explored and changed
+  - [ ] Play starts the game from the edited scene; going back restores the scene as it was
+        before play (a snapshot through serialization)
+- [ ] Free editor camera, independent of the game's
+  - [ ] 2D: pan by dragging, zoom with the wheel
+  - [ ] 3D: fly with the mouse (needs relative mouse motion)
+- [ ] Selection and editing
+  - [x] Screen-to-world and world-to-screen conversion (ADR 0016)
+  - [ ] Pick objects with the mouse
+  - [ ] Move them with handles (gizmos)
+  - [ ] Edit their fields in a panel (needs type information for the fields: reflection, to
+        decide)
+  - [ ] Undo/redo
+- [ ] Scenes and objects from the editor
+  - [ ] Scenes created, saved and loaded
+  - [ ] Objects created, duplicated and deleted
+- [ ] Commands from the editor (ADR 0022); shares the in-game console's input and history (debug
+      UI)
+  - [x] The registry lists every command, engine and game, with usage and summary (`help`)
+  - [ ] A menu of the commands, run with a click
+  - [ ] A field to type a command line, with the replies shown next to it
 
 ### LLM and automation tooling
 Agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`; with the
 commands they pause and step a running game, ask it for its state and play it with injected input.
 With `screen.capture` they see what it draws. The command system, input injection and screen
 capture are in v0.2.0 (driving Blink from an agent); these build on them.
+- [ ] A page for agents listing commands, variables and output formats, linked from `CLAUDE.md`
+  - [x] Commands and their replies: README's *Commands*, `docs/features/commands.md`, linked from
+        `CLAUDE.md`
+  - [ ] Console variables, when they exist
 - [ ] Commands from the in-game console, with the debug UI
-- [ ] Several clients on the command server at once, if agents need them (one at a time today,
-      ADR 0022); replies on stdout without the `\r` the Windows C runtime adds in text mode
-- [ ] Console variables: named, typed values (speeds, toggles, log levels) read and set by
-      command and listed with their current value; later loaded from the config file
-- [ ] State inspection: commands that dump engine and game state as JSON (windows, frame timing,
-      memory per tag, renderer resources, recent log lines, later objects and their fields)
-- [ ] Unattended runs: a script (or `--frames N`) ends the game, which exits with a status code
-      and a summary (frames, warnings, errors, leaks) as the last JSON line; no display needed
-      once the renderer can run without a window (see Rendering). Runs a scenario in CI or Docker
-- [ ] Record and replay: each fixed step's input (and the seed) written to a file and played back
-      to reproduce a run exactly, e.g. a bug; needs a deterministic simulation (seeded random
-      number generator, fixed step); played back through the injection queue with real input off
-      (ADR 0023)
-- [ ] Real input off from the first frame (`--no-real-input`), if the frames before an agent's first
-      command ever matter (ADR 0023, F2: a command today)
+- [ ] Command server (ADR 0022)
+  - [ ] Several clients at once, if agents need them (one at a time today)
+  - [ ] Replies on stdout without the `\r` the Windows C runtime adds in text mode
+- [ ] Console variables: named, typed values (speeds, toggles, log levels)
+  - [ ] Read and set by command
+  - [ ] Listed with their current value
+  - [ ] Loaded from the config file, later
+- [ ] State inspection: engine and game state as JSON
+  - [x] `status`: frame, step, pause, game time, window (ADR 0022)
+  - [x] `input.state`: keys, buttons and mouse as the engine sees them (ADR 0023)
+  - [x] A game's own state (`blink.state`)
+  - [ ] Frame timing
+  - [ ] Memory per tag
+  - [ ] Renderer resources
+  - [ ] Recent log lines (needs the log's in-memory history)
+  - [ ] Objects and their fields, later
+- [ ] Unattended runs: a scenario run in CI or Docker
+  - [x] A script ends the game with `quit`, replies on stdout (ADR 0022)
+  - [ ] `--frames N`, without a script
+  - [ ] An exit code that reflects warnings, errors and leaks
+  - [ ] A summary (frames, warnings, errors, leaks) as the last JSON line
+  - [ ] No display needed (needs rendering without a window, see Rendering)
+- [ ] Record and replay: a run reproduced exactly, e.g. a bug
+  - [x] A deterministic simulation: seeded random number generator (ADR 0019), fixed step
+        (ADR 0011)
+  - [x] The injection queue, which replays through with real input off (ADR 0023)
+  - [ ] Each fixed step's input and the seed written to a file
+  - [ ] Played back from the file
+  - [ ] A generator's state saved and restored, if a replay starts mid-run
+- [ ] Real input off from the first frame (`--no-real-input`), if the frames before an agent's
+      first command ever matter (ADR 0023, F2: a command today)
 - [ ] `help <group>` (`help input`): the commands of a group, when the list grows past a screen
       (ADR 0023, E2)
-- [ ] Golden-image tests: captures compared with reference images (see Testing); needs PNG
-      decoding (see Assets) and a tolerance, since drivers may round differently
+- [ ] Golden-image tests: captures compared with reference images
+  - [x] Captures (`screen.capture`, `rb_renderer_captured_image`, ADR 0024)
+  - [ ] PNG decoding (see Assets)
+  - [ ] Comparison with a tolerance, since drivers may round differently
 - [ ] Faster captures, if agents take many: the PNG filter choice and DEFLATE are about 0.1 s for a
-      1600x900 frame in release, up to 1 s in debug, on the main thread (ADR 0024); dynamic
-      Huffman codes if file sizes matter
-- [ ] Frame number on every log line, to match log lines, commands and screenshots
-- [ ] A page for agents listing commands, variables and output formats, linked from `CLAUDE.md`
+      1600x900 frame in release, up to 1 s in debug, on the main thread (ADR 0024)
+  - [ ] Encoding on a thread
+  - [ ] Dynamic Huffman codes, if file sizes matter
+- [ ] Frame number on every log line, to match log lines with commands and screenshots (their
+      replies already carry frame and step)
 
 ### Testing
-- [ ] Testing: `longjmp`-based `RB_REQUIRE` + `RB_ASSERT` handler hook to test that asserts fire;
-      fixtures when tests start repeating setup; ULP-based float comparison (ADR 0004)
-- [ ] Integration tests for platform/renderer (offscreen render + golden images)
+- [ ] Framework (ADR 0004)
+  - [ ] `longjmp`-based `RB_REQUIRE` and an `RB_ASSERT` handler hook, to test that asserts fire
+  - [ ] Fixtures, when tests start repeating setup
+  - [ ] ULP-based float comparison
+- [ ] Integration tests for platform and renderer
+  - [x] Tests that open a window, start the renderer and run the app (`tests/app/`, renderer
+        tests)
+  - [x] Captured pixels checked by GPU tests (ADR 0024)
+  - [ ] Offscreen render (see Rendering)
+  - [ ] Golden images (see LLM and automation tooling)
 - [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
 - [ ] Code coverage with Clang source-based coverage (`-fprofile-instr-generate`, `llvm-cov`)
 - [ ] Tests that open a window show it on screen (`ShowWindow` is unconditional): a hidden-window
       option in the window config (alternatives and decision in an ADR; also lets a game show its
       window after the first frame), or render offscreen (see Rendering)
-- [ ] CTest labels `unit` / `window` on discovered tests (the runner reports them in `--list`):
-      `ctest -LE window` is the quick loop. The ADR 0004 placed these tests in `tests/integration/`
-      with their own executable: today they live in `reborn_tests`, to reconcile
-- [ ] Parallel `ctest` by default in the test presets (`jobs` or `CTEST_PARALLEL_LEVEL`): measured
-      23.5 s serial, 11.2 s with `-j8` (392 tests, 2026-11-24)
-- [ ] Find why `vulkan_renderer.textures_fill_every_slot` takes 5 s (each other Vulkan test ~1.2 s)
+- [ ] CTest labels
+  - [ ] `unit` / `window` on discovered tests (the runner reports them in `--list`):
+        `ctest -LE window` is the quick loop
+  - [ ] Reconcile with ADR 0004, which placed the window tests in `tests/integration/` with their
+        own executable: today they live in `reborn_tests`
+- [ ] Find why `vulkan_renderer.textures_fill_every_slot` is slow: 5 s on 2026-11-24 (each other
+      Vulkan test ~1.2 s); on 2026-11-26, on Windows, 0.9 s serial but 7.4 s with `-j8`. Measure
+      on Linux (lavapipe) too before digging
 - [ ] One Vulkan device per suite (one process per suite) if the window tests stay slow after the
-      above: ~45 tests start instance, device and swapchain from scratch (~53 s of 82 s total);
-      trades away per-test isolation
-- [ ] Runner: filter (`--run 'arena.*'`) to run a suite in one process, quickest to debug
-- [ ] Runner: time per test in its output (`[ OK ] arena.x (12 ms)`) and the slowest tests at the end
+      above: about 50 tests start instance, device and swapchain from scratch (21 s of the 32 s
+      serial run on Windows, 2026-11-26); trades away per-test isolation
+- [ ] Runner
+  - [ ] Filter (`--run 'arena.*'`) to run a suite in one process, quickest to debug
+  - [ ] Time per test in its output (`[ OK ] arena.x (12 ms)`)
+  - [ ] The slowest tests at the end
+  - [ ] `--shuffle <seed>` (PCG32) to expose tests that depend on global state left by others
+        (e.g. the log); when tests share a process (suite-level device, filter)
 - [ ] `RB_SKIP(reason)` mapped to CTest's `SKIP_RETURN_CODE`: a test without a GPU or display is
       reported skipped, not passed or failed. When CI arrives
-- [ ] Runner `--shuffle <seed>` (PCG32) to expose tests that depend on global state left by others
-      (e.g. the log); when tests share a process (suite-level device, filter)
 - [ ] Fail a test that leaks, through the tracking allocator (ADR 0012); when more tests start
       checking leaks by hand
 
 ### Build, CI and tooling
 - [ ] Run `scripts/linux-build.sh` end-to-end on a Linux host (only syntax-checked so far)
-- [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK): `winget` on Windows,
-      package manager on Linux (distros to support: to decide)
-- [ ] Release packaging: one folder or archive per platform with the executable, packed assets,
-      icon and (Linux) `.desktop` file, built by a script or CI; installers later
+- [ ] Per-platform dependency setup scripts (Clang, CMake, Ninja, Vulkan SDK; distros to support:
+      to decide)
+  - [ ] `winget` on Windows
+  - [ ] The package manager on Linux
+- [ ] Release packaging, built by a script or CI
+  - [ ] One folder or archive per platform: the executable, packed assets, icon and (Linux)
+        `.desktop` file
+  - [ ] Installers, later
 - [ ] Game code hot-reload as a DLL
 
 ### Documentation
 - [ ] Doc comments on every public header and function: purpose, parameters, ownership, errors,
-      thread safety (format, e.g. Doxygen-style `/** */` vs plain comments: to decide with the website)
+      thread safety (format, e.g. Doxygen-style `/** */` vs plain comments: to decide with the
+      website)
 - [ ] Documentation website: feature pages, ADRs and an API reference generated from doc comments
       (generator and hosting, e.g. GitHub Pages published by CI: to decide)
+
+## v0.1.0 — Foundations (released 2026-11-23)
+
+- [x] Project setup (ADR 0001, 0002, 0003, 0005)
+  - [x] Folder layout, git
+  - [x] CMake with presets: Clang, Ninja, C17
+  - [x] Static engine library
+  - [x] Single-source version
+  - [x] Docs: changelog, roadmap, ADRs, feature pages, notes for agents
+  - [x] Every preset built on Windows and on Linux (Docker)
+- [x] Unit testing (ADR 0004)
+  - [x] Own framework: test macros, expectations, auto-registration
+  - [x] CTest integration: one entry per test, JUnit output
+  - [x] Tests mirroring the engine's folders
+- [x] Platform layer and windows (ADR 0006, 0007)
+  - [x] Platform abstraction; Win32 and Xlib backends
+  - [x] Generational handle pool and index-only ring buffer
+  - [x] Event queue
+  - [x] Window lifecycle: resize, focus, minimize, move
+  - [x] Keyboard and mouse by physical key position
+  - [x] Linux scripts gate on the tests; the sandbox runs on a Linux desktop
+- [x] Logging (ADR 0008), before the windows were finished, to see their events
+  - [x] Levels, colored console, file
+  - [x] Asserts
+  - [x] Structured output (JSON lines) for LLMs
+- [x] Game lifecycle (ADR 0009, 0011)
+  - [x] Monotonic clock and sleep, also behind the logger's timestamps
+  - [x] Application interface: configure, init, events, update, render, shutdown
+  - [x] The game's state allocated by the engine
+  - [x] Game loop: frame timing, per-frame arena, optional frame cap
+  - [x] Fixed timestep with an accumulator, one pump per step
+- [x] Memory (ADR 0010, 0012)
+  - [x] Virtual memory: reserve, commit, decommit, release
+  - [x] Arena over virtual memory or a caller's buffer, temp scopes
+  - [x] Allocator interface, arena adapter, heap allocator; systems start from an allocator
+  - [x] ASan poisoning inside arenas
+  - [x] Failing allocator for tests
+  - [x] Allocation tracking by tag, leak report, arena high-water mark
+- [x] Vulkan renderer (ADR 0013, 0015)
+  - [x] Vulkan loaded at run time
+  - [x] Vulkan 1.3 instance, validation layers, debug messenger
+  - [x] Surface, GPU choice (a CPU implementation as last resort), device, swapchain rebuilt on
+        resize
+  - [x] Command buffers, synchronization, two frames in flight
+  - [x] Linear colors, the clear color set by the game
+  - [x] Shaders compiled at build time and embedded, a quad pipeline

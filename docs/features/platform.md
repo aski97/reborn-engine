@@ -53,7 +53,9 @@ header; each OS has its own backend, chosen by CMake.
   (with the measured pixel size and DPI) and destruction are logged too.
 - Keyboard and mouse events and state: see [input.md](input.md).
 - Internal, stateless: dynamic libraries opened at run time (`rb_platform_library_open` /
-  `_symbol` / `_close`); Windows searches only the application folder and System32.
+  `_symbol` / `_close`); Windows searches only the application folder and System32. Sockets
+  (`platform_socket.h`: Winsock, POSIX) for the command server and `reborn-cmd`
+  ([commands.md](commands.md)).
 - Not yet: window commands (set size, minimize, fullscreen).
 - Known limits: while a window is dragged or resized, Windows runs its own loop and
   `rb_platform_pump` does not return. On Linux, an X protocol error or a lost connection ends the
@@ -184,3 +186,4 @@ rb_arena_destroy(&engine);
 | v0.1.0 | 2026-11-17 | Internal dynamic library loading (`rb_platform_library_*`, [renderer.md](renderer.md)) |
 | v0.1.0 | 2026-11-17 | Vulkan surface creation for the renderer (internal) |
 | v0.2.0 | 2026-11-24 | Window icon at creation (`rb_window_desc.icons`, `rb_image`) |
+| v0.2.0 | 2026-11-24 | Internal sockets for the command server ([commands.md](commands.md)) |

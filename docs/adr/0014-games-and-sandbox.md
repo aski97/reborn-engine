@@ -4,7 +4,7 @@
 - **Date:** 2026-11-17
 
 ## Context
-After v0.1.0 the roadmap follows a ladder of small games of our own (`TODO.md`, *Games*): building
+After v0.1.0 the roadmap follows a ladder of small games of our own (`TODO.md`, its introduction): building
 them is what decides which engine pieces come next. The repository has one application today,
 `sandbox/`. We need to decide where the games live and what the sandbox becomes.
 

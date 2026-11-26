@@ -53,7 +53,8 @@ u32 lane = rb_rng_range_u32(&gameplay, 0, 4); /* 0, 1, 2 or 3 */
 
 ## Future work
 - Saving and restoring the state, with record and replay.
-- A seed set from outside (command line, command system).
+- A seed from the command line, once games can add their own options (a game's command can
+  already restart with one: `blink.restart <seed>`).
 - More distributions when a game needs them.
 
 ## History

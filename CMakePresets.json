@@ -45,6 +45,7 @@
       },
       "execution": {
         "noTestsAction": "error",
+        "jobs": 0,
         "timeout": 60
       }
     },

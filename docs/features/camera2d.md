@@ -83,7 +83,6 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
   keep the clear color (J1).
 
 ## Future work
-- World-to-screen, when a game places HUD elements over world objects.
 - Camera rotation and matrix multiplication, with rotated quads (Orbit).
 - A bars color of their own, if the clear color is not enough.
 

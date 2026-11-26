@@ -113,7 +113,7 @@ if (rb_mouse_button_was_pressed(platform, RB_MOUSE_BUTTON_LEFT)) {
 - Relative mouse motion with a locked, hidden cursor (raw input / XInput2).
 - Key labels of the current layout for prompts.
 - Mouse enter/leave, cursor shape, gamepads.
-- Action mapping (bindings) once the game lifecycle exists.
+- Action mapping (bindings).
 - Recorded input played back through the injection queue, with real input off (record and replay).
 
 ## History

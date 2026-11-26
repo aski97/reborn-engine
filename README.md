@@ -4,7 +4,9 @@ A game engine written in C17 with Vulkan, built step by step as a learning proje
 2D first, 3D later. Platforms: Windows and Linux.
 
 **Status: pre-alpha.** v0.1.0 has the foundations (windows, input, memory, game loop, a Vulkan
-renderer drawing colored quads); it is not yet usable to make a game. See the [roadmap](TODO.md).
+renderer drawing colored quads). v0.2.0, in progress, adds a 2D camera, textures and text, and
+Blink, the first of [our games](games/README.md); an agent can drive it through commands, injected
+input and screen captures. Not yet meant for games of your own. See the [roadmap](TODO.md).
 
 - **No external libraries**, except where building them makes no sense (e.g. the Vulkan loader).
 - **Every decision is documented** in [`docs/`](docs/README.md).
@@ -135,7 +137,7 @@ Build first: the list of tests is refreshed after every build, so a new test nee
 
 ```sh
 cmake --build --preset debug
-ctest --preset debug                  # every test, each in its own process
+ctest --preset debug                  # every test, each in its own process, in parallel
 ```
 
 Use `debug-asan` often: AddressSanitizer and UBSan catch bugs that no check asserts.
@@ -143,7 +145,7 @@ Use `debug-asan` often: AddressSanitizer and UBSan catch bugs that no check asse
 | Command | What it does |
 |---|---|
 | `ctest --preset debug -R version` | only tests whose name matches `version` |
-| `ctest --preset debug -j8` | run in parallel |
+| `ctest --preset debug -j1` | one test at a time |
 | `ctest --preset debug --rerun-failed` | only the tests that failed last time |
 | `ctest --preset debug -V` | full output, passing tests included |
 | `./build/debug/bin/reborn_tests` | every test in one process |
