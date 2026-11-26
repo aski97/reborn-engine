@@ -497,3 +497,87 @@ RB_TEST(vulkan_renderer, destroying_the_textures_frees_those_alive) {
     /* Shutdown finds them zeroed and skips them. */
     stop(renderer);
 }
+
+/* ============================================================================
+ * Frame capture (ADR 0024)
+ * ========================================================================== */
+
+/* Channel `c` of pixel (x, y) in a captured image, within `eps` of `expected`. */
+static bool pixel_near(const rb_image *image, u32 x, u32 y, const u8 expected[4], int eps) {
+    const u8 *p = image->pixels + ((usize)y * image->width + x) * 4;
+    for (int c = 0; c < 4; ++c) {
+        int diff = (int)p[c] - expected[c];
+        if (diff < -eps || diff > eps) {
+            return false;
+        }
+    }
+    return true;
+}
+
+RB_TEST(vulkan_renderer, swapchain_images_can_be_captured) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    /* Every desktop driver we run on offers it; without it the feature is gone. */
+    RB_EXPECT(renderer->swapchain.capturable);
+    RB_EXPECT(rb_vk_capture_supports(renderer->swapchain.format.format));
+    stop(renderer);
+}
+
+RB_TEST(vulkan_renderer, nothing_captured_until_asked) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_end_frame(renderer);
+    RB_EXPECT(rb_renderer_captured_image(renderer) == NULL);
+    stop(renderer);
+}
+
+/*
+ * The clear color and a quad come back as the window shows them: sRGB bytes,
+ * RGBA order whatever the swapchain's, opaque, at the swapchain's size.
+ */
+RB_TEST(vulkan_renderer, a_captured_frame_holds_what_was_drawn) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_renderer_set_clear_color(renderer, rb_color_srgb(0.2f, 0.4f, 0.6f, 1.0f));
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_capture_frame(renderer);
+    /* Drawn after the booking: still in the capture, taken when the frame ends. */
+    rb_renderer_draw_quad(renderer, 8.0f, 8.0f, 16.0f, 16.0f,
+                          rb_color_srgb(1.0f, 0.0f, 0.0f, 1.0f));
+    rb_renderer_end_frame(renderer);
+
+    const rb_image *image = rb_renderer_captured_image(renderer);
+    RB_REQUIRE(image != NULL);
+    RB_EXPECT_EQ_UINT(image->width, renderer->swapchain.extent.width);
+    RB_EXPECT_EQ_UINT(image->height, renderer->swapchain.extent.height);
+    static const u8 clear[4] = {51, 102, 153, 255};
+    static const u8 red[4] = {255, 0, 0, 255};
+    RB_EXPECT(pixel_near(image, 16, 16, red, 0));
+    RB_EXPECT(pixel_near(image, 4, 4, clear, 1));
+    RB_EXPECT(pixel_near(image, image->width - 1, image->height - 1, clear, 1));
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/* A booking is for one frame: the next frame is not captured, the last capture stays. */
+RB_TEST(vulkan_renderer, a_capture_is_for_one_frame) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_capture_frame(renderer);
+    rb_renderer_end_frame(renderer);
+    const rb_image *first = rb_renderer_captured_image(renderer);
+    RB_REQUIRE(first != NULL);
+    for (u32 i = 0; i < 4; ++i) {
+        if (!rb_renderer_begin_frame(renderer)) {
+            continue;
+        }
+        RB_EXPECT(!renderer->capture.requested);
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(rb_renderer_captured_image(renderer) == first);
+    RB_EXPECT(renderer->capture.buffer.handle == VK_NULL_HANDLE);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}

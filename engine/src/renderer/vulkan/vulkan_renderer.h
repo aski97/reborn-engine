@@ -10,6 +10,7 @@
 #include <reborn/platform.h>
 #include <reborn/renderer.h>
 
+#include "renderer/vulkan/vulkan_capture.h"
 #include "renderer/vulkan/vulkan_debug.h"
 #include "renderer/vulkan/vulkan_device.h"
 #include "renderer/vulkan/vulkan_frame.h"
@@ -59,6 +60,8 @@ struct rb_renderer {
      */
     bool     failed;
     rb_color clear_color; /* linear */
+    /* Frame capture (ADR 0024): a booked capture and the last one's pixels. */
+    rb_vk_capture capture;
 
     /* The messenger's user data: its address must not change while the instance lives. */
     rb_vk_debug debug;

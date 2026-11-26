@@ -32,6 +32,8 @@ typedef struct rb_vk_swapchain {
      * that the present waiting on this semaphore is over.
      */
     VkSemaphore rendered[RB_VK_SWAPCHAIN_MAX_IMAGES];
+    /* The images can be copied from (TRANSFER_SRC): frame captures work (ADR 0024). */
+    bool capturable;
 } rb_vk_swapchain;
 
 /*

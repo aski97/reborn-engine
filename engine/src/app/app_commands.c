@@ -230,6 +230,7 @@ bool rb_app_commands_start(rb_app *app, const rb_app_options *options) {
         (void)added;
     }
     rb_app_input_commands_add(app);
+    rb_app_screen_commands_add(app);
     if (options->script_path != NULL) {
         if (!rb_command_script_load(&app->script, &app->persistent, options->script_path)) {
             return false;

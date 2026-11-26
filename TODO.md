@@ -114,9 +114,11 @@ platform and without clicking by hand; the sandbox exposes the same commands). I
       keyboard and mouse (an agent on someone's desktop), `input.state` shows what the engine
       sees. Engine commands outside the run's control are grouped by subsystem. The sandbox's input
       panel; Blink played by an agent on Windows and under Xvfb without xdotool
-- [ ] Screenshots on command: copy the presented image to a file the agent can open (agents read
-      PNG, not raw formats like BMP or PPM: own minimal PNG encoder vs external library, to
-      decide); later the base for golden-image tests
+- [x] Screen capture (ADR 0024): `screen.capture [path]` renders a frame and saves it as PNG;
+      `rb_renderer_capture_frame` / `rb_renderer_captured_image` copy the swapchain image back
+      (`TRANSFER_SRC` where offered); own PNG writer, `rb_image_write_png`, on reusable layers
+      (CRC-32 and Adler-32, DEFLATE with fixed Huffman codes, zlib). The sandbox's P key and
+      capture panel; Blink seen by an agent on Windows and under Xvfb
 
 **Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
 these steps put numbers next to it). After Blink's text rendering.
@@ -262,7 +264,8 @@ In order; each gets a version when it starts.
 ### Rendering
 - [ ] Rendering without a window (ADR 0013, K): `rb_renderer_startup` accepts a NULL platform and
       creates a device without surface or swapchain, drawing to offscreen images. For tools (asset
-      baking, thumbnails), golden-image tests and CI machines without a display
+      baking, thumbnails), golden-image tests and CI machines without a display. Captures then read
+      the offscreen image, which also covers GPUs whose window images cannot be copied (ADR 0024, B2)
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
 - [ ] Batched 2D renderer (sprites, textures): the frame's quads collected into a vertex buffer and
@@ -315,8 +318,9 @@ In order; each gets a version when it starts.
       (not the current directory, which depends on how the game is launched), directory listing
 - [ ] Asset manager: assets referenced by handle (generational pool, ADR 0007), loaded once and
       shared, unloaded when no longer used (reference counting vs explicit lifetimes: to decide)
-- [ ] Image decoding (PNG at least) for textures and the icon (own decoder vs external library:
-      to decide)
+- [ ] Image decoding (PNG at least) for textures and the icon: the inflate in `tests/support/`
+      (stored and fixed-Huffman blocks) grows into the engine's, with dynamic Huffman codes (what
+      other encoders write); the PNG writer's filters run backwards (ADR 0024)
 - [ ] Asynchronous loading on the job system (see Threading)
 - [ ] Hot reload: watch asset files and reload them while the game runs (shaders first: embedded in
       the engine today, they become `.spv` files next to the executable, ADR 0015, E2)
@@ -378,8 +382,8 @@ In order; each gets a version when it starts.
 ### LLM and automation tooling
 Agents read the JSON lines log, `ctest`'s JUnit report and `compile_commands.json`; with the
 commands they pause and step a running game, ask it for its state and play it with injected input.
-They cannot yet see what it draws. The command system, input injection and screenshots are in
-v0.2.0 (driving Blink from an agent); these build on them.
+With `screen.capture` they see what it draws. The command system, input injection and screen
+capture are in v0.2.0 (driving Blink from an agent); these build on them.
 - [ ] Commands from the in-game console, with the debug UI
 - [ ] Several clients on the command server at once, if agents need them (one at a time today,
       ADR 0022); replies on stdout without the `\r` the Windows C runtime adds in text mode
@@ -398,7 +402,11 @@ v0.2.0 (driving Blink from an agent); these build on them.
       command ever matter (ADR 0023, F2: a command today)
 - [ ] `help <group>` (`help input`): the commands of a group, when the list grows past a screen
       (ADR 0023, E2)
-- [ ] Golden-image tests: screenshots compared with reference images (see Testing)
+- [ ] Golden-image tests: captures compared with reference images (see Testing); needs PNG
+      decoding (see Assets) and a tolerance, since drivers may round differently
+- [ ] Faster captures, if agents take many: the PNG filter choice and DEFLATE are about 0.1 s for a
+      1600x900 frame in release, up to 1 s in debug, on the main thread (ADR 0024); dynamic
+      Huffman codes if file sizes matter
 - [ ] Frame number on every log line, to match log lines, commands and screenshots
 - [ ] A page for agents listing commands, variables and output formats, linked from `CLAUDE.md`
 

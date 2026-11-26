@@ -50,6 +50,14 @@ typedef struct rb_vk_buffer {
 bool rb_vk_buffer_create_host(rb_vk_buffer *buffer, const rb_vk_device *device, VkDeviceSize size,
                               VkBufferUsageFlags usage);
 
+/*
+ * A buffer of `size` bytes the GPU copies into and the CPU reads
+ * (TRANSFER_DST): host-visible and coherent, cached by the CPU when the device
+ * offers such memory. False (logged): *buffer is zeroed.
+ */
+bool rb_vk_buffer_create_readback(rb_vk_buffer *buffer, const rb_vk_device *device,
+                                  VkDeviceSize size);
+
 /* The GPU must be done with it. Zeroes *buffer; a zeroed buffer is ignored. */
 void rb_vk_buffer_destroy(rb_vk_buffer *buffer, const rb_vk_device *device);
 
@@ -59,5 +67,13 @@ void rb_vk_buffer_destroy(rb_vk_buffer *buffer, const rb_vk_device *device);
  */
 bool rb_vk_buffer_write(const rb_vk_buffer *buffer, const rb_vk_device *device, const void *data,
                         VkDeviceSize size);
+
+/*
+ * Copies the first `size` bytes of a host-visible buffer into `data`. The GPU's
+ * writes must be done and made visible to the host first (a barrier to the
+ * HOST stage, then the fence). False (logged) when the memory cannot be mapped.
+ */
+bool rb_vk_buffer_read(const rb_vk_buffer *buffer, const rb_vk_device *device, void *data,
+                       VkDeviceSize size);
 
 #endif /* RB_VULKAN_MEMORY_H */

@@ -75,7 +75,7 @@ Presets: `debug`, `release`, `debug-asan`. Details in [docs/features/build-syste
 ## Commands
 
 A running game takes commands: the engine's own (`help`, `status`, `pause`, `resume`, `step`,
-`quit`, `wait`, and the `input.*` group) and the game's (`blink.state`...). Each answers with one
+`quit`, `wait`, and the `input.*` and `screen.*` groups) and the game's (`blink.state`...). Each answers with one
 JSON line. Start the game
 listening on a local port, then send commands with `reborn-cmd`, one argument per command:
 
@@ -111,10 +111,13 @@ The engine's commands, in every game (each game's README lists its own):
 | `input.wheel <dy> [dx]` | turns the wheel in the next step (notches, positive up and right) | `step` |
 | `input.real [on\|off]` | turns keyboard and mouse on or off at once; no argument: as now | `real` |
 | `input.state` | what the engine sees | `keys` and `buttons` down (`real` or `injected`), `mouse` (`x`, `y`, `in_window`), `real`, `waiting`, `next_step` |
+| `screen.capture [path]` | renders a frame now and saves it as PNG (`screenshot-<frame>.png` by default) | `path`, `width`, `height`, `bytes`, `frame`, `step` |
 
 Keys are named as `rb_key_name` spells them, any case, `_` for a space (`space`, `a`, `f1`,
 `left_ctrl`, `keypad_1`); buttons `left`, `right`, `middle`, `x1`, `x2`; positions in window
 pixels. Injected input waits for the next step, so a paused game sees it at the next `step`.
+`screen.capture` shows the game as the player sees it: a PNG an agent can open, rendered at the
+moment of the command (`reborn-cmd 7777 "step 30" "screen.capture after.png"`).
 
 The same commands can come from a file, one per line (`#` starts a comment), with the replies on
 stdout:

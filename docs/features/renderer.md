@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-17) |
-| **Updated** | v0.2.0 (2026-11-24) |
+| **Updated** | v0.2.0 (2026-11-26) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md), [0024](../adr/0024-screen-capture-and-png.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
@@ -265,6 +265,8 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
   resource (B1); blocking staging upload (C1); one descriptor set per texture (D1); nearest or
   linear per texture (E3); RGBA8 sRGB (F1); destroy waits for the GPU (G1).
 - A source rectangle per textured draw, in texture pixels (ADR 0018, A1).
+- Frame capture from the swapchain image, `TRANSFER_SRC` where offered (ADR 0024, B1): see
+  [screen-capture.md](screen-capture.md).
 
 ## Future work
 - Batched 2D renderer with vertex buffers, when a game draws many sprites; bindless textures or
@@ -288,3 +290,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.2.0 | 2026-11-23 | `rb_renderer_set_camera`: world units through a 2D camera, letterboxed; a view matrix in the push constants |
 | v0.2.0 | 2026-11-23 | Textures: device memory, staging upload, samplers, descriptor sets; `rb_texture`, `rb_renderer_draw_texture`; plain quads sample a white texture |
 | v0.2.0 | 2026-11-24 | `rb_renderer_draw_texture_region`: a source rectangle per draw; UV offset and size in the push constants (112 bytes) |
+| v0.2.0 | 2026-11-26 | Frame capture: `rb_renderer_capture_frame`, `rb_renderer_captured_image`; swapchain images copyable where the GPU allows (ADR 0024) |

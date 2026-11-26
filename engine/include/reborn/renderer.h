@@ -23,6 +23,7 @@
 #include <reborn/camera2d.h>
 #include <reborn/color.h>
 #include <reborn/defines.h>
+#include <reborn/image.h>
 #include <reborn/memory.h>
 #include <reborn/platform.h>
 
@@ -184,5 +185,34 @@ typedef struct rb_renderer_validation_stats {
 } rb_renderer_validation_stats;
 
 RB_API rb_renderer_validation_stats rb_renderer_get_validation_stats(const rb_renderer *renderer);
+
+/* ============================================================================
+ * Frame capture (ADR 0024)
+ *
+ * The pixels of a frame as the window shows them, back in CPU memory:
+ *
+ *   // in render
+ *   rb_renderer_capture_frame(renderer);
+ *   // after the frame (the next update, say)
+ *   const rb_image *shot = rb_renderer_captured_image(renderer);
+ *   if (shot != NULL) rb_image_write_png(shot, "shot.png", rb_app_allocator(app), NULL);
+ * ========================================================================== */
+
+/*
+ * Books a capture of the frame being drawn (inside the game's render, or
+ * between begin and end): when the frame ends, its image is copied, shown as
+ * usual, and read back. Everything drawn in the frame is in it, before or after
+ * the call. The frame's end then waits for the GPU: a stall of a few
+ * milliseconds, fine now and then, not every frame.
+ */
+RB_API void rb_renderer_capture_frame(rb_renderer *renderer);
+
+/*
+ * The frame captured last: RGBA, sRGB, opaque, the window's size in pixels.
+ * Owned by the renderer, valid until the next rb_renderer_capture_frame or the
+ * shutdown. NULL when none was captured, or the last capture failed (logged:
+ * no memory, or a GPU whose window images cannot be copied).
+ */
+RB_API const rb_image *rb_renderer_captured_image(const rb_renderer *renderer);
 
 #endif /* RB_RENDERER_H */

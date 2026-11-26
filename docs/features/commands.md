@@ -5,8 +5,8 @@
 | **Status** | In progress |
 | **Since** | v0.2.0 (2026-11-24) |
 | **Updated** | v0.2.0 (2026-11-26) |
-| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/app/app_input.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
-| **ADRs** | [0022](../adr/0022-command-system.md), [0023](../adr/0023-input-injection.md) |
+| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/app/app_input.c`, `engine/src/app/app_screen.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
+| **ADRs** | [0022](../adr/0022-command-system.md), [0023](../adr/0023-input-injection.md), [0024](../adr/0024-screen-capture-and-png.md) |
 
 ## Summary
 Named actions with arguments (`step 10`, `blink.state`), each answering with one JSON line. They
@@ -38,14 +38,20 @@ script can pause a game, advance it step by step and read its state, on Windows 
   `input.real [on|off]` ignores keyboard and mouse at once; `input.state` shows the keys and
   buttons down (real or injected), the mouse, real input and what waits. Details in
   [input.md](input.md).
+- **Screen commands** (ADR 0024): `screen.capture [path]` renders a frame at once (the game's
+  render with alpha 0, the state of the last step) and saves it as PNG, by default
+  `screenshot-<frame>.png` in the working directory; replies `path`, `width`, `height`, `bytes`,
+  `frame`, `step`. Fails while the window is minimized. Details in
+  [screen-capture.md](screen-capture.md).
 - **Names:** the commands that drive the run have none (`help`, `step`...); every other engine
-  command lives in its subsystem's group (`input.*`); game commands carry the game's prefix.
+  command lives in its subsystem's group (`input.*`, `screen.*`); game commands carry the game's
+  prefix.
 - **Game commands:** registered in `init` with `rb_app_register_command`; names lowercase with
   the game's prefix (`blink.state`). At most 64 commands in all. Each game's README lists its
   own; the main README lists the engine's. The sandbox has `sandbox.clear [<r> <g> <b>]`.
 - **Client:** `reborn-cmd <port> <line>...` prints each reply; exit code 0 all succeeded, 1 one
   failed, 2 no game or no reply within 60 s.
-- **Not yet:** screenshots (the next step), the in-game console, console variables, several
+- **Not yet:** the in-game console, console variables, several
   clients at once, a hash map for the names.
 
 ## Design
@@ -54,7 +60,7 @@ flowchart LR
     S["--script file"] --> R[app_commands.c<br/>once per frame]
     N["reborn-cmd"] -- "TCP 127.0.0.1" --> SV[command_server.c] --> R
     R --> RUN["command.c<br/>split, find, check, call, reply"]
-    RUN --> E["engine commands<br/>pause, step, input.*..."]
+    RUN --> E["engine commands<br/>pause, step, input.*, screen.*..."]
     RUN --> G["game commands<br/>blink.state..."]
     RUN -- "JSON line" --> OUT["stdout / connection"]
 ```
@@ -96,9 +102,10 @@ Arguments: `rb_command_arg_u32` / `_u64` / `_f32` (write the error and return fa
 - `argc`/`argv`-style arguments with parsing helpers (D1); a typed reply writer (E1).
 - Fixed table (F1); commands at the start of the frame, pause in the engine (G1).
 - Engine commands grouped by subsystem, input queued for the next step (ADR 0023, E2, B1).
+- `screen.capture` renders its own frame and replies at once (ADR 0024, A1).
 
 ## Future work
-- Screenshots, then golden images and unattended runs on top of scripts.
+- Golden images and unattended runs on top of scripts and captures.
 - The in-game console with the debug UI; console variables; state inspection commands.
 - A hash map for the registry (v0.3.0); several clients at once if agents need it.
 
@@ -107,3 +114,4 @@ Arguments: `rb_command_arg_u32` / `_u64` / `_f32` (write the error and return fa
 |---|---|---|
 | v0.2.0 | 2026-11-24 | First version: registry, script, local server, `reborn-cmd`, pause and step; Blink's and the sandbox's commands |
 | v0.2.0 | 2026-11-26 | `input.*` commands (ADR 0023); engine commands outside the run's control grouped by subsystem |
+| v0.2.0 | 2026-11-26 | `screen.capture` (ADR 0024) |

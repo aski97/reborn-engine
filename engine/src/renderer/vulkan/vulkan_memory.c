@@ -55,8 +55,9 @@ bool rb_vk_memory_allocate(const rb_vk_device *device, const VkMemoryRequirement
  * Buffers
  * ========================================================================== */
 
-bool rb_vk_buffer_create_host(rb_vk_buffer *buffer, const rb_vk_device *device, VkDeviceSize size,
-                              VkBufferUsageFlags usage) {
+/* Host-visible and coherent, plus the `preferred` properties when a memory type has them. */
+static bool buffer_create(rb_vk_buffer *buffer, const rb_vk_device *device, VkDeviceSize size,
+                          VkBufferUsageFlags usage, VkMemoryPropertyFlags preferred) {
     RB_ASSERT(buffer != NULL && device != NULL && device->handle != VK_NULL_HANDLE);
     RB_ASSERT(size > 0);
     memset(buffer, 0, sizeof(*buffer));
@@ -76,10 +77,14 @@ bool rb_vk_buffer_create_host(rb_vk_buffer *buffer, const rb_vk_device *device, 
     }
     VkMemoryRequirements requirements;
     device->vk.vkGetBufferMemoryRequirements(device->handle, buffer->handle, &requirements);
-    /* Coherent: CPU writes reach the GPU without a flush. Vulkan guarantees such a type. */
+    /*
+     * Coherent: CPU writes reach the GPU, and GPU writes the CPU, without
+     * flushing or invalidating caches by hand. Vulkan guarantees such a type.
+     */
     const VkMemoryPropertyFlags host =
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    if (!rb_vk_memory_allocate(device, &requirements, host, host, "buffer", &buffer->memory)) {
+    if (!rb_vk_memory_allocate(device, &requirements, host | preferred, host, "buffer",
+                               &buffer->memory)) {
         rb_vk_buffer_destroy(buffer, device);
         return false;
     }
@@ -91,6 +96,22 @@ bool rb_vk_buffer_create_host(rb_vk_buffer *buffer, const rb_vk_device *device, 
     }
     buffer->size = size;
     return true;
+}
+
+bool rb_vk_buffer_create_host(rb_vk_buffer *buffer, const rb_vk_device *device, VkDeviceSize size,
+                              VkBufferUsageFlags usage) {
+    return buffer_create(buffer, device, size, usage, 0);
+}
+
+bool rb_vk_buffer_create_readback(rb_vk_buffer *buffer, const rb_vk_device *device,
+                                  VkDeviceSize size) {
+    /*
+     * The CPU writes uncached memory fast (writes are combined), but reads it
+     * from the bus piece by piece, many times slower: a buffer the CPU reads
+     * wants a cached type, where the device has one.
+     */
+    return buffer_create(buffer, device, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                         VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 }
 
 void rb_vk_buffer_destroy(rb_vk_buffer *buffer, const rb_vk_device *device) {
@@ -117,6 +138,22 @@ bool rb_vk_buffer_write(const rb_vk_buffer *buffer, const rb_vk_device *device, 
         return false;
     }
     memcpy(mapped, data, (usize)size);
+    device->vk.vkUnmapMemory(device->handle, buffer->memory);
+    return true;
+}
+
+bool rb_vk_buffer_read(const rb_vk_buffer *buffer, const rb_vk_device *device, void *data,
+                       VkDeviceSize size) {
+    RB_ASSERT(buffer != NULL && device != NULL && data != NULL);
+    RB_ASSERT(buffer->memory != VK_NULL_HANDLE && size <= buffer->size);
+    void    *mapped = NULL;
+    VkResult result =
+        device->vk.vkMapMemory(device->handle, buffer->memory, 0, VK_WHOLE_SIZE, 0, &mapped);
+    if (result != VK_SUCCESS) {
+        RB_LOG_ERROR("vkMapMemory failed: %s", rb_vk_result_name(result));
+        return false;
+    }
+    memcpy(data, mapped, (usize)size);
     device->vk.vkUnmapMemory(device->handle, buffer->memory);
     return true;
 }

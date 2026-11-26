@@ -23,6 +23,7 @@ static void renderer_destroy_objects(rb_renderer *renderer) {
         for (u32 i = 0; i < RB_VK_FRAMES_IN_FLIGHT; ++i) {
             rb_vk_frame_destroy(&renderer->frames[i], &renderer->device);
         }
+        rb_vk_capture_destroy(&renderer->capture, &renderer->device);
         rb_vk_pipeline_destroy(&renderer->pipeline, &renderer->device);
         rb_vk_swapchain_destroy(&renderer->swapchain, &renderer->device);
         rb_vk_textures_destroy(&renderer->textures, &renderer->device);
@@ -473,6 +474,70 @@ bool rb_renderer_begin_frame(rb_renderer *renderer) {
     return true;
 }
 
+/* ============================================================================
+ * Frame capture (ADR 0024)
+ * ========================================================================== */
+
+void rb_renderer_capture_frame(rb_renderer *renderer) {
+    RB_ASSERT(renderer != NULL);
+    /* The copy is recorded when the frame ends: there must be one being recorded. */
+    RB_ASSERT(renderer->in_frame);
+    renderer->capture.requested = true;
+    /* Until this capture finishes, the last one's pixels no longer stand for "the last frame". */
+    renderer->capture.valid = false;
+    renderer->capture.image = (rb_image){0};
+}
+
+const rb_image *rb_renderer_captured_image(const rb_renderer *renderer) {
+    RB_ASSERT(renderer != NULL);
+    return renderer->capture.valid ? &renderer->capture.image : NULL;
+}
+
+/*
+ * The end of the frame's commands: the image left ready for the present, with
+ * the copy of a booked capture on the way. True when the copy was recorded.
+ */
+static bool renderer_record_end(rb_renderer *renderer, VkCommandBuffer commands) {
+    bool booked = renderer->capture.requested;
+    renderer->capture.requested = false;
+    if (booked) {
+        if (!renderer->swapchain.capturable) {
+            RB_LOG_ERROR("Capture: the window's images cannot be copied on this GPU");
+        } else if (rb_vk_capture_record(&renderer->capture, &renderer->device, commands,
+                                        renderer->swapchain.images[renderer->image_index],
+                                        renderer->swapchain.format.format,
+                                        renderer->swapchain.extent)) {
+            return true;
+        }
+    }
+    /* Destination NONE: the present waits on the semaphore, which orders it after this. */
+    renderer_transition_image(
+        renderer, commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
+    return false;
+}
+
+/*
+ * After the frame's submit: waits for the GPU to finish it (a stall, the price
+ * of a capture), then reads the copy back.
+ */
+static void renderer_finish_capture(rb_renderer *renderer, const rb_vk_frame *frame) {
+    const rb_vk_device_functions *vk = &renderer->device.vk;
+    VkResult                      result =
+        vk->vkWaitForFences(renderer->device.handle, 1, &frame->done, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS) {
+        renderer_fail(renderer, "vkWaitForFences", result);
+        /* The device is lost or out of memory: the copy will never be read. */
+        rb_vk_capture_cancel(&renderer->capture, &renderer->device);
+        return;
+    }
+    if (rb_vk_capture_finish(&renderer->capture, &renderer->device)) {
+        RB_LOG_DEBUG("Frame captured: %ux%u", renderer->capture.image.width,
+                     renderer->capture.image.height);
+    }
+}
+
 void rb_renderer_end_frame(rb_renderer *renderer) {
     RB_ASSERT(renderer != NULL);
     RB_ASSERT(renderer->in_frame);
@@ -483,14 +548,13 @@ void rb_renderer_end_frame(rb_renderer *renderer) {
     renderer->frame_index = (renderer->frame_index + 1) % RB_VK_FRAMES_IN_FLIGHT;
 
     vk->vkCmdEndRendering(frame->commands);
-    /* Destination NONE: the present waits on the semaphore, which orders it after this. */
-    renderer_transition_image(
-        renderer, frame->commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
+    bool     capturing = renderer_record_end(renderer, frame->commands);
     VkResult result = vk->vkEndCommandBuffer(frame->commands);
     if (result != VK_SUCCESS) {
         renderer_fail(renderer, "vkEndCommandBuffer", result);
+        if (capturing) {
+            rb_vk_capture_cancel(&renderer->capture, &renderer->device);
+        }
         return;
     }
 
@@ -522,6 +586,9 @@ void rb_renderer_end_frame(rb_renderer *renderer) {
     result = vk->vkQueueSubmit2(renderer->device.queue, 1, &submit, frame->done);
     if (result != VK_SUCCESS) {
         renderer_fail(renderer, "vkQueueSubmit2", result);
+        if (capturing) {
+            rb_vk_capture_cancel(&renderer->capture, &renderer->device);
+        }
         return;
     }
 
@@ -538,5 +605,12 @@ void rb_renderer_end_frame(rb_renderer *renderer) {
         renderer->swapchain_stale = true;
     } else if (result != VK_SUCCESS) {
         renderer_fail(renderer, "vkQueuePresentKHR", result);
+    }
+    /*
+     * After the present, not before: the frame reaches the screen as usual, and
+     * the copy, already submitted, does not depend on what the present did.
+     */
+    if (capturing) {
+        renderer_finish_capture(renderer, frame);
     }
 }

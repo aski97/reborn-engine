@@ -317,6 +317,17 @@ bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *in
 
     if (ok) {
         swapchain->extent = extent;
+        /*
+         * Copying out of the images is what frame captures need (ADR 0024).
+         * Asked only where offered: a surface without it still gets a
+         * swapchain, captures then fail with an error.
+         */
+        swapchain->capturable =
+            (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+        VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        if (swapchain->capturable) {
+            usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
         VkSwapchainCreateInfoKHR info = {
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
             .surface = surface,
@@ -325,7 +336,7 @@ bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *in
             .imageColorSpace = swapchain->format.colorSpace,
             .imageExtent = extent,
             .imageArrayLayers = 1,
-            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageUsage = usage,
             /* One queue family draws and presents (N1): no sharing between families. */
             .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
             /* The rotation the display already applies (phones): none on a desktop. */
@@ -373,6 +384,9 @@ bool rb_vk_swapchain_create(rb_vk_swapchain *swapchain, const rb_vk_instance *in
         RB_LOG_INFO("Swapchain created: %ux%u, %s, %s, %u images", extent.width, extent.height,
                     format_name, mode_name != NULL ? mode_name : "other mode",
                     swapchain->image_count);
+        if (!swapchain->capturable) {
+            RB_LOG_WARN("The window's images cannot be copied: no frame captures on this GPU");
+        }
     } else {
         RB_LOG_DEBUG("Swapchain recreated: %ux%u", extent.width, extent.height);
     }

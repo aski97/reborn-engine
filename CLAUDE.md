@@ -36,7 +36,8 @@ ctest --preset debug      # unit tests, the games' too; JUnit in build/debug/jun
 ```
 Driving a running game (`docs/features/commands.md`): start it with `--listen <port>` (or
 `--script <file>`), then `./build/debug/bin/reborn-cmd <port> help "blink.state" "step 10"`:
-one JSON reply per line, exit code 0 when all succeeded.
+one JSON reply per line, exit code 0 when all succeeded. `screen.capture <file>.png` saves what the
+window shows, to open and look at.
 New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
 Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`

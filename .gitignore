@@ -20,3 +20,7 @@ Thumbs.db
 
 # Runtime output (the sandbox writes its log to the working directory)
 *.log.jsonl
+
+# Screen captures (the screen.capture command, the sandbox's P key)
+/screenshot-*.png
+/sandbox-capture.png

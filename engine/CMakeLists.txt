@@ -15,18 +15,23 @@ set(REBORN_SOURCES
     src/app/app.c
     src/app/app_commands.c
     src/app/app_input.c
+    src/app/app_screen.c
     src/app/frame_timing.c
     src/app/input_queue.c
     src/command/command.c
     src/command/command_script.c
     src/command/command_server.c
+    src/compression/deflate.c
+    src/compression/zlib.c
     src/containers/handle_pool.c
     src/containers/ring.c
     src/core/assert.c
+    src/core/checksum.c
     src/core/color.c
     src/core/log.c
     src/core/text_writer.c
     src/core/version.c
+    src/image/png_write.c
     src/math/random.c
     src/memory/allocator.c
     src/memory/arena.c
@@ -36,6 +41,7 @@ set(REBORN_SOURCES
     src/platform/input.c
     src/platform/platform.c
     src/renderer/camera2d.c
+    src/renderer/vulkan/vulkan_capture.c
     src/renderer/vulkan/vulkan_debug.c
     src/renderer/vulkan/vulkan_device.c
     src/renderer/vulkan/vulkan_frame.c

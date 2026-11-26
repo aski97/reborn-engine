@@ -89,6 +89,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   sees. `rb_app_real_input` lets a game show it.
 - Sandbox: an input panel above the commands panel: keys and buttons down, the mouse position,
   real input on or off.
+- Screen capture (ADR 0024): `screen.capture [path]` renders a frame at once and saves it as PNG
+  (`screenshot-<frame>.png` by default), replying with its path, size, file size, frame and step,
+  so an agent sees what the player sees. `rb_renderer_capture_frame` books a capture of the frame
+  being drawn; `rb_renderer_captured_image` returns its pixels (RGBA, sRGB, opaque). Swapchain
+  images are created copyable (`TRANSFER_SRC`) where the GPU allows it.
+- PNG writing (ADR 0024): `rb_image_write_png` in `reborn/image.h`, RGB or RGBA, a filter chosen
+  per row; on internal layers any later format can reuse: CRC-32 and Adler-32, DEFLATE (LZ77 with
+  fixed Huffman codes) and zlib. Memory tag `RB_MEMORY_TAG_IMAGE`.
+- Sandbox: P captures the next frame, saves `sandbox-capture.png` and shows it as a thumbnail in a
+  panel at the top, with its number and file size.
 
 ### Changed
 - `rb_app_run(&callbacks, argc, argv)` takes the command line, for the engine's options

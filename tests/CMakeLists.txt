@@ -11,13 +11,17 @@ reborn_add_test_executable(reborn_tests
     command/test_command.c
     command/test_command_script.c
     command/test_command_server.c
+    compression/test_deflate.c
+    compression/test_zlib.c
     containers/test_handle_pool.c
     containers/test_ring.c
     core/test_assert.c
     core/test_assert_disabled.c
+    core/test_checksum.c
     core/test_color.c
     core/test_log.c
     core/test_version.c
+    image/test_png_write.c
     math/test_math.c
     math/test_random.c
     memory/test_allocator.c
@@ -30,6 +34,7 @@ reborn_add_test_executable(reborn_tests
     platform/test_memory.c
     platform/test_platform.c
     renderer/test_camera2d.c
+    renderer/vulkan/test_vulkan_capture.c
     renderer/vulkan/test_vulkan_debug.c
     renderer/vulkan/test_vulkan_device.c
     renderer/vulkan/test_vulkan_instance.c
@@ -42,6 +47,7 @@ reborn_add_test_executable(reborn_tests
     text/test_utf8.c
     # Test helpers (ADR 0004) and their own tests.
     support/failing_allocator.c
+    support/inflate.c
     support/test_failing_allocator.c
 )
 

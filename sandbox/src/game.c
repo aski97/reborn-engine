@@ -3,8 +3,9 @@
  * input and timing can be checked by hand, and draws a few quads: a world
  * field through a 2D camera, a HUD in window pixels on top, textures made in
  * code, the builtin font's atlas and text drawn with it, numbers drawn from a
- * seed, the commands' panel (pause, steps, its own sandbox.clear) and the
- * input panel (keys, buttons and mouse as the engine sees them, injected or not).
+ * seed, the commands' panel (pause, steps, its own sandbox.clear), the
+ * input panel (keys, buttons and mouse as the engine sees them, injected or not)
+ * and the capture panel (P: the frame saved as PNG and shown as a thumbnail).
  */
 #include "game.h"
 
@@ -14,6 +15,7 @@
 #include <reborn/camera2d.h>
 #include <reborn/clock.h>
 #include <reborn/font.h>
+#include <reborn/image.h>
 #include <reborn/log.h>
 #include <reborn/math.h>
 #include <reborn/random.h>
@@ -71,6 +73,15 @@ typedef struct sandbox_state {
     bool     clear_fixed;
     rb_color clear_color;
     char     last_command[64];
+    /*
+     * Frame capture (ADR 0024): P books a capture of the next frame; the step
+     * after it saves the PNG and shows the pixels as a texture, bottom right.
+     */
+    bool       capture_wanted; /* P pressed: the next render books it */
+    bool       capture_booked; /* booked: the next update collects it */
+    rb_texture capture;
+    u32        capture_count;
+    char       capture_info[32];
 } sandbox_state;
 
 /* ============================================================================
@@ -350,13 +361,59 @@ static void game_shutdown(void *state, rb_app *app) {
     sandbox_state *game = state;
     rb_renderer_destroy_texture(rb_app_renderer(app), game->checker);
     rb_renderer_destroy_texture(rb_app_renderer(app), game->glow);
+    rb_renderer_destroy_texture(rb_app_renderer(app), game->capture);
     rb_font_destroy(game->font);
+}
+
+/* In the working directory (the repository root when run as in CLAUDE.md), ignored by git. */
+#define SANDBOX_CAPTURE_PATH "sandbox-capture.png"
+
+/*
+ * The frame booked by the last render has ended: its pixels go to a PNG file
+ * and into a texture, which the capture panel shows. In update, not render: the
+ * old texture cannot be destroyed while a frame is being recorded.
+ */
+static void sandbox_collect_capture(sandbox_state *game, rb_app *app) {
+    rb_renderer    *renderer = rb_app_renderer(app);
+    const rb_image *image = rb_renderer_captured_image(renderer);
+    if (image == NULL) {
+        snprintf(game->capture_info, sizeof(game->capture_info), "failed");
+        return;
+    }
+    usize bytes = 0;
+    bool  saved = rb_image_write_png(image, SANDBOX_CAPTURE_PATH, rb_app_allocator(app), &bytes);
+    rb_renderer_destroy_texture(renderer, game->capture);
+    /* Linear: the panel shows it at a fraction of its size. */
+    game->capture = rb_renderer_create_texture(
+        renderer, &(rb_texture_desc){.width = image->width,
+                                     .height = image->height,
+                                     .pixels = image->pixels,
+                                     .filter = RB_TEXTURE_FILTER_LINEAR});
+    ++game->capture_count;
+    if (saved) {
+        /* The panel holds 11 glyphs per line: the size in pixels goes to the log only. */
+        snprintf(game->capture_info, sizeof(game->capture_info), "#%u  %zu KB", game->capture_count,
+                 (bytes + 512) / 1024);
+        RB_LOG_INFO("Frame captured to %s: %ux%u, %zu bytes (P)", SANDBOX_CAPTURE_PATH,
+                    image->width, image->height, bytes);
+    } else {
+        snprintf(game->capture_info, sizeof(game->capture_info), "#%u unsaved",
+                 game->capture_count);
+    }
 }
 
 static void game_update(void *state, rb_app *app, f64 dt) {
     (void)dt;
     sandbox_state     *game = state;
     rb_platform_state *platform = rb_app_platform(app);
+
+    if (game->capture_booked) {
+        game->capture_booked = false;
+        sandbox_collect_capture(game, app);
+    }
+    if (rb_key_was_pressed(platform, RB_KEY_P)) {
+        game->capture_wanted = true;
+    }
 
     /* Edges cover the time since the previous step: a tap shows both, exactly once. */
     if (rb_key_was_pressed(platform, RB_KEY_SPACE)) {
@@ -964,6 +1021,60 @@ static void sandbox_draw_input(const sandbox_state *game, rb_app *app) {
 }
 
 /* ============================================================================
+ * Capture panel
+ * ========================================================================== */
+
+/* At most 128x72, the shape of a 16:9 window: the free strip at the top is 88 pixels high. */
+#define SANDBOX_CAPTURE_THUMB_WIDTH  128.0f
+#define SANDBOX_CAPTURE_THUMB_HEIGHT 72.0f
+#define SANDBOX_CAPTURE_TEXT_WIDTH   176.0f /* 11 glyphs: "CAPTURE (P)" */
+
+/*
+ * Top, right of the row of squares (ADR 0024): the last frame P captured,
+ * shrunk, with its number and file size. The panel is in the next capture too:
+ * a picture of a picture, one level deeper each time.
+ */
+static void sandbox_draw_capture(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer   *renderer = rb_app_renderer(app);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    if (size.pixel_width == 0 || size.pixel_height == 0) {
+        return;
+    }
+    /* The window's shape, fitted inside the thumbnail's box. */
+    f32 aspect = (f32)size.pixel_width / (f32)size.pixel_height;
+    f32 thumb_width = SANDBOX_CAPTURE_THUMB_HEIGHT * aspect;
+    f32 thumb_height = SANDBOX_CAPTURE_THUMB_HEIGHT;
+    if (thumb_width > SANDBOX_CAPTURE_THUMB_WIDTH) {
+        thumb_width = SANDBOX_CAPTURE_THUMB_WIDTH;
+        thumb_height = SANDBOX_CAPTURE_THUMB_WIDTH / aspect;
+    }
+    const f32 left = SANDBOX_COMMANDS_LEFT;
+    const f32 top = SANDBOX_GRAPH_MARGIN;
+    rb_renderer_draw_quad(
+        renderer, left, top,
+        8.0f + SANDBOX_CAPTURE_THUMB_WIDTH + 8.0f + SANDBOX_CAPTURE_TEXT_WIDTH + 8.0f,
+        8.0f + SANDBOX_CAPTURE_THUMB_HEIGHT + 8.0f, rb_color_srgb(0.0f, 0.0f, 0.0f, 0.6f));
+    if (rb_renderer_texture_is_valid(renderer, game->capture)) {
+        rb_renderer_draw_texture(renderer, left + 8.0f, top + 8.0f, thumb_width, thumb_height,
+                                 game->capture, rb_color_srgb(1, 1, 1, 1));
+    } else {
+        rb_renderer_draw_quad(renderer, left + 8.0f, top + 8.0f, thumb_width, thumb_height,
+                              rb_color_srgb(1.0f, 1.0f, 1.0f, 0.08f));
+    }
+
+    const f32     text_left = left + 8.0f + SANDBOX_CAPTURE_THUMB_WIDTH + 8.0f;
+    rb_text_style style = sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_text_draw(renderer, text_left, top + 8.0f, &style, "CAPTURE (P)");
+    rb_text_style info = style;
+    info.color = rb_color_srgb(0.7f, 0.85f, 1.0f, 1.0f);
+    rb_text_draw(renderer, text_left, top + 34.0f, &info,
+                 game->capture_info[0] != '\0' ? game->capture_info : "none yet");
+}
+
+/* ============================================================================
  * Render
  * ========================================================================== */
 
@@ -991,8 +1102,15 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_draw_random(game, app);
     sandbox_draw_commands(game, app);
     sandbox_draw_input(game, app);
+    sandbox_draw_capture(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
+    }
+    /* Anywhere in the frame: the capture is taken when the frame ends, with every draw in it. */
+    if (game->capture_wanted) {
+        game->capture_wanted = false;
+        game->capture_booked = true;
+        rb_renderer_capture_frame(rb_app_renderer(app));
     }
 }
 

@@ -123,6 +123,7 @@ typedef struct rb_vk_instance_functions {
     X(vkGetImageMemoryRequirements)                                                                \
     X(vkBindImageMemory)                                                                           \
     X(vkCmdCopyBufferToImage)                                                                      \
+    X(vkCmdCopyImageToBuffer)                                                                      \
     X(vkCreateSampler)                                                                             \
     X(vkDestroySampler)                                                                            \
     X(vkCreateDescriptorSetLayout)                                                                 \

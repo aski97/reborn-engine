@@ -31,7 +31,8 @@ and peaks show up per subsystem at the end of the run.
 
 **Tracking** (public, `reborn/memory.h`; ADR 0012)
 - Every helper takes an `rb_memory_tag` as its last argument (`GENERAL` for tools and tests,
-  `PLATFORM`, `GAME`, `RENDERER`, `TEXT`), the same in alloc, resize and free; out of range is asserted.
+  `PLATFORM`, `GAME`, `RENDERER`, `TEXT`, `IMAGE`), the same in alloc, resize and free; out of
+  range is asserted.
 - Counted per tag by the helpers, whichever allocator serves the call: `live_bytes`, `peak_bytes`,
   `live_blocks`, `alloc_count` (a resize of `NULL` included), `free_count`
   (`rb_memory_get_stats`). Failed calls and frees of `NULL` count nothing. Always on.
@@ -222,3 +223,4 @@ for (u32 n = 1;; ++n) {
 | v0.1.0 | 2026-11-16 | Tracking by tag, leak report, arena high-water mark |
 | v0.1.0 | 2026-11-17 | `RB_MEMORY_TAG_RENDERER` |
 | v0.2.0 | 2026-11-24 | `RB_MEMORY_TAG_TEXT` (fonts) |
+| v0.2.0 | 2026-11-26 | `RB_MEMORY_TAG_IMAGE` (image encoding, captured frames) |

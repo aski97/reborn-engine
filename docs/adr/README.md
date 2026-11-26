@@ -39,5 +39,6 @@ its implementation.
 | 0021 | [Text rendering](0021-text-rendering.md) | Accepted |
 | 0022 | [Command system](0022-command-system.md) | Accepted |
 | 0023 | [Input injection](0023-input-injection.md) | Accepted |
+| 0024 | [Screen capture and PNG writing](0024-screen-capture-and-png.md) | Accepted |
 
 Template: [`template.md`](template.md).

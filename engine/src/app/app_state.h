@@ -75,6 +75,9 @@ void rb_app_commands_stop(rb_app *app);
 /* Once per frame, before the steps: the script's next lines, then what the server received. */
 void rb_app_commands_run(rb_app *app);
 
+/* The screen.* commands (app_screen.c, ADR 0024), into the registry. */
+void rb_app_screen_commands_add(rb_app *app);
+
 /* The input.* commands (app_input.c, ADR 0023), into the registry. */
 void rb_app_input_commands_add(rb_app *app);
 
