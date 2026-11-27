@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 # The project version is defined here and only here. It reaches C code through
 # the generated header <reborn/version.h> (see engine/include/reborn/version.h.in).
 project(RebornEngine
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "A learning-oriented 2D/3D game engine written in C with Vulkan"
     LANGUAGES C
 )

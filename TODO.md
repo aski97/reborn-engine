@@ -11,105 +11,7 @@ A task with parts lists them as sub-tasks; the parts already done are checked, s
 shows at a glance. A trigger ("when...", "with...") says which feature will call for the task.
 Details live in the ADRs, the feature pages and the changelog: here, the concepts.
 
-## v0.2.0 (current)
-
-**Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
-up, a miss costs a life; score and lives are shown as text.
-In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
-The game starts as soon as it can run, so later steps answer its real needs instead of guesses.
-No batching yet: a few hundred quads and glyphs fit one draw each.
-- [x] 2D math and camera (ADR 0016)
-  - [x] Vectors, rectangles, matrices, orthographic projection
-  - [x] World units independent of the window's resolution, the design area always whole
-        (letterbox), zoom
-  - [x] Screen-to-world and world-to-screen conversion
-  - [x] World and window pixels in the same frame (UI and debug drawing in pixels)
-- [x] GPU memory and textures (ADR 0017)
-  - [x] One device memory allocation per resource
-  - [x] Uploads through a staging buffer
-  - [x] Nearest and linear samplers, one descriptor set per texture
-  - [x] Texture handles: create from RGBA pixels, destroy, validity, a cap on live textures
-  - [x] Tinted textured quads; plain quads through a 1x1 white texture
-- [x] Fonts (ADR 0018)
-  - [x] The engine's own 8x8 bitmap font: ASCII, a box for the rest
-  - [x] Glyph sources feeding a shelf packer into one atlas
-  - [x] Glyph and font metrics
-  - [x] Drawing a region of a texture
-- [x] Random number generator (ADR 0019)
-  - [x] PCG32 with an explicit seed, the same sequence everywhere, owned by the caller
-  - [x] Integers in a range without modulo bias, floats
-  - [x] The engine-wide rule for header-only code
-- [x] Blink, the first game (ADR 0014). Assets deferred: Blink has none. From here on Blink drives
-      the engine tasks
-  - [x] Layers (rules, input, view, glue), rules and input tested
-  - [x] Playable without text: the shrinking square, speed-up, lives, game over, restart
-  - [x] Seed, score and lives logged
-  - [x] Games in the build, one target each; one test runner for the engine and the games
-  - [x] A README per game, a list of the games
-- [x] Window icon (ADR 0020)
-  - [x] One icon at several sizes, set before the window shows
-  - [x] Sizes picked for the window's DPI (Win32), every size given (X11)
-  - [x] An image type for RGBA pixels, later shared by the PNG writer and captures
-  - [x] Icons drawn in code by Blink and the sandbox
-- [x] Text rendering (ADR 0021)
-  - [x] Drawing and measuring with a reusable style: size, color, alignment
-  - [x] Anchors with horizontal and vertical alignment, several lines
-  - [x] UTF-8 decoding, the missing glyph for unknown characters
-  - [x] In window pixels or world units
-  - [x] Layout apart from the drawing, tested without a GPU
-  - [x] Blink's title screen, HUD and game over at a whole pixel scale
-
-**Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
-platform and without clicking by hand; the sandbox exposes the same commands). In order.
-- [x] Command system (ADR 0022)
-  - [x] Named commands with arguments, one JSON line per reply
-  - [x] Registered by the engine and by each game
-  - [x] Scripts run at startup
-  - [x] A local TCP server, polled without a thread; sockets in the platform layer
-  - [x] The engine's command-line options
-  - [x] Run control: pause, resume, step, wait, quit; status and help
-  - [x] A command-line client
-  - [x] Blink's state and a restart with a seed
-- [x] Input injection (ADR 0023)
-  - [x] Keys, buttons, mouse and wheel queued for the next step, seen as real input
-  - [x] The same on every platform, without a display
-  - [x] Injected input kept through focus loss
-  - [x] Real input turned off, input state shown
-  - [x] Keys and buttons by name
-  - [x] Engine commands grouped by subsystem
-  - [x] Blink played by an agent on Windows and under Xvfb
-- [x] Screen capture (ADR 0024)
-  - [x] A frame captured on command and saved as PNG
-  - [x] Swapchain readback
-  - [x] Own PNG writer
-  - [x] Reusable layers: checksums (CRC-32, Adler-32), DEFLATE, zlib
-  - [x] A test-only inflate; captured pixels checked by tests
-  - [x] Blink seen by an agent on Windows and under Xvfb
-
-**Tests**
-- [x] Tests in parallel by default, none sharing a file or a port with another
-- [x] `app_run.frame_arena_is_reset_every_frame` no longer fails under load (once in six runs of
-      the window tests): one slow frame (the first one, hundreds of ms) held the time of all
-      50 updates, and the loop quit before a second render. The test now ends after 5 renders
-- [x] `clock.short_sleep_is_far_below_a_frame` no longer fails under load (once in about ten full
-      runs): with every core busy, 1 ms sleeps last 8 to 145 ms for seconds in a row, and all five
-      tries could land there. The tries now stop at the first short sleep, or after 10 s
-
-**Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
-these steps put numbers next to it, now that text can be drawn).
-- [x] Numbers in the overlay (ADR 0025)
-  - [x] Frames per second; average, 99th percentile and worst frame time
-  - [x] Work, update and render time: the frame without its waits, measured by the engine
-  - [x] Steps per second
-  - [x] Memory per tag, the arenas with their committed pages, the process from the OS
-  - [x] Validation counts
-  - [x] GPU, present mode, vsync and swapchain size
-  - [x] The same numbers as commands: `stats`, `memory.stats`, `renderer.info`
-- [x] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
-      toggle: the engine measures and publishes, the sandbox draws (ADR 0025, A3); an engine
-      overlay comes with the debug UI or the first game that asks
-
-## v0.3.0
+## v0.3.0 (current)
 
 **Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
 ring shrinks.
@@ -702,6 +604,104 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
 - [ ] Documentation website: feature pages, ADRs and an API reference generated from the doc
       comments (written in the refactoring, v0.4.0); generator and hosting, e.g. GitHub Pages
       published by CI: to decide
+
+## v0.2.0 — First game (released 2026-11-27)
+
+**Blink** (2D): a colored square appears at a random spot; click it before it vanishes. It speeds
+up, a miss costs a life; score and lives are shown as text.
+In order: each step needs the ones before, and each new engine piece is shown in the sandbox too.
+The game starts as soon as it can run, so later steps answer its real needs instead of guesses.
+No batching yet: a few hundred quads and glyphs fit one draw each.
+- [x] 2D math and camera (ADR 0016)
+  - [x] Vectors, rectangles, matrices, orthographic projection
+  - [x] World units independent of the window's resolution, the design area always whole
+        (letterbox), zoom
+  - [x] Screen-to-world and world-to-screen conversion
+  - [x] World and window pixels in the same frame (UI and debug drawing in pixels)
+- [x] GPU memory and textures (ADR 0017)
+  - [x] One device memory allocation per resource
+  - [x] Uploads through a staging buffer
+  - [x] Nearest and linear samplers, one descriptor set per texture
+  - [x] Texture handles: create from RGBA pixels, destroy, validity, a cap on live textures
+  - [x] Tinted textured quads; plain quads through a 1x1 white texture
+- [x] Fonts (ADR 0018)
+  - [x] The engine's own 8x8 bitmap font: ASCII, a box for the rest
+  - [x] Glyph sources feeding a shelf packer into one atlas
+  - [x] Glyph and font metrics
+  - [x] Drawing a region of a texture
+- [x] Random number generator (ADR 0019)
+  - [x] PCG32 with an explicit seed, the same sequence everywhere, owned by the caller
+  - [x] Integers in a range without modulo bias, floats
+  - [x] The engine-wide rule for header-only code
+- [x] Blink, the first game (ADR 0014). Assets deferred: Blink has none. From here on Blink drives
+      the engine tasks
+  - [x] Layers (rules, input, view, glue), rules and input tested
+  - [x] Playable without text: the shrinking square, speed-up, lives, game over, restart
+  - [x] Seed, score and lives logged
+  - [x] Games in the build, one target each; one test runner for the engine and the games
+  - [x] A README per game, a list of the games
+- [x] Window icon (ADR 0020)
+  - [x] One icon at several sizes, set before the window shows
+  - [x] Sizes picked for the window's DPI (Win32), every size given (X11)
+  - [x] An image type for RGBA pixels, later shared by the PNG writer and captures
+  - [x] Icons drawn in code by Blink and the sandbox
+- [x] Text rendering (ADR 0021)
+  - [x] Drawing and measuring with a reusable style: size, color, alignment
+  - [x] Anchors with horizontal and vertical alignment, several lines
+  - [x] UTF-8 decoding, the missing glyph for unknown characters
+  - [x] In window pixels or world units
+  - [x] Layout apart from the drawing, tested without a GPU
+  - [x] Blink's title screen, HUD and game over at a whole pixel scale
+
+**Driving a game from an agent** (an LLM agent plays and checks Blink on its own, on every
+platform and without clicking by hand; the sandbox exposes the same commands). In order.
+- [x] Command system (ADR 0022)
+  - [x] Named commands with arguments, one JSON line per reply
+  - [x] Registered by the engine and by each game
+  - [x] Scripts run at startup
+  - [x] A local TCP server, polled without a thread; sockets in the platform layer
+  - [x] The engine's command-line options
+  - [x] Run control: pause, resume, step, wait, quit; status and help
+  - [x] A command-line client
+  - [x] Blink's state and a restart with a seed
+- [x] Input injection (ADR 0023)
+  - [x] Keys, buttons, mouse and wheel queued for the next step, seen as real input
+  - [x] The same on every platform, without a display
+  - [x] Injected input kept through focus loss
+  - [x] Real input turned off, input state shown
+  - [x] Keys and buttons by name
+  - [x] Engine commands grouped by subsystem
+  - [x] Blink played by an agent on Windows and under Xvfb
+- [x] Screen capture (ADR 0024)
+  - [x] A frame captured on command and saved as PNG
+  - [x] Swapchain readback
+  - [x] Own PNG writer
+  - [x] Reusable layers: checksums (CRC-32, Adler-32), DEFLATE, zlib
+  - [x] A test-only inflate; captured pixels checked by tests
+  - [x] Blink seen by an agent on Windows and under Xvfb
+
+**Tests**
+- [x] Tests in parallel by default, none sharing a file or a port with another
+- [x] `app_run.frame_arena_is_reset_every_frame` no longer fails under load (once in six runs of
+      the window tests): one slow frame (the first one, hundreds of ms) held the time of all
+      50 updates, and the loop quit before a second render. The test now ends after 5 renders
+- [x] `clock.short_sleep_is_far_below_a_frame` no longer fails under load (once in about ten full
+      runs): with every core busy, 1 ms sleeps last 8 to 145 ms for seconds in a row, and all five
+      tries could land there. The tries now stop at the first short sleep, or after 10 s
+
+**Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
+these steps put numbers next to it, now that text can be drawn).
+- [x] Numbers in the overlay (ADR 0025)
+  - [x] Frames per second; average, 99th percentile and worst frame time
+  - [x] Work, update and render time: the frame without its waits, measured by the engine
+  - [x] Steps per second
+  - [x] Memory per tag, the arenas with their committed pages, the process from the OS
+  - [x] Validation counts
+  - [x] GPU, present mode, vsync and swapchain size
+  - [x] The same numbers as commands: `stats`, `memory.stats`, `renderer.info`
+- [x] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
+      toggle: the engine measures and publishes, the sandbox draws (ADR 0025, A3); an engine
+      overlay comes with the debug UI or the first game that asks
 
 ## v0.1.0 — Foundations (released 2026-11-23)
 

@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Added
 - Math library (ADR 0016), `reborn/math.h`, header-only: `rb_vec2` (add, sub, scale,
   component-wise mul), `rb_rect`, `rb_mat4` column-major, `rb_mat4_ortho`.
@@ -267,5 +269,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Internal dynamic library loading in the platform layer (`LoadLibraryExW` limited to the
   application folder and System32, `dlopen`).
 
-[Unreleased]: https://github.com/aski97/reborn-engine/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/aski97/reborn-engine/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/aski97/reborn-engine/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/aski97/reborn-engine/releases/tag/v0.1.0

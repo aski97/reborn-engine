@@ -4,9 +4,10 @@ A game engine written in C17 with Vulkan, built step by step as a learning proje
 2D first, 3D later. Platforms: Windows and Linux.
 
 **Status: pre-alpha.** v0.1.0 has the foundations (windows, input, memory, game loop, a Vulkan
-renderer drawing colored quads). v0.2.0, in progress, adds a 2D camera, textures and text, and
-Blink, the first of [our games](games/README.md); an agent can drive it through commands, injected
-input and screen captures. Not yet meant for games of your own. See the [roadmap](TODO.md).
+renderer drawing colored quads). v0.2.0 adds a 2D camera, textures and text, and Blink, the first
+of [our games](games/README.md); an agent can drive it through commands, injected input and screen
+captures. v0.3.0, in progress, brings Orbit, the second game. Not yet meant for games of your own.
+See the [roadmap](TODO.md).
 
 - **No external libraries**, except where building them makes no sense (e.g. the Vulkan loader).
 - **Every decision is documented** in [`docs/`](docs/README.md).
