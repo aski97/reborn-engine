@@ -14,7 +14,12 @@ every architectural choice is approved by the owner.
   they fit guesses instead of our needs. Until then they stay in the `TODO.md` backlog, with the
   feature or condition that will call for them.
 - From v0.2.0 the roadmap is a ladder of our own games under `games/` (ADR 0014): engine tasks come
-  from what the current game needs. The sandbox keeps exercising every engine feature.
+  from what the current game needs.
+- The sandbox is the engine's showcase, not a game: every engine feature adds a visible
+  demonstration there, even when a game brought it (fonts: the whole atlas and a sample line, not a
+  game HUD).
+- When proposing a feature, say where it goes (README's *Scope*): the engine, a game, or out of
+  scope.
 - An engine feature that replaces code a game already has includes that game's migration, as a
   sub-task in the same version: the game behaves as before, its tests stay green. Whether an
   existing game should also adopt a new feature (sounds in Blink once audio exists) is proposed to
@@ -41,11 +46,13 @@ ctest --preset debug      # unit tests, the games' too; JUnit in build/debug/jun
 Driving a running game (`docs/features/commands.md`): start it with `--listen <port>` (or
 `--script <file>`), then `./build/debug/bin/reborn-cmd <port> help "blink.state" "step 10"`:
 one JSON reply per line, exit code 0 when all succeeded. `screen.capture <file>.png` saves what the
-window shows, to open and look at.
+window shows, to open and look at. Play a game with the `input.*` commands (ADR 0023); a command
+that is missing gets added.
 New engine code gets tests in `tests/` (same path as in `engine/src/`), see `docs/features/unit-testing.md`.
 `build/<preset>/compile_commands.json` lists the exact flags for every file.
 Linux check from Windows (Docker): `./scripts/linux-build.ps1 debug release debug-asan`
-(tests only: the container has no X server, the sandbox runs on a Linux desktop).
+(tests only: the container has no X server, the sandbox runs on a Linux desktop). Changes that
+touch windows, events or input are also checked on a Linux desktop, not only with `ctest`.
 
 ## Code conventions
 - C17, no extensions. Use `<reborn/defines.h>` types (`u32`, `f32`, `usize`...) when size matters.
