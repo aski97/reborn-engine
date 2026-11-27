@@ -42,6 +42,10 @@ flowchart LR
   constructor order across files is unspecified.
 - `stdout` is unbuffered so the output of a crashing test is not lost.
 - `tests/` mirrors `engine/src/`; tests may include internal headers from `engine/src/`.
+- Tests run in parallel, one per core, so each stays independent of the others and of the
+  machine: no shared file or port (names from the test, port 0), and no check on how fast
+  something happens. A test counts the events it checks (renders, steps) and uses real time only
+  as a generous deadline (`tests/app/test_app_run.c`, `tests/platform/test_clock.c`).
 - Test helpers live in `tests/support/` (on the include path) with their own tests: the failing
   allocator walks error paths by failing the N-th allocation (see [memory.md](memory.md)).
 

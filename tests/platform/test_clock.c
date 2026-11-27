@@ -95,11 +95,15 @@ RB_TEST(clock, sleep_waits_at_least_the_time_asked) {
 
 /*
  * The reason for the high-resolution timer (ADR 0009, D3): a plain Win32
- * Sleep(1) lasts up to 15.6 ms. The shortest of a few tries ignores load spikes.
+ * Sleep(1) lasts up to 15.6 ms. With every core busy (the parallel test run) a
+ * thread woken on time still waits for a core, at times for seconds in a row:
+ * a fixed number of tries can all land in such a spell, so the tries stop at
+ * the first short sleep or after 10 s.
  */
 RB_TEST(clock, short_sleep_is_far_below_a_frame) {
+    u64 give_up = rb_time_now() + 10 * RB_NS_PER_S;
     u64 shortest = UINT64_MAX;
-    for (int i = 0; i < 5; ++i) {
+    while (shortest >= 8 * RB_NS_PER_MS && rb_time_now() < give_up) {
         u64 start = rb_time_now();
         rb_time_sleep(RB_NS_PER_MS);
         u64 elapsed = rb_time_now() - start;

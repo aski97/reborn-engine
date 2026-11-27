@@ -26,6 +26,7 @@ typedef struct test_state {
 typedef struct recorder {
     bool  init_result;
     u32   quit_after_updates; /* 0: quit from init */
+    u32   quit_after_renders; /* 0: never */
     char  trace[TRACE_CAPACITY + 1];
     usize trace_len;
     u32   updates;
@@ -113,6 +114,9 @@ static void test_render(void *state, rb_app *app, f64 alpha) {
         rec.max_frame_pos_at_render = frame->pos;
     }
     (void)rb_arena_push(frame, 64, 8);
+    if (rec.renders == rec.quit_after_renders) {
+        rb_app_quit(app);
+    }
 }
 
 static void test_shutdown(void *state, rb_app *app) {
@@ -152,10 +156,17 @@ RB_TEST(app_run, state_is_zeroed_aligned_and_persistent) {
     RB_EXPECT(rec.state_in_persistent_arena);
 }
 
+/*
+ * Ends after a number of renders, not of updates: one slow frame (the first
+ * one takes hundreds of milliseconds under load) holds the time of every
+ * update of a short run, and the loop then quits before a second render. The
+ * update count only stops a run that never renders: 10 s of game time.
+ */
 RB_TEST(app_run, frame_arena_is_reset_every_frame) {
-    reset_recorder(true, 50);
+    reset_recorder(true, 10000);
+    rec.quit_after_renders = 5;
     RB_REQUIRE_EQ_INT(rb_app_run(&test_callbacks, 0, NULL), 0);
-    RB_REQUIRE(rec.renders > 1);
+    RB_REQUIRE_EQ_UINT(rec.renders, 5);
     RB_EXPECT_EQ_UINT(rec.max_frame_pos_at_render, 0);
     RB_EXPECT(rec.alpha_in_range);
 }

@@ -88,10 +88,12 @@ platform and without clicking by hand; the sandbox exposes the same commands). I
 
 **Tests**
 - [x] Tests in parallel by default, none sharing a file or a port with another
-- [ ] `app_run.frame_arena_is_reset_every_frame` fails about once in six runs of the window tests
-      under load (`ctest -R "app_run|renderer" --repeat until-fail:6`): `rec.renders > 1` is false
-      after a 12 s run, so frames went unrendered (window not yet shown or swapchain not ready?).
-      Find the cause, then make the test wait for rendered frames instead of a step count
+- [x] `app_run.frame_arena_is_reset_every_frame` no longer fails under load (once in six runs of
+      the window tests): one slow frame (the first one, hundreds of ms) held the time of all
+      50 updates, and the loop quit before a second render. The test now ends after 5 renders
+- [x] `clock.short_sleep_is_far_below_a_frame` no longer fails under load (once in about ten full
+      runs): with every core busy, 1 ms sleeps last 8 to 145 ms for seconds in a row, and all five
+      tries could land there. The tries now stop at the first short sleep, or after 10 s
 
 **Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
 these steps put numbers next to it, now that text can be drawn).
@@ -664,8 +666,11 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [ ] Reconcile with ADR 0004, which placed the window tests in `tests/integration/` with their
         own executable: today they live in `reborn_tests`
 - [ ] Find why `vulkan_renderer.textures_fill_every_slot` is slow: 5 s on 2026-11-24 (each other
-      Vulkan test ~1.2 s); on 2026-11-26, on Windows, 0.9 s serial but 7.4 s with `-j8`. Measure
-      on Linux (lavapipe) too before digging
+      Vulkan test ~1.2 s); on 2026-11-26, on Windows, 0.9 s serial but 7.4 s with `-j8`; on
+      2026-11-27, 10 to 15 s in a full run, and once past the 60 s timeout in
+      `ctest -R "app_run|renderer" --repeat until-fail:20`: under load its 257 uploads (a submit
+      and a fence wait per texture) took up to 1.8 s each. Measure on Linux (lavapipe) too before
+      digging
 - [ ] One Vulkan device per suite (one process per suite) if the window tests stay slow after the
       above: about 50 tests start instance, device and swapchain from scratch (21 s of the 32 s
       serial run on Windows, 2026-11-26); trades away per-test isolation
