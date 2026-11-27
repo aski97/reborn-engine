@@ -107,21 +107,69 @@ these steps put numbers next to it, now that text can be drawn).
       toggle: the engine measures and publishes, the sandbox draws (ADR 0025, A3); an engine
       overlay comes with the debug UI or the first game that asks
 
-**Continuous integration** (needed before the refactoring)
-- [ ] GitHub Actions, tests on every push
-  - [ ] Windows job
-  - [ ] Linux job on the build container: publish the image (GHCR) or build it per run, to decide
-
 ## v0.3.0
 
 **Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
 ring shrinks.
-Likely needs: circle vs arc collisions (in its rules: the arc is a shape of its own), rotated
-quads, sound effects (audio backend, mixer, WAV), pause and game states.
+In order, like Blink: the game starts as soon as it can run, without sound, so later steps answer
+its real needs; each new engine piece is shown in the sandbox too. Its collisions (the ball against
+the ring and the arc, the arc a shape of its own) and its phases (title, playing, paused, game
+over) stay in its rules.
+- [ ] 2D math for angles and bounces (ADR 0016): dot product, length, normalization, reflection, a
+      vector from an angle and rotated by one
+- [ ] Rotated quads (ADR 0016): an angle in the quad's push constants, about the quad's center
+- [ ] Round shapes for the ball, the ring and the arc: a disc texture drawn in code and rotated
+      segments (in Orbit) vs circle and arc primitives in the engine (a shader of their own), to
+      decide
+- [ ] Orbit, playable without sound
+  - [ ] Layers (rules, input, view, glue), rules and input tested
+  - [ ] The ball bouncing off the arc, its new angle set by where it hits; the ring shrinking;
+        score, speed-up, game over, restart
+  - [ ] The arc turned by keys (the mouse too: to decide)
+  - [ ] Moves drawn between steps with `alpha` (ADR 0011): the first game whose objects move
+  - [ ] Pause: a key, and on focus loss
+  - [ ] Title screen, HUD and game over in text; the window icon drawn in code
+  - [ ] Seed, score and events logged; `orbit.state` and `orbit.restart <seed>`
+  - [ ] Played by an agent on Windows and under Xvfb
+  - [ ] Its README, listed in the games
+- [ ] HUD scale helper in the engine (ADR 0021, G1): the whole scale per N pixels of window height
+      that keeps bitmap text sharp, now that a second game computes it; Blink migrates to it
+- [ ] Files and the game's assets (ADR 0014, D1)
+  - [ ] Where a game's assets live and how they reach the executable (e.g. `games/<name>/assets/`
+        copied next to it)
+  - [ ] Read and write whole files
+  - [ ] Paths resolved from the executable's folder (not the current directory, which depends on
+        how the game is launched)
+  - [ ] Paths in UTF-8 on Windows: `fopen` reads them in the ANSI code page, so a path with a
+        non-ASCII character fails. Converted to UTF-16 (`_wfopen`), as `win32_library.c` already
+        does; the log, `--script` and `screen.capture` move to it
+- [ ] Threading, as much as the audio thread needs (C11 `<threads.h>` vs own Win32/pthreads
+      wrappers: to decide)
+  - [ ] Threads
+  - [ ] Atomics: the game and the audio thread exchange data without locks
+  - [ ] Logging from the audio thread: a thread-safe logger vs counters logged by the main thread,
+        to decide
+- [ ] Audio (backends, mixer and sounds: to decide in their ADRs; a system audio library needs
+      approval, as X11 did)
+  - [ ] A backend per platform on its own thread feeding the device: WASAPI on Windows;
+        PulseAudio, ALSA or PipeWire on Linux, loaded at run time (to decide)
+  - [ ] No device (Docker, CI): logged, the game runs silent
+  - [ ] Mixer: several sounds at once, volume per sound and a master volume
+  - [ ] WAV decoding, own; sample format and rate converted to the device's
+  - [ ] Sound effects, loaded whole
+  - [ ] Where the WAV files come from: made by a tool of ours vs a CC0 pack (external content:
+        needs approval)
+  - [ ] Commands: `audio.state` (device, voices, underruns) and `audio.capture <file.wav>`, the
+        mixer's output saved like `screen.capture`, so agents and tests check what plays
+- [ ] Orbit's sounds: bounce, miss, game over. Sounds in Blink too: to propose
 
 **Engine**
-- [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table:
-      with the hash map of the backlog's containers, where optimizations start
+- [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table
+  - [ ] Hash map, allocator-aware (macros vs `void*` + size: to decide in its ADR, ADR 0007)
+  - [ ] A hash function for strings (algorithm to decide), later shared by asset IDs and string
+        interning. CRC-32 and Adler-32 exist (`core/checksum`), but are checksums for file
+        formats, not hash functions for tables
+  - [ ] The registry moves to it
 - [ ] Vsync at run time: with vsync on, frame times sit at the refresh period; off, fps, 1% and
       worst show what the engine can do (ADR 0025)
   - [ ] `rb_renderer_set_vsync`: the swapchain rebuilt with the new present mode at the next frame
@@ -131,29 +179,54 @@ quads, sound effects (audio backend, mixer, WAV), pause and game states.
 
 ## v0.4.0
 
-**Refactoring** (after Blink and Orbit, and threading if one of them brought it)
-- [ ] File by file
-  - [ ] Drop comments that restate the code
-  - [ ] Review function, variable and file names
-- [ ] Interfaces and duplication: logic repeated across backends moves to common code (platform
-      startup/shutdown and window slots are identical in Win32 and Xlib)
-- [ ] Components behind interfaces
-  - [ ] Swappable backends (renderer, audio...): compile time vs function table vs dynamic
-        plugins, to decide
-  - [ ] A null backend next to each real one
+**Continuous integration** (needed before the refactoring)
+- [ ] GitHub Actions, tests on every push
+  - [ ] Windows job
+  - [ ] Linux job on the build container: publish the image (GHCR) or build it per run, to decide
+  - [ ] The window and renderer tests in the Linux job (see Testing)
+- [ ] A script per game (fixed seed, injected input, its state command and a capture), its replies
+      compared before and after each refactoring step: the same seed plays the same game, so any
+      difference is a regression
+
+**Refactoring** (after Blink and Orbit, threading included)
+In order: decisions first, then the large changes, the fine ones last, so no step undoes the one
+before. Throughout: no new features; tests green after every commit, Linux checked; the sandbox and
+the games behave as before.
+- [ ] The rules, in ADRs and in `CLAUDE.md`, before any code changes: every later step applies one
+  - [ ] Comments: what a file's header says; what a public function's doc comment says (purpose,
+        parameters, return value, ownership, errors, thread safety, an example where it helps);
+        what comments inside the code are for (why, not what); how ADRs are cited; dividers; no
+        TODOs in code (they live here). Today each file follows its own habits
+  - [ ] Doc comment format: Doxygen-style `/** */` (checked by Clang's `-Wdocumentation`, readable
+        by a website generator) vs plain comments, to decide
+  - [ ] Names: functions, types, variables, files
+  - [ ] Layout: where a file lives, public headers grouped by subsystem like `engine/src/` (e.g.
+        `reborn/core/log.h`, `reborn/renderer/camera2d.h`) instead of one flat
+        `engine/include/reborn/`, an umbrella header if games want one
+- [ ] Architecture: what to merge or split, and how, is chosen when we get there. Candidates so far
+  - [ ] Logic repeated across backends in common code (platform startup/shutdown and window slots
+        are identical in Win32 and Xlib)
+  - [ ] Swappable backends (renderer, audio...): compile time vs function table vs dynamic plugins
+  - [ ] A null backend next to each real one (audio runs silent without a device from v0.3.0)
   - [ ] The platform hands out native window handles instead of creating Vulkan surfaces
         (`platform_vulkan.h` makes the platform depend on the renderer)
   - [ ] Subsystem startup in the app
-- [ ] Directory layout and file names
-  - [ ] Public headers grouped by subsystem like `engine/src/` (e.g. `reborn/core/log.h`,
-        `reborn/renderer/camera2d.h`): `engine/include/reborn/` is one flat folder mixing
-        foundations (`defines.h`, `assert.h`, `log.h`), memory, platform, renderer, camera and math
-  - [ ] An umbrella header, if games want one (to decide)
-  - [ ] Where each file lives on both sides (clock and input under `platform/`, color under
-        `core/`, camera under `renderer/`)
-  - [ ] The top-level folders (`docker/`, `scripts/`, `cmake/`, `games/`, `tools/`)
   - [ ] Stateless OS services (`linux_*`) apart from the window system (`xlib_*`), so a Wayland
         backend replaces only the latter
+- [ ] Layout, by its rules: moves only, in commits of their own (`git mv`, contents unchanged, so
+      git follows each file's history)
+  - [ ] Public headers into their subsystems' folders
+  - [ ] Each file where it belongs on both sides (clock and input under `platform/`, color under
+        `core/`, camera under `renderer/`)
+  - [ ] The top-level folders (`docker/`, `scripts/`, `cmake/`, `games/`, `tools/`)
+- [ ] Names, by their rules: a public rename reaches every caller, so one global pass
+- [ ] Comments, by their rules, last: they describe the final names and shapes
+  - [ ] Every public header and function documented (the contract first)
+  - [ ] Inside the code (`.c`, games, sandbox, tests, CMake): comments that restate it dropped, the
+        rest brought to the rules
+  - [ ] A check that keeps the rules: every `RB_API` declaration documented (`-Wdocumentation`, a
+        test or a script: to decide)
+- [ ] Documentation: feature pages, paths cited in ADRs (editorial fixes), READMEs, `CLAUDE.md`
 
 ## v0.5.0
 
@@ -190,33 +263,28 @@ In order; each gets a version when it starts.
   - [ ] Veto on the main window's close ("save before quitting?")
   - [ ] A variable `update` next to the fixed one, if camera or UI need it (C4)
   - [ ] Window events between steps, if a low update rate makes them lag
-- [ ] Containers that own memory (allocator-aware, ADR 0010; macros vs `void*` + size to decide
-      in their ADR, ADR 0007). With the first feature that needs one: likely the batched 2D
-      renderer (sprites per frame) or the asset manager (name → handle)
+  - [ ] Tighter frame pacing, if the profiler shows sleeps overshooting (ADR 0009, D4): spin for
+        the last fraction of a frame; the Windows timer reused across sleeps
+- [ ] Containers that own memory (allocator-aware, ADR 0010). The hash map comes first, with the
+      command registry (v0.3.0), and its ADR settles macros vs `void*` + size for the rest
   - [x] Generational handle pool and index-only ring buffer (v0.1.0, ADR 0007: they own no memory)
-  - [ ] Dynamic array
-  - [ ] Hash map (its first user may be the command registry, v0.3.0)
+  - [ ] Dynamic array: with the batched 2D renderer (sprites per frame) or the asset manager
   - [ ] String library, grown piece by piece. Starts by extracting what exists: unsigned integer
-        parsing (duplicated in `command.c` and `app_commands.c`), case-insensitive key names
-        (`platform/input.c` and `app_input.c`), `rb_text_writer`, UTF-8 decoding, `f32` parsing.
+        parsing (`args_parse_port` in `app_commands.c` repeats `command.c`'s), case-insensitive
+        key names (`platform/input.c` and `app_input.c`), `rb_text_writer`, UTF-8 decoding, `f32`
+        parsing.
         To decide in its ADR: NUL-terminated strings vs pointer + length, folder, internal or
         public. The string benchmarks run on today's code first, as the baseline
     - [ ] String view (pointer + length, no copy): with the first text parser (level or config
           files)
     - [ ] Growable owned string, allocator-aware, if text of unknown length must live long
-- [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide), with
-      the hash map. CRC-32 and Adler-32 exist (`core/checksum`), but are checksums for file
-      formats, not hash functions for tables
-- [ ] Threading (C11 `<threads.h>` vs own Win32/pthreads wrappers: to decide). With the first
-      feature that needs it: likely the audio backend (a thread feeding the device) or
-      asynchronous asset loading
-  - [ ] Threads
-  - [ ] Mutexes and condition variables
-  - [ ] Atomics
+- [ ] Threading beyond the audio thread's needs (threads and atomics come with Orbit, v0.3.0)
+  - [ ] Mutexes and condition variables, when threads must wait for each other (e.g.
+        asynchronous asset loading)
   - [ ] Job system
-- [ ] Thread safety, with threading
-  - [ ] Decide which public functions must be callable from any thread (logger first, then event
-        queue, allocators...)
+- [ ] Thread safety, with threading (the logger is decided with the audio thread, v0.3.0)
+  - [ ] Decide which public functions must be callable from any thread (event queue,
+        allocators...)
   - [ ] State the guarantee in each function's doc comment
   - [ ] Protection per case (mutex, lock-free, per-thread data: to decide)
 - [ ] Configuration separate from code: values hard-coded today (window size and title, log level
@@ -229,6 +297,8 @@ In order; each gets a version when it starts.
 - [ ] Logging (ADR 0008)
   - [ ] Categories with their own level
   - [ ] In-memory history, for the in-game console and the agents (see State inspection)
+  - [ ] Writes batched, flushed only from WARN, if logging shows up in profiles (a crash may then
+        lose the last lines)
 - [ ] Log file size cap and rotation: today the file is overwritten at startup and grows without
       limit during a run (a long session at TRACE, or a message logged every frame, fills the disk)
   - [ ] A maximum size per file; past it the file is closed and the next one opened
@@ -244,6 +314,16 @@ In order; each gets a version when it starts.
       Windows job objects); many small short-lived arenas (per asset, per entity), better carved
       from a parent allocator than each reserving address space; a target without virtual memory
       control (WebAssembly, some consoles)
+- [ ] Memory follow-ups (`docs/features/memory.md`), each when a bug or a profile asks for it
+  - [ ] The call site of each leaked block in the report: per-block records in debug builds
+        (ADR 0012, B2), if a tag's name is not enough to find a leak
+  - [ ] A failing allocator that fails every allocation from the N-th on, if error paths need a
+        lasting out of memory
+  - [ ] Decommit above a high-water mark, if an arena's peak holds memory too long
+  - [ ] Guard pages, page protections (read-only, executable), large pages
+  - [ ] An allocator of our own (free lists, TLSF), if profiling asks for it (ADR 0010)
+- [ ] Random numbers beyond integers and floats in a range (ADR 0019), when a game needs them:
+      other distributions (gaussian, weighted choice), shuffling, several streams
 - [ ] Error handling: public functions return `bool` and log today; decide whether callers need
       error codes to react (missing vs corrupt file, out of memory), and how they are named
 - [ ] Fatal errors shown to the player: a message box when startup fails (no Vulkan driver, no
@@ -314,6 +394,10 @@ In order; each gets a version when it starts.
   - [ ] Xlib error handlers (default ones exit the process): log X errors instead of exiting
   - [ ] Titles like on Windows: UTF-8 validation and length limit (Xlib passes bytes as-is)
   - [ ] HiDPI: read the desktop scale (`Xft.dpi`) if logical units must differ from pixels
+- [ ] The other triggers of ADR 0006 (*When to revisit*), each when it shows up: XCB if Xlib's
+      round-trips become measurable, `_NET_WM_STATE_HIDDEN` for a window manager without
+      `WM_STATE`, XKB key names for an X server without evdev keycodes, a larger event ring or
+      another overflow policy if events are lost, a larger window pool
 
 ### Rendering
 - [ ] Rendering without a window (ADR 0013, K): for tools (asset baking, thumbnails), golden-image
@@ -324,8 +408,9 @@ In order; each gets a version when it starts.
         copied (ADR 0024, B2)
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
-- [ ] Batched 2D renderer (sprites, textures): few draw calls instead of one per quad (ADR 0015,
-      F1). `rb_renderer_draw_quad` and `_draw_texture` keep their signatures
+- [ ] Batched 2D renderer (sprites, textures): few draw calls instead of one per quad (ADR 0015:
+      F2, a vertex buffer, instead of today's F1). `rb_renderer_draw_quad` and `_draw_texture`
+      keep their signatures
   - [ ] The frame's quads collected into a vertex buffer
   - [ ] `quad.vert` reads vertices instead of push constants
   - [ ] A texture change breaks a batch: atlases vs bindless textures (one array of every texture
@@ -348,6 +433,8 @@ In order; each gets a version when it starts.
       it are done, instead of waiting for the whole GPU. With streaming
 - [ ] Premultiplied alpha for textures: with straight alpha, linear filtering blends the color of
       transparent pixels into a sprite's edge (dark fringes). Decide with image decoding (PNG)
+- [ ] Mipmaps, when sprites are drawn much smaller than their pixels (ADR 0017: none today);
+      decide with image decoding
 - [ ] Texture formats other than RGBA8 sRGB (single-channel font atlases, linear data): when
       memory or a feature needs them (ADR 0017, F3)
 - [ ] Layers: today the call order is the layer order. With the batched renderer, which collects
@@ -365,8 +452,7 @@ In order; each gets a version when it starts.
 - [ ] Several cameras on the world at once (split-screen, minimap): a viewport rectangle in
       `rb_camera2d`, the part of the window its field goes into (today: the largest centered one);
       `rb_camera2d_make` gives it the whole window. When a game shows the world twice
-- [ ] Rotation, when a game turns objects (Orbit's arc may be the first; ADR 0016)
-  - [ ] Rotated quads: an angle (or a 2D transform) in the quad's data
+- [ ] Rotation beyond rotated quads (Orbit, v0.3.0), when a game needs it (ADR 0016)
   - [ ] Matrix multiplication
   - [ ] Camera rotation
 - [ ] A color of their own for the camera's bars, where the window's aspect differs from the
@@ -380,17 +466,10 @@ In order; each gets a version when it starts.
 - [ ] 3D
 
 ### Assets
-- [ ] Where a game's assets live and how it finds them (ADR 0014, D1: deferred by Blink, which has
-      none), e.g. `games/<name>/assets/` copied next to the executable. With the first game that
-      loads a file: likely Orbit's sounds
-- [ ] File system layer
-  - [ ] Paths in UTF-8 on Windows: `fopen` reads them in the ANSI code page, so a path with a
-        non-ASCII character fails (`--script`, the log file, `screen.capture`). The layer converts
-        them to UTF-16 (`_wfopen`), as `win32_library.c` already does
-  - [ ] Read and write whole files
-  - [ ] Paths resolved from the executable's folder (not the current directory, which depends on
-        how the game is launched)
-  - [ ] Directory listing
+Where a game's assets live, whole files, paths from the executable's folder and UTF-8 paths come
+with Orbit's sounds (v0.3.0).
+- [ ] File system layer beyond that
+  - [ ] Directory listing, when a game loads files it does not name in code (levels, mods)
 - [ ] Asset manager
   - [ ] Assets referenced by handle (generational pool, ADR 0007)
   - [ ] Loaded once and shared
@@ -410,28 +489,18 @@ In order; each gets a version when it starts.
   - [ ] Packed into one archive for release builds (format to decide)
 
 ### Audio
-- [ ] Backend per platform, on its own thread feeding the device
-  - [ ] WASAPI on Windows
-  - [ ] PulseAudio or ALSA on Linux (to decide)
-- [ ] Mixer
-  - [ ] Several sounds at once
-  - [ ] Volume per sound and per group (music, effects)
-- [ ] Sounds (own decoder vs external library: to decide)
-  - [ ] WAV decoding
-  - [ ] Sound effects, loaded whole
-  - [ ] Music, streamed from disk
-  - [ ] Compressed formats, later
+Backends, the mixer, WAV decoding and sound effects come with Orbit (v0.3.0).
+- [ ] Volume per group (music, effects), with the first game that has music
+- [ ] Music, streamed from disk (likely Hollow)
+- [ ] Compressed formats, later
 
 ### Text and UI
 - [ ] Text layout beyond lines of glyphs (ADR 0021). When a game shows paragraphs (dialogue,
       menus' descriptions)
   - [x] `\n` lines, each aligned on its own; measuring (v0.2.0)
   - [ ] Word wrapping to a width
-  - [ ] Kerning (with TrueType)
   - [ ] Colors per character
   - [ ] `rb_text_drawf`, if formatting numbers repeats everywhere
-- [ ] HUD scale helper in the engine: the whole scale per N pixels of window height that keeps
-      bitmap text sharp (ADR 0021, G1; in Blink today). When a second game computes it
 - [ ] UI scaled from a reference resolution, with elements anchored to the window's edges and a
       continuous scale (ADR 0021): with smooth TrueType text, whose pixels stay even at any scale
       (likely Hollow's menus)
@@ -449,11 +518,14 @@ In order; each gets a version when it starts.
         (ADR 0021)
   - [ ] A codepoint to glyph map behind `rb_font_get_glyph` (needs the hash map or a sorted table)
   - [ ] Glyphs beyond ASCII in the builtin font or from TrueType
+  - [ ] Right-to-left scripts and shaping, much later
 - [ ] Debug UI, immediate mode (rebuilt every frame): base for the in-game console and the
       profiler overlay
   - [ ] Panels
   - [ ] Buttons and sliders
   - [ ] Value inspection
+  - [ ] In-game console: a command line with the replies next to it (ADR 0022), its input and
+        history shared with the editor's
 
 ### Collision
 Detection: do two shapes touch, where, in which direction. What happens then (a bounce, a point, a
@@ -463,8 +535,8 @@ second game needs it too.
       ADR)
   - [ ] Point in rectangle: in Blink's rules today (`rect_contains`, edges included); with the
         second game that needs it, Blink then drops its own
-  - [ ] Circles and axis-aligned boxes (AABB), and the tests between them: Orbit's ball is a
-        circle, Hollow's world is boxes
+  - [ ] Circles and axis-aligned boxes (AABB), and the tests between them: Orbit's circle tests
+        live in its rules (v0.3.0) and move here with Hollow, whose world is boxes
   - [ ] Contact data for the response: normal and penetration depth
 - [ ] Raycasts: the first shape hit by a ray (origin, direction, maximum distance), with distance,
       point and normal. With Hollow (ground under the feet, enemies' line of sight) or Gallery
@@ -523,7 +595,6 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [x] Commands and their replies: README's *Commands*, `docs/features/commands.md`, linked from
         `CLAUDE.md`
   - [ ] Console variables, when they exist
-- [ ] Commands from the in-game console, with the debug UI
 - [ ] Command server (ADR 0022)
   - [ ] Several clients at once, if agents need them (one at a time today)
   - [ ] Replies on stdout without the `\r` the Windows C runtime adds in text mode
@@ -563,7 +634,7 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [ ] PNG decoding (see Assets)
   - [ ] Comparison with a tolerance, since drivers may round differently
 - [ ] Faster captures, if agents take many: the PNG filter choice and DEFLATE are about 0.1 s for a
-      1600x900 frame in release, up to 1 s in debug, on the main thread (ADR 0024)
+      1600x900 frame in release, up to 1 s in debug, on the main thread (`screen-capture.md`)
   - [ ] Encoding on a thread
   - [ ] Dynamic Huffman codes, if file sizes matter
 - [ ] Frame number on every log line, to match log lines with commands and screenshots (their
@@ -578,6 +649,8 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [x] Tests that open a window, start the renderer and run the app (`tests/app/`, renderer
         tests)
   - [x] Captured pixels checked by GPU tests (ADR 0024)
+  - [ ] On Linux too: Windows only today (`tests/CMakeLists.txt`, the container has no X server);
+        under Xvfb with lavapipe in the container, then in CI
   - [ ] Offscreen render (see Rendering)
   - [ ] Golden images (see LLM and automation tooling)
 - [ ] Fuzzing with libFuzzer (`-fsanitize=fuzzer`) for parsers and containers
@@ -597,7 +670,8 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
       above: about 50 tests start instance, device and swapchain from scratch (21 s of the 32 s
       serial run on Windows, 2026-11-26); trades away per-test isolation
 - [ ] Runner
-  - [ ] Filter (`--run 'arena.*'`) to run a suite in one process, quickest to debug
+  - [ ] Patterns for `--run` (`'arena.*'`), which takes one exact name today: a suite in one
+        process, quickest to debug
   - [ ] Time per test in its output (`[ OK ] arena.x (12 ms)`)
   - [ ] The slowest tests at the end
   - [ ] `--shuffle <seed>` (PCG32) to expose tests that depend on global state left by others
@@ -620,11 +694,9 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
 - [ ] Game code hot-reload as a DLL
 
 ### Documentation
-- [ ] Doc comments on every public header and function: purpose, parameters, ownership, errors,
-      thread safety (format, e.g. Doxygen-style `/** */` vs plain comments: to decide with the
-      website)
-- [ ] Documentation website: feature pages, ADRs and an API reference generated from doc comments
-      (generator and hosting, e.g. GitHub Pages published by CI: to decide)
+- [ ] Documentation website: feature pages, ADRs and an API reference generated from the doc
+      comments (written in the refactoring, v0.4.0); generator and hosting, e.g. GitHub Pages
+      published by CI: to decide
 
 ## v0.1.0 — Foundations (released 2026-11-23)
 

@@ -7,10 +7,10 @@
 | Platform & windows | [platform.md](platform.md) | In progress | v0.1.0 | 2026-11-26 |
 | Keyboard & mouse input | [input.md](input.md) | In progress | v0.1.0 | 2026-11-26 |
 | Clock & sleep | [clock.md](clock.md) | Stable | v0.1.0 | 2026-11-16 |
-| Application lifecycle | [app.md](app.md) | In progress | v0.1.0 | 2026-11-24 |
+| Application lifecycle | [app.md](app.md) | In progress | v0.1.0 | 2026-11-27 |
 | Logging & asserts | [logging.md](logging.md) | Stable | v0.1.0 | 2026-11-16 |
-| Memory | [memory.md](memory.md) | Stable | v0.1.0 | 2026-11-26 |
-| Vulkan renderer | [renderer.md](renderer.md) | In progress | v0.1.0 | 2026-11-26 |
+| Memory | [memory.md](memory.md) | Stable | v0.1.0 | 2026-11-27 |
+| Vulkan renderer | [renderer.md](renderer.md) | In progress | v0.1.0 | 2026-11-27 |
 | Math & 2D camera | [camera2d.md](camera2d.md) | In progress | v0.2.0 | 2026-11-26 |
 | Fonts | [font.md](font.md) | In progress | v0.2.0 | 2026-11-24 |
 | Text | [text.md](text.md) | In progress | v0.2.0 | 2026-11-24 |
