@@ -196,7 +196,14 @@ In order; each gets a version when it starts.
   - [x] Generational handle pool and index-only ring buffer (v0.1.0, ADR 0007: they own no memory)
   - [ ] Dynamic array
   - [ ] Hash map (its first user may be the command registry, v0.3.0)
-  - [ ] String / string builder
+  - [ ] String library, grown piece by piece. Starts by extracting what exists: unsigned integer
+        parsing (duplicated in `command.c` and `app_commands.c`), case-insensitive key names
+        (`platform/input.c` and `app_input.c`), `rb_text_writer`, UTF-8 decoding, `f32` parsing.
+        To decide in its ADR: NUL-terminated strings vs pointer + length, folder, internal or
+        public. The string benchmarks run on today's code first, as the baseline
+    - [ ] String view (pointer + length, no copy): with the first text parser (level or config
+          files)
+    - [ ] Growable owned string, allocator-aware, if text of unknown length must live long
 - [ ] Hash functions for the hash map, asset IDs and string interning (algorithm to decide), with
       the hash map. CRC-32 and Adler-32 exist (`core/checksum`), but are checksums for file
       formats, not hash functions for tables
@@ -270,6 +277,9 @@ In order; each gets a version when it starts.
   - [ ] Export: JSON lines for LLMs, trace format for external viewers
 - [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
       executable (ADR 0004), release build, timings not pass/fail (timer and approach to decide)
+  - [ ] Our code against the C standard library it replaces (string library, sort), on both
+        platforms (UCRT on Windows, glibc on Linux): median of many runs after a warm-up, results
+        kept alive so the compiler cannot drop the work, JSON output to compare before and after
 
 ### Platform
 - [ ] More platforms
@@ -345,6 +355,8 @@ In order; each gets a version when it starts.
   - [ ] Each draw tagged with a layer (background, world, HUD, menus)
   - [ ] Each layer with its camera
   - [ ] Drawn in layer order whatever the call order
+  - [ ] Our own sort (e.g. radix on layer and depth keys) instead of `qsort`, which calls a
+        function through a pointer on every comparison; benchmarked against it
 - [ ] Low-resolution pixel-art rendering: every game pixel a perfect square (ADR 0021). When a
       game wants that look (perhaps Seedling)
   - [ ] The whole frame (world, HUD, text) drawn into an offscreen image (e.g. 320x180), shared
@@ -372,6 +384,9 @@ In order; each gets a version when it starts.
       none), e.g. `games/<name>/assets/` copied next to the executable. With the first game that
       loads a file: likely Orbit's sounds
 - [ ] File system layer
+  - [ ] Paths in UTF-8 on Windows: `fopen` reads them in the ANSI code page, so a path with a
+        non-ASCII character fails (`--script`, the log file, `screen.capture`). The layer converts
+        them to UTF-16 (`_wfopen`), as `win32_library.c` already does
   - [ ] Read and write whole files
   - [ ] Paths resolved from the executable's folder (not the current directory, which depends on
         how the game is launched)
