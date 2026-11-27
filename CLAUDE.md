@@ -1,7 +1,7 @@
 # Reborn Engine — notes for LLM agents
 
-C17 + Vulkan game engine for Windows and Linux. It is a learning project:
-the owner wants to understand and approve every architectural choice.
+C17 + Vulkan game engine for Windows and Linux, built step by step as a learning project:
+every architectural choice is approved by the owner.
 
 ## Workflow
 - Before introducing a new architectural choice, present the alternatives with pros/cons
@@ -15,6 +15,10 @@ the owner wants to understand and approve every architectural choice.
   feature or condition that will call for them.
 - From v0.2.0 the roadmap is a ladder of our own games under `games/` (ADR 0014): engine tasks come
   from what the current game needs. The sandbox keeps exercising every engine feature.
+- An engine feature that replaces code a game already has includes that game's migration, as a
+  sub-task in the same version: the game behaves as before, its tests stay green. Whether an
+  existing game should also adopt a new feature (sounds in Blink once audio exists) is proposed to
+  the owner case by case.
 - Every game is built in layers (ADR 0014): rules (pure, actions in, events out), input, view,
   glue, `main.c`; rules and input tested in `games/<name>/tests/`. Each game has a `README.md`
   (how it plays, how to build and run it, its commands), listed in `games/README.md`. The engine's

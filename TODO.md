@@ -3,7 +3,9 @@
 From v0.2.0 the roadmap follows a ladder of small games of our own, simplest first (ADR 0014).
 Engine tasks come out of building them: a piece (container, thread, file format...) is added when
 a game needs it, and moves from the backlog into that game's version. The sandbox keeps exercising
-every engine feature. "Likely needs" are guesses, not tasks.
+every engine feature. "Likely needs" are guesses, not tasks. A piece that replaces code a game
+already has comes with that game's migration; whether an older game also adopts a new feature is
+decided case by case.
 
 A task with parts lists them as sub-tasks; the parts already done are checked, so what is left
 shows at a glance. A trigger ("when...", "with...") says which feature will call for the task.
@@ -108,8 +110,8 @@ these steps put numbers next to it, now that text can be drawn).
 
 **Orbit** (2D): a ball bounces inside a ring; rotate an arc along the ring to keep it in, while the
 ring shrinks.
-Likely needs: circle vs arc collisions, rotated quads, sound effects (audio backend, mixer, WAV),
-pause and game states.
+Likely needs: circle vs arc collisions (in its rules: the arc is a shape of its own), rotated
+quads, sound effects (audio backend, mixer, WAV), pause and game states.
 
 **Engine**
 - [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table:
@@ -153,12 +155,13 @@ animation, tile map loaded from a file, a camera following the player, asset man
 In order; each gets a version when it starts.
 
 - **Hollow** (2D platformer): levels, simple enemies, menus, saves. Likely needs: AABB physics,
-  entity model, level files (serialization), streamed music, gamepads, input mapping, menu UI.
+  raycasts, entity model, level files (serialization), streamed music, gamepads, input mapping,
+  menu UI.
 - **Swarm** (2D): thousands of creatures moving as a flock and avoiding the player. Likely needs:
   job system, profiler, spatial structure for neighbour queries, performance tests.
 - **Gallery** (3D): walk in first person through a room with a few objects and a light. Likely
   needs: 3D math, depth buffer, meshes from files, first-person camera with a locked mouse, basic
-  lighting.
+  lighting, raycasts (what the player looks at).
 - **Archipelago** (3D): a small island to explore, with terrain, shadows and objects to interact
   with. Likely needs: terrain, shadows, 3D physics, transform hierarchies, larger scenes.
 
@@ -414,6 +417,28 @@ In order; each gets a version when it starts.
   - [ ] Buttons and sliders
   - [ ] Value inspection
 
+### Collision
+Detection: do two shapes touch, where, in which direction. What happens then (a bounce, a point, a
+lost life) is the game's rule. A test is born in the game that needs it and moves here when a
+second game needs it too.
+- [ ] Shapes and the tests between them (one function per pair vs a shape type: to decide in its
+      ADR)
+  - [ ] Point in rectangle: in Blink's rules today (`rect_contains`, edges included); with the
+        second game that needs it, Blink then drops its own
+  - [ ] Circles and axis-aligned boxes (AABB), and the tests between them: Orbit's ball is a
+        circle, Hollow's world is boxes
+  - [ ] Contact data for the response: normal and penetration depth
+- [ ] Raycasts: the first shape hit by a ray (origin, direction, maximum distance), with distance,
+      point and normal. With Hollow (ground under the feet, enemies' line of sight) or Gallery
+      (what the player looks at or clicks in 3D)
+- [ ] Moving shapes without tunneling: a fast shape tested along its whole path in a step, not
+      only where it ends (swept tests). When something passes through a thin obstacle (likely
+      Hollow's platforms)
+- [ ] Broad phase: a grid or a tree that skips pairs far apart, instead of testing every pair.
+      With Swarm (the spatial structure for neighbour queries)
+- [ ] AABB physics: velocity, gravity, boxes pushed out of what they enter. With Hollow
+- [ ] 3D shapes and queries (spheres, boxes, capsules, rays), with Gallery or Archipelago
+
 ### Scene
 - [ ] Game object model: ECS vs object hierarchy vs plain arrays per type (to decide in its ADR)
 - [ ] Transforms with parent-child relations, if the model needs them
@@ -437,7 +462,7 @@ levels are painful to write by hand.
   - [ ] 3D: fly with the mouse (needs relative mouse motion)
 - [ ] Selection and editing
   - [x] Screen-to-world and world-to-screen conversion (ADR 0016)
-  - [ ] Pick objects with the mouse
+  - [ ] Pick objects with the mouse (a point query in 2D, a raycast in 3D; see Collision)
   - [ ] Move them with handles (gizmos)
   - [ ] Edit their fields in a panel (needs type information for the fields: reflection, to
         decide)
