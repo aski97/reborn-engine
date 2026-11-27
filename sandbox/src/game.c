@@ -1,9 +1,10 @@
 /*
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
  * input and timing can be checked by hand, and draws a few quads: a world
- * field through a 2D camera, a HUD in window pixels on top, textures made in
- * code, the builtin font's atlas and text drawn with it, numbers drawn from a
- * seed, the commands' panel (pause, steps, its own sandbox.clear), the
+ * field through a 2D camera (with a ball bouncing inside a ring), a HUD in
+ * window pixels on top, textures made in code, the builtin font's atlas and
+ * text drawn with it, numbers drawn from a seed, the commands' panel (pause,
+ * steps, its own sandbox.clear), the
  * input panel (keys, buttons and mouse as the engine sees them, injected or not),
  * the capture panel (P: the frame saved as PNG and shown as a thumbnail) and the
  * stats overlay (L: the engine's frame, renderer and memory numbers over a
@@ -30,6 +31,17 @@
 /* Frames shown by the frame-time graph: two seconds at 60 fps. */
 #define SANDBOX_GRAPH_FRAMES 120u
 
+/* The bounce demo's ring, in world units: right of the stats panel in a 1600x900 window. */
+#define SANDBOX_RING_X      10.67f
+#define SANDBOX_RING_Y      6.4f
+#define SANDBOX_RING_RADIUS 1.2f
+#define SANDBOX_BALL_SIDE   0.14f
+#define SANDBOX_BALL_SPEED  1.5f /* units per second */
+
+/* The ball's last positions, one every few steps: about five seconds of its path. */
+#define SANDBOX_TRAIL_DOTS  96u
+#define SANDBOX_TRAIL_EVERY 3u /* steps between two dots */
+
 typedef struct sandbox_state {
     u64 start;          /* the clear color's animation runs from here */
     u64 last_stats_log; /* the engine's frame statistics are logged once per second */
@@ -50,6 +62,19 @@ typedef struct sandbox_state {
     rb_camera2d camera;
     rb_vec2     marker;
     bool        has_marker;
+    /*
+     * Bounces (ADR 0026), in the world field: a ball moved by each step and
+     * reflected off a ring of dots. Its trail draws the path: every bounce
+     * leaves at the angle it came in, so the chords stay tangent to one inner
+     * circle, and the speed shown stays the same.
+     */
+    rb_vec2 ball;
+    rb_vec2 ball_previous; /* before the last step: render draws in between with alpha */
+    rb_vec2 ball_velocity; /* units per second */
+    u32     bounces;
+    rb_vec2 trail[SANDBOX_TRAIL_DOTS]; /* a ring: the oldest dot is overwritten */
+    u32     trail_next;
+    u32     trail_count;
     /*
      * Textures (ADR 0017): a checkerboard, nearest or linear (T swaps it: a
      * destroy and a create), and a soft disc whose alpha fades to its edge.
@@ -338,6 +363,14 @@ static bool game_init(void *state, rb_app *app) {
     game->last_stats_log = game->start;
     game->graph_visible = true;
     game->camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
+    /*
+     * Above the ring's center, launched 20 degrees below the horizontal (a
+     * positive angle turns clockwise: y points down). Off the center line, so
+     * the bounces draw a star instead of going back and forth on a diameter.
+     */
+    game->ball = (rb_vec2){SANDBOX_RING_X, SANDBOX_RING_Y - 0.6f};
+    game->ball_previous = game->ball;
+    game->ball_velocity = rb_vec2_scale(rb_vec2_from_angle(RB_PI / 9.0f), SANDBOX_BALL_SPEED);
     /* A failure is logged; a zero handle draws a plain quad, so the sandbox goes on. */
     game->checker_filter = RB_TEXTURE_FILTER_NEAREST;
     game->checker = sandbox_create_checker(rb_app_renderer(app), game->checker_filter);
@@ -402,10 +435,42 @@ static void sandbox_collect_capture(sandbox_state *game, rb_app *app) {
     }
 }
 
+/*
+ * One step of the ball (ADR 0026): it moves, then bounces if it has reached
+ * the ring while going outward. The ring's wall at the ball faces along the
+ * line from the center, so that direction, normalized, is the normal.
+ */
+static void sandbox_update_ball(sandbox_state *game, rb_app *app, f32 dt) {
+    rb_vec2 center = {SANDBOX_RING_X, SANDBOX_RING_Y};
+    game->ball_previous = game->ball;
+    game->ball = rb_vec2_add(game->ball, rb_vec2_scale(game->ball_velocity, dt));
+
+    rb_vec2 offset = rb_vec2_sub(game->ball, center);
+    rb_vec2 normal = rb_vec2_normalize(offset);
+    /*
+     * Only while going outward: a step can leave the ball a little past the
+     * wall, and bouncing there again would send it back out, stuck on the ring.
+     */
+    if (rb_vec2_length(offset) >= SANDBOX_RING_RADIUS - SANDBOX_BALL_SIDE * 0.5f &&
+        rb_vec2_dot(game->ball_velocity, normal) > 0.0f) {
+        game->ball_velocity = rb_vec2_reflect(game->ball_velocity, normal);
+        ++game->bounces;
+    }
+
+    if (rb_app_step_index(app) % SANDBOX_TRAIL_EVERY == 0) {
+        game->trail[game->trail_next] = game->ball;
+        game->trail_next = (game->trail_next + 1) % SANDBOX_TRAIL_DOTS;
+        if (game->trail_count < SANDBOX_TRAIL_DOTS) {
+            ++game->trail_count;
+        }
+    }
+}
+
 static void game_update(void *state, rb_app *app, f64 dt) {
-    (void)dt;
     sandbox_state     *game = state;
     rb_platform_state *platform = rb_app_platform(app);
+
+    sandbox_update_ball(game, app, (f32)dt);
 
     if (game->capture_booked) {
         game->capture_booked = false;
@@ -753,12 +818,71 @@ static void sandbox_draw_random(const sandbox_state *game, rb_app *app) {
 #define SANDBOX_FIELD_HEIGHT 9.0f
 #define SANDBOX_GRID_LINE    0.04f /* world units */
 
+#define SANDBOX_RING_DOTS 32u
+
 /*
- * Through the camera (ADR 0016): a dark field with a grid at every unit, a
- * square going around the center and the last click's marker. Nothing reaches
- * the bars, which keep the clear color: resizing the window shows them.
+ * The bounce demo (ADR 0026), in world units. The ring's dots come from one
+ * spoke turned a little further for each; the square orbiting the ring is
+ * placed by its angle, `turn` of a whole turn. The ball is drawn between its
+ * last two steps, `alpha` of the way (ADR 0011), so it moves smoothly at any
+ * frame rate. Text under the ring: the speed (the velocity's length, kept by
+ * every reflection) and the bounces so far.
  */
-static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn) {
+static void sandbox_draw_bounces(const sandbox_state *game, rb_renderer *renderer, f32 turn,
+                                 f32 alpha) {
+    rb_vec2 center = {SANDBOX_RING_X, SANDBOX_RING_Y};
+
+    const f32 dot = 0.06f;
+    rb_vec2   spoke = {SANDBOX_RING_RADIUS, 0.0f};
+    for (u32 i = 0; i < SANDBOX_RING_DOTS; ++i) {
+        rb_vec2 at = rb_vec2_add(center, spoke);
+        rb_renderer_draw_quad(renderer, at.x - dot * 0.5f, at.y - dot * 0.5f, dot, dot,
+                              rb_color_srgb(1.0f, 1.0f, 1.0f, 0.6f));
+        spoke = rb_vec2_rotate(spoke, 2.0f * RB_PI / (f32)SANDBOX_RING_DOTS);
+    }
+
+    /* Oldest first, fading in toward the ball. */
+    const f32 trail = 0.05f;
+    u32 oldest = (game->trail_next + SANDBOX_TRAIL_DOTS - game->trail_count) % SANDBOX_TRAIL_DOTS;
+    for (u32 i = 0; i < game->trail_count; ++i) {
+        rb_vec2 at = game->trail[(oldest + i) % SANDBOX_TRAIL_DOTS];
+        f32     fade = (f32)(i + 1) / (f32)game->trail_count;
+        rb_renderer_draw_quad(renderer, at.x - trail * 0.5f, at.y - trail * 0.5f, trail, trail,
+                              rb_color_srgb(1.0f, 0.85f, 0.3f, 0.6f * fade));
+    }
+
+    rb_vec2 ball = rb_vec2_add(game->ball_previous,
+                               rb_vec2_scale(rb_vec2_sub(game->ball, game->ball_previous), alpha));
+    rb_renderer_draw_quad(renderer, ball.x - SANDBOX_BALL_SIDE * 0.5f,
+                          ball.y - SANDBOX_BALL_SIDE * 0.5f, SANDBOX_BALL_SIDE, SANDBOX_BALL_SIDE,
+                          rb_color_srgb(1.0f, 0.85f, 0.3f, 1.0f));
+
+    const f32 square = 0.2f;
+    rb_vec2   orbit = rb_vec2_add(
+        center, rb_vec2_scale(rb_vec2_from_angle(turn * 2.0f * RB_PI), SANDBOX_RING_RADIUS + 0.3f));
+    rb_renderer_draw_quad(renderer, orbit.x - square * 0.5f, orbit.y - square * 0.5f, square,
+                          square, rb_color_srgb(0.3f, 0.7f, 1.0f, 1.0f));
+
+    if (game->font != NULL) {
+        /* 24 pixels in a 1600x900 window: 3 per font pixel, sharp. */
+        rb_text_style style = {.font = game->font,
+                               .size = 0.24f,
+                               .color = rb_color_srgb(0.9f, 0.9f, 0.9f, 1.0f),
+                               .align_x = RB_TEXT_CENTER,
+                               .align_y = RB_TEXT_TOP};
+        char          text[48];
+        snprintf(text, sizeof(text), "SPEED %.2f\nBOUNCES %u",
+                 (double)rb_vec2_length(game->ball_velocity), game->bounces);
+        rb_text_draw(renderer, center.x, center.y + SANDBOX_RING_RADIUS + 0.5f, &style, text);
+    }
+}
+
+/*
+ * Through the camera (ADR 0016): a dark field with a grid at every unit, the
+ * bounce demo and the last click's marker. Nothing reaches the bars, which
+ * keep the clear color: resizing the window shows them.
+ */
+static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn, f32 alpha) {
     rb_renderer *renderer = rb_app_renderer(app);
     rb_renderer_set_camera(renderer, &game->camera);
 
@@ -774,16 +898,7 @@ static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn)
                               SANDBOX_FIELD_WIDTH, SANDBOX_GRID_LINE, grid);
     }
 
-    /* Along a rectangle around the center, one side per quarter turn: no trigonometry yet. */
-    f32     t = turn * 4.0f;
-    u32     side = (u32)t;
-    f32     along = t - (f32)side;
-    rb_vec2 corners[4] = {{4.0f, 2.0f}, {12.0f, 2.0f}, {12.0f, 7.0f}, {4.0f, 7.0f}};
-    rb_vec2 from = corners[side % 4];
-    rb_vec2 to = corners[(side + 1) % 4];
-    rb_vec2 at = rb_vec2_add(from, rb_vec2_scale(rb_vec2_sub(to, from), along));
-    rb_renderer_draw_quad(renderer, at.x - 0.5f, at.y - 0.5f, 1.0f, 1.0f,
-                          rb_color_srgb(0.3f, 0.7f, 1.0f, 1.0f));
+    sandbox_draw_bounces(game, renderer, turn, alpha);
 
     if (game->has_marker) {
         rb_renderer_draw_quad(renderer, game->marker.x - 0.25f, game->marker.y - 0.25f, 0.5f, 0.5f,
@@ -902,8 +1017,9 @@ static void sandbox_draw_frame_graph(const sandbox_state *game, rb_app *app) {
  * Bottom, between the graph and the random numbers (ADR 0022): the step count
  * and the pause, a ticker that advances one cell per step, the last
  * sandbox.clear. Paused, the ticker stops with everything on game time (the
- * squares, the world's square), while the clear color, on the wall clock, keeps
- * turning: rendering goes on, updates do not. `step 1` moves it one cell.
+ * squares, the world's ball and square), while the clear color, on the wall
+ * clock, keeps turning: rendering goes on, updates do not. `step 1` moves it
+ * one cell.
  */
 static void sandbox_draw_commands(const sandbox_state *game, rb_app *app) {
     if (game->font == NULL) {
@@ -1305,8 +1421,8 @@ static void sandbox_draw_stats(const sandbox_state *game, rb_app *app) {
  * on the wall clock: it shows that frames keep reaching the screen, paused or
  * not. Muted (low saturation and value) so it stays easy on the eyes and the
  * quads stand out; shows from the next frame. The row of squares, the sliding
- * square and the world's square move on game time, as a game's animations
- * would: the pause freezes them.
+ * square, the world's ball and square move on game time, as a game's
+ * animations would: the pause freezes them.
  */
 static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_state *game = state;
@@ -1316,7 +1432,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
                                                           ? game->clear_color
                                                           : hsv_to_srgb(hue, 0.5f, 0.45f));
     f32 slide = sandbox_game_phase(app, alpha, SANDBOX_SLIDE_PERIOD_S);
-    sandbox_draw_world(game, app, slide);
+    sandbox_draw_world(game, app, slide, (f32)alpha);
     sandbox_draw_quads(game, app, sandbox_game_phase(app, alpha, SANDBOX_ROW_PERIOD_S), slide);
     sandbox_draw_font(game, app);
     sandbox_draw_text_demo(game, app);

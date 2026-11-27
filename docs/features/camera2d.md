@@ -1,11 +1,11 @@
-# Math & 2D camera
+# 2D camera
 
 | | |
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.2.0 (2026-11-23) |
-| **Updated** | v0.2.0 (2026-11-24) |
-| **Code** | `engine/include/reborn/math.h`, `engine/include/reborn/camera2d.h`, `engine/src/renderer/camera2d.c`, `engine/src/renderer/camera2d_internal.h` |
+| **Updated** | v0.3.0 (2026-11-27) |
+| **Code** | `engine/include/reborn/camera2d.h`, `engine/src/renderer/camera2d.c`, `engine/src/renderer/camera2d_internal.h` |
 | **ADRs** | [0016](../adr/0016-math-and-2d-camera.md) |
 
 ## Summary
@@ -14,10 +14,8 @@ A 2D camera says which area of the world to show; the renderer fits it into the 
 where the aspect differs, and the game converts mouse positions back into world units.
 
 ## Spec
-- **Math** (`reborn/math.h`, header-only, `static inline`): `rb_vec2` (add, sub, scale,
-  component-wise mul), `rb_rect` (top-left corner and size), `rb_mat4` column-major (element row r, column c at `m[c * 4 + r]`, as GLSL
-  reads it), `rb_mat4_ortho(left, right, top, bottom)` mapping that rectangle to Vulkan's -1..1, y
-  down, z 0. Nothing else yet: multiplication, rotation and the rest arrive with their first user.
+- **Math:** vectors and `rb_mat4_ortho` come from `reborn/math.h`, on a page of its own
+  ([math.md](math.md)).
 - **Camera** (`reborn/camera2d.h`): `rb_camera2d {center, size, zoom}`, made with
   `rb_camera2d_make(center, size)` (zoom 1). `size` is the design area, always shown whole and as
   large as the window allows; `zoom` shows `size / zoom` around `center`. Size or zoom not positive:
@@ -33,7 +31,7 @@ where the aspect differs, and the game converts mouse positions back into world 
   renderer, so a click lands where it looks. Points on the bars map outside the area shown; a
   target with no pixels returns `center`. `rb_camera2d_world_to_screen` is the inverse (where a
   world point is drawn, e.g. for an agent that must click it); no pixels give (0, 0).
-- Not yet: world-to-screen, camera rotation, a bars color of their own.
+- Not yet: camera rotation, a bars color of their own.
 
 ## Design
 ```mermaid
@@ -75,7 +73,8 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
 ```
 
 ## Decisions
-- `rb_vec2` + `rb_mat4` (ADR 0016, A1), by value (B1), header-only (C1), column-major (D1).
+- The camera hands the shader a `rb_mat4` (ADR 0016, A1); the math's own choices are on
+  [math.md](math.md).
 - The whole design area always visible, with bars (E2); world y down (F1).
 - A current camera, `NULL` for pixels (G1); camera in its own header, code next to the renderer
   but outside the backend (H1).
@@ -83,7 +82,7 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
   keep the clear color (J1).
 
 ## Future work
-- Camera rotation and matrix multiplication, with rotated quads (Orbit).
+- Camera rotation, when a game needs it.
 - A bars color of their own, if the clear color is not enough.
 
 ## History
@@ -92,3 +91,4 @@ rb_vec2 world = rb_camera2d_screen_to_world(&camera,
 | v0.2.0 | 2026-11-23 | First version: `rb_vec2`, `rb_mat4`, ortho; `rb_camera2d` with letterbox, zoom, screen-to-world; `rb_renderer_set_camera` |
 | v0.2.0 | 2026-11-24 | `rb_rect`, for texture regions (ADR 0018) |
 | v0.2.0 | 2026-11-24 | `rb_camera2d_world_to_screen`, for Blink's state command (ADR 0022) |
+| v0.3.0 | 2026-11-27 | The math moves to a page of its own, [math.md](math.md) |

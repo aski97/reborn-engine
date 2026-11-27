@@ -161,8 +161,10 @@ elseif(LINUX)
     # configure time with a clear message when it is missing, instead of a compile error later.
     find_package(X11 REQUIRED)
     # dlopen lives in libc since glibc 2.34; CMAKE_DL_LIBS names libdl for older ones (ADR 0013).
-    # glibc keeps the C math functions in a separate libm (powf: reborn/color.h, ADR 0013).
-    target_link_libraries(reborn PRIVATE X11::X11 ${CMAKE_DL_LIBS} m)
+    target_link_libraries(reborn PRIVATE X11::X11 ${CMAKE_DL_LIBS})
+    # glibc keeps the C math functions in a separate libm. PUBLIC: reborn/math.h's inline
+    # functions call sqrtf, sinf and cosf from the code that includes it (ADR 0026).
+    target_link_libraries(reborn PUBLIC m)
 endif()
 
 # Headers only (ADR 0013, A1): from the Vulkan SDK on Windows (VULKAN_SDK), from

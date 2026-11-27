@@ -19,9 +19,10 @@ In order, like Blink: the game starts as soon as it can run, without sound, so l
 its real needs; each new engine piece is shown in the sandbox too. Its collisions (the ball against
 the ring and the arc, the arc a shape of its own) and its phases (title, playing, paused, game
 over) stay in its rules.
-- [ ] 2D math for angles and bounces (ADR 0016): dot product, length, normalization, reflection, a
+- [x] 2D math for angles and bounces (ADR 0026): dot product, length, normalization, reflection, a
       vector from an angle and rotated by one
-- [ ] Rotated quads (ADR 0016): an angle in the quad's push constants, about the quad's center
+- [ ] Rotated quads (ADR 0016): an angle in the quad's push constants, about the quad's center, in
+      ADR 0026's convention (radians, clockwise on screen)
 - [ ] Round shapes for the ball, the ring and the arc: a disc texture drawn in code and rotated
       segments (in Orbit) vs circle and arc primitives in the engine (a shader of their own), to
       decide

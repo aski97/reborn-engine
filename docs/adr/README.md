@@ -41,5 +41,6 @@ its implementation.
 | 0023 | [Input injection](0023-input-injection.md) | Accepted |
 | 0024 | [Screen capture and PNG writing](0024-screen-capture-and-png.md) | Accepted |
 | 0025 | [Frame statistics and the stats overlay](0025-frame-statistics.md) | Accepted |
+| 0026 | [Vectors for angles and bounces](0026-vectors-for-angles-and-bounces.md) | Accepted |
 
 Template: [`template.md`](template.md).

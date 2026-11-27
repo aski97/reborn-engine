@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Vectors for angles and bounces (ADR 0026), in `reborn/math.h`: `rb_vec2_dot`, `rb_vec2_length`,
+  `rb_vec2_normalize` (the zero vector stays zero), `rb_vec2_reflect` (asserts a unit normal),
+  `rb_vec2_from_angle`, `rb_vec2_rotate`, `RB_PI`. Angles in radians, clockwise on screen with
+  y down.
+- Sandbox: a ball bouncing inside a ring of dots in the world field, with its trail, its speed
+  and its bounces; a square orbits the ring.
+
+### Changed
+- The engine links libm `PUBLIC` on Linux: `reborn/math.h`'s inline functions call it from the
+  code that includes them.
+- Sandbox: the world's square orbits the bounce demo's ring instead of going around a rectangle.
+- The math has a feature page of its own, `docs/features/math.md`, apart from the 2D camera's.
+
 ## [0.2.0] - 2026-11-27
 
 ### Added
