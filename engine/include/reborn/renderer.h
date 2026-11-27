@@ -186,6 +186,20 @@ typedef struct rb_renderer_validation_stats {
 
 RB_API rb_renderer_validation_stats rb_renderer_get_validation_stats(const rb_renderer *renderer);
 
+/* What the renderer runs on now (ADR 0025): read again after a resize. Strings live until shutdown.
+ */
+typedef struct rb_renderer_info {
+    const char *gpu_name;     /* as the driver names it */
+    const char *gpu_type;     /* "discrete", "integrated", "virtual", "CPU" or "other" */
+    const char *present_mode; /* in use: "FIFO" (vsync), "MAILBOX", "IMMEDIATE"...; "none" */
+    bool        vsync;        /* as requested in the config; the present mode says what we got */
+    u32         width;        /* swapchain images, in pixels; 0 without a swapchain (minimized) */
+    u32         height;
+    u32         image_count;
+} rb_renderer_info;
+
+RB_API rb_renderer_info rb_renderer_get_info(const rb_renderer *renderer);
+
 /* ============================================================================
  * Frame capture (ADR 0024)
  *

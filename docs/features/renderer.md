@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-17) |
-| **Updated** | v0.2.0 (2026-11-26) |
+| **Updated** | v0.2.0 (2026-11-27) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md), [0024](../adr/0024-screen-capture-and-png.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md), [0024](../adr/0024-screen-capture-and-png.md), [0025](../adr/0025-frame-statistics.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
@@ -90,6 +90,9 @@ created from RGBA pixels and live in GPU memory.
   (loader info → TRACE), verbose → TRACE. Validation errors and warnings are counted
   (`rb_renderer_get_validation_stats`); shutdown logs the totals. The first error of each message
   ID (up to 64) stops in an attached debugger, inside the offending Vulkan call.
+- **Info** (`rb_renderer_get_info`, ADR 0025): GPU name and type, present mode in use, vsync as
+  requested, swapchain size and image count, read from the current state
+  ([statistics.md](statistics.md)).
 - Every Vulkan function is called through a table loaded for the object it belongs to (loader,
   instance, device); calling one directly does not compile (`VK_NO_PROTOTYPES`).
 - Vulkan's host allocations use the driver's allocator (`pAllocator` NULL): not tracked by tag.
@@ -291,3 +294,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.2.0 | 2026-11-23 | Textures: device memory, staging upload, samplers, descriptor sets; `rb_texture`, `rb_renderer_draw_texture`; plain quads sample a white texture |
 | v0.2.0 | 2026-11-24 | `rb_renderer_draw_texture_region`: a source rectangle per draw; UV offset and size in the push constants (112 bytes) |
 | v0.2.0 | 2026-11-26 | Frame capture: `rb_renderer_capture_frame`, `rb_renderer_captured_image`; swapchain images copyable where the GPU allows (ADR 0024) |
+| v0.2.0 | 2026-11-27 | `rb_renderer_get_info`: GPU, present mode, vsync, swapchain (ADR 0025) |

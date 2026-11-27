@@ -15,8 +15,9 @@
 | Fonts | [font.md](font.md) | In progress | v0.2.0 | 2026-11-24 |
 | Text | [text.md](text.md) | In progress | v0.2.0 | 2026-11-24 |
 | Random numbers | [random.md](random.md) | In progress | v0.2.0 | 2026-11-26 |
-| Commands | [commands.md](commands.md) | In progress | v0.2.0 | 2026-11-26 |
+| Commands | [commands.md](commands.md) | In progress | v0.2.0 | 2026-11-27 |
 | Screen capture & PNG | [screen-capture.md](screen-capture.md) | In progress | v0.2.0 | 2026-11-26 |
+| Statistics | [statistics.md](statistics.md) | In progress | v0.2.0 | 2026-11-27 |
 | Unit testing | [unit-testing.md](unit-testing.md) | Stable | v0.1.0 | 2026-11-26 |
 
 Status: Planned → In progress → Stable → Deprecated. New pages start from [`_template.md`](_template.md).

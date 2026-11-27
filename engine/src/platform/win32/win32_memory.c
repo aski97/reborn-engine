@@ -5,11 +5,14 @@
 #include "platform/win32/win32_error.h"
 
 #include <reborn/assert.h>
+#include <reborn/memory.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
+/* After windows.h, which it needs. */
+#include <psapi.h>
 
 #include <malloc.h>
 
@@ -101,4 +104,25 @@ void *rb_platform_heap_resize(void *ptr, usize old_size, usize new_size, usize a
 void rb_platform_heap_free(void *ptr) {
     RB_ASSERT(ptr != NULL);
     _aligned_free(ptr);
+}
+
+/* ============================================================================
+ * Process memory (ADR 0025, M2)
+ * ========================================================================== */
+
+/*
+ * K32GetProcessMemoryInfo lives in kernel32 since Windows 7: no psapi.lib.
+ * psapi.h maps GetProcessMemoryInfo to it, but only for some PSAPI_VERSION
+ * values; naming it directly does not depend on the SDK's defaults.
+ */
+bool rb_process_get_memory(rb_process_memory *out) {
+    RB_ASSERT(out != NULL);
+    *out = (rb_process_memory){0};
+    PROCESS_MEMORY_COUNTERS counters = {.cb = sizeof(counters)};
+    if (!K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+        return false;
+    }
+    out->resident_bytes = counters.WorkingSetSize;
+    out->peak_resident_bytes = counters.PeakWorkingSetSize;
+    return true;
 }

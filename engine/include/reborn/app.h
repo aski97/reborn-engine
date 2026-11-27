@@ -175,6 +175,39 @@ RB_API u64 rb_app_step_index(const rb_app *app);
 RB_API bool rb_app_real_input(const rb_app *app);
 
 /* ============================================================================
+ * Frame statistics (ADR 0025)
+ * ========================================================================== */
+
+/*
+ * The loop's last closed window of about a second, published once per window:
+ * stable enough to read on screen. A frame is a loop iteration, rendered or
+ * not (minimized). All zero before the first window closes.
+ *
+ * Frame times run from a frame's start to the next one's, waits included: with
+ * vsync they sit at the refresh period whatever the load. Work is the frame
+ * minus its waits (GPU, swapchain image, frame cap): with vsync, the time the
+ * frame really costs. Update and render are parts of the work.
+ */
+typedef struct rb_app_frame_stats {
+    f64 seconds; /* the window's length */
+    u32 frames;
+    u32 steps;
+    f64 fps;
+    f64 steps_per_second;
+    f64 frame_avg_ms;
+    f64 frame_p99_ms; /* 99% of the frames took this long or less (the "1% low") */
+    f64 frame_max_ms;
+    f64 work_avg_ms; /* commands, steps, render, submit and present */
+    f64 work_max_ms;
+    f64 update_avg_ms; /* per frame: every step of it (pump, events, update) */
+    f64 update_max_ms;
+    f64 render_avg_ms; /* the game's render callback */
+    f64 render_max_ms;
+} rb_app_frame_stats;
+
+RB_API rb_app_frame_stats rb_app_get_frame_stats(const rb_app *app);
+
+/* ============================================================================
  * Commands (ADR 0022)
  * ========================================================================== */
 

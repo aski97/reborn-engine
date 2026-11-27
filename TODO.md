@@ -88,18 +88,24 @@ platform and without clicking by hand; the sandbox exposes the same commands). I
 
 **Tests**
 - [x] Tests in parallel by default, none sharing a file or a port with another
+- [ ] `app_run.frame_arena_is_reset_every_frame` fails about once in six runs of the window tests
+      under load (`ctest -R "app_run|renderer" --repeat until-fail:6`): `rec.renders > 1` is false
+      after a 12 s run, so frames went unrendered (window not yet shown or swapchain not ready?).
+      Find the cause, then make the test wait for rendered frames instead of a step count
 
 **Sandbox stats overlay** (the sandbox shows a frame-time graph built from quads, toggled with L;
 these steps put numbers next to it, now that text can be drawn).
-- [ ] Numbers in the overlay
-  - [ ] Frames per second, average and worst frame time
-  - [ ] Steps per second
-  - [ ] Memory per tag
-  - [ ] Validation counts
-  - [ ] GPU, vsync and swapchain size
-- [ ] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
-      toggle (the profiling overlay in the backlog): then the engine needs a place to draw after
-      the game's `render` and a way to expose frame timing
+- [x] Numbers in the overlay (ADR 0025)
+  - [x] Frames per second; average, 99th percentile and worst frame time
+  - [x] Work, update and render time: the frame without its waits, measured by the engine
+  - [x] Steps per second
+  - [x] Memory per tag, the arenas with their committed pages, the process from the OS
+  - [x] Validation counts
+  - [x] GPU, present mode, vsync and swapchain size
+  - [x] The same numbers as commands: `stats`, `memory.stats`, `renderer.info`
+- [x] Decide whether the overlay stays in the sandbox or becomes an engine feature any game can
+      toggle: the engine measures and publishes, the sandbox draws (ADR 0025, A3); an engine
+      overlay comes with the debug UI or the first game that asks
 
 **Continuous integration** (needed before the refactoring)
 - [ ] GitHub Actions, tests on every push
@@ -116,6 +122,12 @@ quads, sound effects (audio backend, mixer, WAV), pause and game states.
 **Engine**
 - [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table:
       with the hash map of the backlog's containers, where optimizations start
+- [ ] Vsync at run time: with vsync on, frame times sit at the refresh period; off, fps, 1% and
+      worst show what the engine can do (ADR 0025)
+  - [ ] `rb_renderer_set_vsync`: the swapchain rebuilt with the new present mode at the next frame
+  - [ ] `renderer.vsync [on|off]` command
+  - [ ] V in the sandbox; the stats panel shows the present mode change
+  - [ ] A console variable once they exist
 
 ## v0.4.0
 
@@ -240,10 +252,21 @@ In order; each gets a version when it starts.
 - [ ] Resource usage
   - [x] Memory by tag: current, peak, allocation count per subsystem (ADR 0012, v0.1.0), logged at
         the end of the run
+  - [x] Frame statistics: fps, frame time (average, 99th percentile, worst), work, update and
+        render time (ADR 0025, v0.2.0)
   - [ ] Process CPU and memory from the OS
-  - [ ] GPU, later
+    - [x] Resident memory and its peak (ADR 0025, v0.2.0)
+    - [ ] CPU time, if a game's performance work needs it
+  - [ ] GPU, when a game loads real textures (Seedling's sprite sheets)
+    - [ ] GPU memory: our device allocations (count, bytes) next to the tags
+    - [ ] The heap's usage and budget (`VK_EXT_memory_budget`, where the driver has it)
+    - [ ] GPU time per frame (timestamp queries)
 - [ ] Viewer
-  - [ ] In-game overlay (see the sandbox stats overlay)
+  - [ ] In-game overlay any game can turn on: with the debug UI, or when a game asks; built on the
+        engine's statistics (ADR 0025), drawn after the game's `render`
+    - [ ] Per-frame times from the engine (the last frame, or a history of the last N): the
+          sandbox's frame-time graph still times its own `render` calls
+          (`sandbox_record_frame_time`), the same interval the loop already measures
   - [ ] Export: JSON lines for LLMs, trace format for external viewers
 - [ ] Performance tests for data structures (handle pool, ring, future containers): `bench/`
       executable (ADR 0004), release build, timings not pass/fail (timer and approach to decide)
@@ -497,9 +520,10 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [x] `status`: frame, step, pause, game time, window (ADR 0022)
   - [x] `input.state`: keys, buttons and mouse as the engine sees them (ADR 0023)
   - [x] A game's own state (`blink.state`)
-  - [ ] Frame timing
-  - [ ] Memory per tag
-  - [ ] Renderer resources
+  - [x] Frame timing: `stats` (ADR 0025)
+  - [x] Memory per tag, the arenas, the process: `memory.stats` (ADR 0025)
+  - [ ] Renderer resources: the GPU and the swapchain in `renderer.info` (ADR 0025); textures and
+        buffers not yet
   - [ ] Recent log lines (needs the log's in-memory history)
   - [ ] Objects and their fields, later
 - [ ] Unattended runs: a scenario run in CI or Docker

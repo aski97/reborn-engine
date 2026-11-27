@@ -99,8 +99,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   fixed Huffman codes) and zlib. Memory tag `RB_MEMORY_TAG_IMAGE`.
 - Sandbox: P captures the next frame, saves `sandbox-capture.png` and shows it as a thumbnail in a
   panel at the top, with its number and file size.
+- Frame statistics (ADR 0025): `rb_app_get_frame_stats` returns the loop's last window of about a
+  second: frames and steps per second; the frame time's average, 99th percentile (from a 0.1 ms
+  histogram) and maximum; average and maximum of the work (the frame without its waits for the
+  GPU, the swapchain and the frame cap), the steps and the game's render. In every build.
+- `rb_renderer_get_info` (ADR 0025): GPU name and type, present mode in use, vsync as requested,
+  swapchain size and image count.
+- `rb_process_get_memory` (ADR 0025), in `reborn/memory.h`: the process's resident memory and its
+  peak, from the OS (Win32 working set, Linux `VmRSS` / `VmHWM`).
+- Commands `stats`, `memory.stats` (tags, arenas with used, peak, committed and reserved bytes,
+  the process) and `renderer.info` (GPU, present mode, swapchain, validation counts).
+- Sandbox: a stats panel above the frame-time graph and the input panel, toggled with them (L):
+  fps and steps per second, frame, work, update and render times, the GPU, present mode, vsync,
+  swapchain and validation counts; memory used and peak per tag, the arenas (with committed
+  pages) and the process.
 
 ### Changed
+- Sandbox: the per-second log line reports the engine's frame statistics; the world field's text
+  sits higher, clear of the stats panel.
 - Test presets run the tests in parallel on every core (`jobs: 0`): about 13 s instead of 31 s on
   Windows; `-j1` runs them one at a time.
 - `rb_app_run(&callbacks, argc, argv)` takes the command line, for the engine's options

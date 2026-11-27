@@ -114,6 +114,9 @@ The engine's commands, in every game (each game's README lists its own):
 | `input.real [on\|off]` | turns keyboard and mouse on or off at once; no argument: as now | `real` |
 | `input.state` | what the engine sees | `keys` and `buttons` down (`real` or `injected`), `mouse` (`x`, `y`, `in_window`), `real`, `waiting`, `next_step` |
 | `screen.capture [path]` | renders a frame now and saves it as PNG (`screenshot-<frame>.png` by default) | `path`, `width`, `height`, `bytes`, `frame`, `step` |
+| `stats` | frame statistics of the last second | `seconds`, `frames`, `steps`, `fps`, `steps_per_second`, `frame_ms` (`avg`, `p99`, `max`), `work_ms`, `update_ms`, `render_ms` (`avg`, `max`) |
+| `memory.stats` | memory by tag, the arenas, the process | `tags` (name → `live`, `peak`, `blocks`), `arenas` (`persistent`, `frame` → `used`, `peak`, `committed`, `reserved`), `process` (`resident`, `peak_resident`) |
+| `renderer.info` | what the renderer runs on | `gpu` (`name`, `type`), `present_mode`, `vsync`, `swapchain` (`width`, `height`, `images`), `validation` (`enabled`, `errors`, `warnings`) |
 
 Keys are named as `rb_key_name` spells them, any case, `_` for a space (`space`, `a`, `f1`,
 `left_ctrl`, `keypad_1`); buttons `left`, `right`, `middle`, `x1`, `x2`; positions in window

@@ -246,9 +246,14 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
     rb_frame_pacer pacer;
     rb_step_clock_init(&clock, step_ns, APP_MAX_FRAME_DELTA_NS, now);
     rb_frame_pacer_init(&pacer, frame_ns, now);
+    rb_frame_stats_init(&app->frame_stats, RB_NS_PER_S, now);
+    u64 frame_start = now;
     RB_LOG_DEBUG("Loop started");
 
     while (!rb_app_quit_requested(app)) {
+        /* What the frame statistics need (ADR 0025): a few clock reads per frame. */
+        rb_frame_sample sample = {0};
+        u64             steps_before = app->step_count;
         rb_arena_reset(&app->frame);
         /* Before the steps: a pause, a step or a quit takes effect in this very frame. */
         rb_app_commands_run(app);
@@ -256,6 +261,7 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
             break;
         }
 
+        u64 update_start = rb_time_now();
         if (app->paused) {
             /* The window stays responsive and can be closed; the game's time stands still. */
             rb_step_clock_hold(&clock, rb_time_now());
@@ -275,11 +281,16 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
          * simulation keeps going. Also rebuilds the swapchain after a resize.
          * With vsync, begin waits for a free image: that paces the loop.
          */
+        u64 begin_start = rb_time_now();
+        sample.update_ns = begin_start - update_start;
         bool visible = rb_renderer_begin_frame(app->renderer);
+        u64  render_start = rb_time_now();
+        sample.wait_ns = render_start - begin_start;
         if (visible) {
             if (app->callbacks->render != NULL) {
                 app->callbacks->render(app->state, app, rb_step_clock_alpha(&clock));
             }
+            sample.render_ns = rb_time_now() - render_start;
             rb_renderer_end_frame(app->renderer);
         }
         ++app->frame_count;
@@ -298,6 +309,14 @@ static void app_loop(rb_app *app, const rb_app_config *config) {
             }
         }
         rb_time_sleep(wait);
+
+        /* The sleep as measured, overshoot included: it is waiting, not work. */
+        u64 next_start = rb_time_now();
+        sample.wait_ns += next_start - now;
+        sample.interval_ns = next_start - frame_start;
+        sample.steps = (u32)(app->step_count - steps_before);
+        rb_frame_stats_add(&app->frame_stats, &sample, next_start);
+        frame_start = next_start;
     }
 }
 
@@ -452,4 +471,9 @@ bool rb_app_real_input(const rb_app *app) {
 u64 rb_app_step_index(const rb_app *app) {
     RB_ASSERT(app != NULL);
     return app->step_count;
+}
+
+rb_app_frame_stats rb_app_get_frame_stats(const rb_app *app) {
+    RB_ASSERT(app != NULL);
+    return app->frame_stats.published;
 }

@@ -57,6 +57,18 @@ RB_API const char *rb_memory_tag_name(rb_memory_tag tag);
 
 RB_API rb_memory_stats rb_memory_get_stats(rb_memory_tag tag);
 
+/*
+ * The whole process as the OS sees it (ADR 0025): everything, not only what
+ * the tags count (the GPU driver, the C runtime, the code).
+ */
+typedef struct rb_process_memory {
+    usize resident_bytes;      /* in RAM now: working set (Win32), VmRSS (Linux) */
+    usize peak_resident_bytes; /* highest so far: PeakWorkingSetSize, VmHWM */
+} rb_process_memory;
+
+/* False, `out` zeroed, when the OS does not tell. */
+RB_API bool rb_process_get_memory(rb_process_memory *out);
+
 /* ============================================================================
  * Allocator interface (ADR 0010, C1, D2)
  *

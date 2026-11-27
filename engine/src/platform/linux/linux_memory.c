@@ -13,11 +13,13 @@
 #include "platform/platform_os.h"
 
 #include <reborn/assert.h>
+#include <reborn/memory.h>
 #include <reborn/log.h>
 
 #include <errno.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -125,4 +127,41 @@ void *rb_platform_heap_resize(void *ptr, usize old_size, usize new_size, usize a
 void rb_platform_heap_free(void *ptr) {
     RB_ASSERT(ptr != NULL);
     free(ptr);
+}
+
+/* ============================================================================
+ * Process memory (ADR 0025, M2)
+ * ========================================================================== */
+
+/*
+ * /proc/self/status is text, one "Name:   value kB" per line; the kernel has
+ * printed sizes in kB (KiB) there for decades. /proc/self/statm would be
+ * shorter but has no peak.
+ */
+bool rb_process_get_memory(rb_process_memory *out) {
+    RB_ASSERT(out != NULL);
+    *out = (rb_process_memory){0};
+    FILE *file = fopen("/proc/self/status", "r");
+    if (file == NULL) {
+        return false;
+    }
+    bool               has_rss = false;
+    bool               has_hwm = false;
+    char               line[256];
+    unsigned long long kib = 0;
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "VmRSS: %llu kB", &kib) == 1) {
+            out->resident_bytes = (usize)kib * 1024u;
+            has_rss = true;
+        } else if (sscanf(line, "VmHWM: %llu kB", &kib) == 1) {
+            out->peak_resident_bytes = (usize)kib * 1024u;
+            has_hwm = true;
+        }
+    }
+    fclose(file);
+    if (!has_rss || !has_hwm) {
+        *out = (rb_process_memory){0};
+        return false;
+    }
+    return true;
 }

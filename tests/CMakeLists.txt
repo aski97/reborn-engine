@@ -6,6 +6,7 @@
 # cmake/RebornTesting.cmake, shared with the games' tests.
 reborn_add_test_executable(reborn_tests
     app/test_app.c
+    app/test_frame_stats.c
     app/test_frame_timing.c
     app/test_input_queue.c
     command/test_command.c

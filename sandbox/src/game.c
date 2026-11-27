@@ -4,8 +4,10 @@
  * field through a 2D camera, a HUD in window pixels on top, textures made in
  * code, the builtin font's atlas and text drawn with it, numbers drawn from a
  * seed, the commands' panel (pause, steps, its own sandbox.clear), the
- * input panel (keys, buttons and mouse as the engine sees them, injected or not)
- * and the capture panel (P: the frame saved as PNG and shown as a thumbnail).
+ * input panel (keys, buttons and mouse as the engine sees them, injected or not),
+ * the capture panel (P: the frame saved as PNG and shown as a thumbnail) and the
+ * stats overlay (L: the engine's frame, renderer and memory numbers over a
+ * frame-time graph).
  */
 #include "game.h"
 
@@ -29,15 +31,13 @@
 #define SANDBOX_GRAPH_FRAMES 120u
 
 typedef struct sandbox_state {
-    u64 start; /* the clear color's animation runs from here */
-    /* Rates over the last second, logged once per second. */
-    u64 window_start;
-    u32 steps;
-    u32 frames;
+    u64 start;          /* the clear color's animation runs from here */
+    u64 last_stats_log; /* the engine's frame statistics are logged once per second */
     /*
-     * Frame-time graph, toggled with L: the time between the starts of the
-     * last frames, in milliseconds, in a ring (the oldest is overwritten; 0:
-     * not measured yet).
+     * Stats overlay, toggled with L (ADR 0025): the engine's numbers on a
+     * panel, and a frame-time graph under it: the time between the starts of
+     * the last frames, in milliseconds, in a ring (the oldest is overwritten;
+     * 0: not measured yet).
      */
     bool graph_visible;
     u64  last_render; /* 0 before the first frame */
@@ -335,7 +335,7 @@ static const rb_command_desc sandbox_commands[] = {
 static bool game_init(void *state, rb_app *app) {
     sandbox_state *game = state;
     game->start = rb_time_now();
-    game->window_start = game->start;
+    game->last_stats_log = game->start;
     game->graph_visible = true;
     game->camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
     /* A failure is logged; a zero handle draws a plain quad, so the sandbox goes on. */
@@ -456,14 +456,15 @@ static void game_update(void *state, rb_app *app, f64 dt) {
                     (unsigned long long)game->seed);
     }
 
-    ++game->steps;
+    /* The engine's last window, which closes about once a second too (ADR 0025). */
     u64 now = rb_time_now();
-    if (now - game->window_start >= RB_NS_PER_S) {
-        RB_LOG_DEBUG("Last %.2f s: %u steps, %u frames",
-                     rb_time_to_seconds(now - game->window_start), game->steps, game->frames);
-        game->window_start = now;
-        game->steps = 0;
-        game->frames = 0;
+    if (now - game->last_stats_log >= RB_NS_PER_S) {
+        game->last_stats_log = now;
+        rb_app_frame_stats stats = rb_app_get_frame_stats(app);
+        RB_LOG_DEBUG("Last %.2f s: %u frames (%.1f ms avg, %.1f 1%%, %.1f max; work %.2f ms), "
+                     "%u steps",
+                     stats.seconds, stats.frames, stats.frame_avg_ms, stats.frame_p99_ms,
+                     stats.frame_max_ms, stats.work_avg_ms, stats.steps);
     }
 }
 
@@ -803,7 +804,8 @@ static void sandbox_draw_world(const sandbox_state *game, rb_app *app, f32 turn)
                                .align_y = RB_TEXT_MIDDLE};
         const char   *text = "WORLD UNITS\nthe wheel zooms";
         rb_vec2       size = rb_text_measure(&style, text);
-        rb_vec2       anchor = {8.0f, 5.5f};
+        /* Between the text demo and the stats overlay, in a 1600x900 window. */
+        rb_vec2 anchor = {8.0f, 4.0f};
         rb_renderer_draw_quad(renderer, anchor.x - size.x * 0.5f - 0.2f,
                               anchor.y - size.y * 0.5f - 0.2f, size.x + 0.4f, size.y + 0.4f,
                               rb_color_srgb(0.0f, 0.0f, 0.0f, 0.5f));
@@ -1075,6 +1077,226 @@ static void sandbox_draw_capture(const sandbox_state *game, rb_app *app) {
 }
 
 /* ============================================================================
+ * Stats overlay
+ * ========================================================================== */
+
+#define SANDBOX_STATS_LINE   18.0f /* 16-pixel glyphs, 2 pixels apart */
+#define SANDBOX_STATS_ROWS   11u
+#define SANDBOX_STATS_COLUMN 416.0f /* 26 glyphs */
+#define SANDBOX_STATS_GAP    32.0f
+#define SANDBOX_STATS_VALUE  80.0f /* a value column: 4 glyphs and a space */
+
+/*
+ * At most 4 characters, so the columns line up: "0", "720B", "7.6K", "52K",
+ * "15M". Up a unit from 1000, so "1000K" never shows: it reads "1.0M".
+ */
+static void sandbox_format_bytes(char *buf, usize size, usize bytes) {
+    static const char units[] = {'K', 'M', 'G'};
+    if (bytes < 1000) {
+        snprintf(buf, size, bytes == 0 ? "0" : "%zuB", bytes);
+        return;
+    }
+    f64 value = (f64)bytes / 1024.0;
+    u32 unit = 0;
+    while (value >= 1000.0 && unit + 1 < RB_ARRAY_COUNT(units)) {
+        value /= 1024.0;
+        ++unit;
+    }
+    snprintf(buf, size, value < 10.0 ? "%.1f%c" : "%.0f%c", value, units[unit]);
+}
+
+/* Milliseconds in 4 characters too: "0.04", "16.7", "123"; "-" before the first window. */
+static void sandbox_format_ms(char *buf, usize size, f64 ms, bool known) {
+    if (!known) {
+        snprintf(buf, size, "-");
+    } else {
+        snprintf(buf, size, ms < 1.0 ? "%.2f" : ms < 100.0 ? "%.1f" : "%.0f", ms);
+    }
+}
+
+/*
+ * What the panel needs to draw its sections: a title, then rows of a label and
+ * up to three right-aligned values.
+ */
+typedef struct sandbox_table {
+    rb_renderer  *renderer;
+    rb_text_style title;
+    rb_text_style label;
+    rb_text_style value;
+    f32           left;
+    f32           top;
+} sandbox_table;
+
+static void sandbox_table_row(const sandbox_table *table, u32 row, const char *label, const char *a,
+                              const char *b, const char *c) {
+    f32         y = table->top + (f32)row * SANDBOX_STATS_LINE;
+    const char *values[3] = {a, b, c};
+    rb_text_draw(table->renderer, table->left, y, &table->label, label);
+    for (u32 i = 0; i < 3; ++i) {
+        if (values[i] != NULL) {
+            f32 right = table->left + SANDBOX_STATS_COLUMN - (f32)(2 - i) * SANDBOX_STATS_VALUE;
+            rb_text_draw(table->renderer, right, y, &table->value, values[i]);
+        }
+    }
+}
+
+/* A row of ms: average, 99th percentile (frames only), maximum. */
+static void sandbox_ms_row(const sandbox_table *table, u32 row, const char *label, f64 avg,
+                           const f64 *p99, f64 max, bool known) {
+    char a[16];
+    char b[16];
+    char c[16];
+    sandbox_format_ms(a, sizeof(a), avg, known);
+    sandbox_format_ms(b, sizeof(b), p99 != NULL ? *p99 : 0.0, known);
+    sandbox_format_ms(c, sizeof(c), max, known);
+    sandbox_table_row(table, row, label, a, p99 != NULL ? b : NULL, c);
+}
+
+/* A row of bytes: used, peak and, for arenas, committed. */
+static void sandbox_bytes_row(const sandbox_table *table, u32 row, const char *label, usize used,
+                              usize peak, const usize *committed) {
+    char a[16];
+    char b[16];
+    char c[16];
+    sandbox_format_bytes(a, sizeof(a), used);
+    sandbox_format_bytes(b, sizeof(b), peak);
+    if (committed != NULL) {
+        sandbox_format_bytes(c, sizeof(c), *committed);
+    }
+    sandbox_table_row(table, row, label, a, b, committed != NULL ? c : NULL);
+}
+
+/*
+ * Left half: the frame (ADR 0025). Times run from a frame's start to the next
+ * one's, waits included: with vsync they sit at the refresh period. Work is
+ * what the frame costs without its waits; update and render are parts of it.
+ * Then the GPU, the swapchain and the validation counts.
+ */
+static void sandbox_draw_stats_frame(rb_app *app, sandbox_table table) {
+    rb_app_frame_stats stats = rb_app_get_frame_stats(app);
+    bool               known = stats.frames > 0;
+    /* Values flush with the column's right edge, or with its left one for free text. */
+    rb_text_style right = table.value;
+    rb_text_style left = table.value;
+    left.align_x = RB_TEXT_LEFT;
+    char line[64];
+
+    rb_text_draw(table.renderer, table.left, table.top, &table.title, "FRAME");
+    snprintf(line, sizeof(line), "%.0f fps  %.0f steps/s", stats.fps, stats.steps_per_second);
+    rb_text_draw(table.renderer, table.left + SANDBOX_STATS_COLUMN, table.top, &right,
+                 known ? line : "-");
+    sandbox_table_row(&table, 1, "ms", "avg", "1%", "max");
+    sandbox_ms_row(&table, 2, "frame", stats.frame_avg_ms, &stats.frame_p99_ms, stats.frame_max_ms,
+                   known);
+    sandbox_ms_row(&table, 3, "work", stats.work_avg_ms, NULL, stats.work_max_ms, known);
+    sandbox_ms_row(&table, 4, "update", stats.update_avg_ms, NULL, stats.update_max_ms, known);
+    sandbox_ms_row(&table, 5, "render", stats.render_avg_ms, NULL, stats.render_max_ms, known);
+
+    rb_renderer     *renderer = rb_app_renderer(app);
+    rb_renderer_info info = rb_renderer_get_info(renderer);
+    f32              y = table.top + 6.0f * SANDBOX_STATS_LINE;
+    rb_text_draw(table.renderer, table.left, y, &table.title, "GPU");
+    rb_text_draw(table.renderer, table.left + SANDBOX_STATS_COLUMN, y, &right, info.gpu_type);
+    /* Cut to the column: driver names run to 40 characters and more. */
+    snprintf(line, sizeof(line), "%.26s", info.gpu_name);
+    rb_text_draw(table.renderer, table.left, y + SANDBOX_STATS_LINE, &left, line);
+    rb_text_draw(table.renderer, table.left, y + 2.0f * SANDBOX_STATS_LINE, &left,
+                 info.present_mode);
+    rb_text_draw(table.renderer, table.left + SANDBOX_STATS_COLUMN, y + 2.0f * SANDBOX_STATS_LINE,
+                 &right, info.vsync ? "vsync on" : "vsync off");
+    snprintf(line, sizeof(line), "%ux%u, %u images", info.width, info.height, info.image_count);
+    rb_text_draw(table.renderer, table.left, y + 3.0f * SANDBOX_STATS_LINE, &left, line);
+
+    rb_renderer_validation_stats validation = rb_renderer_get_validation_stats(renderer);
+    rb_text_draw(table.renderer, table.left, y + 4.0f * SANDBOX_STATS_LINE, &table.label,
+                 "validation");
+    rb_text_style counts = right;
+    if (validation.enabled) {
+        snprintf(line, sizeof(line), "%u err  %u warn", validation.errors, validation.warnings);
+        /* Red at the first error: it is a bug, in the engine or the game. */
+        if (validation.errors > 0) {
+            counts.color = rb_color_srgb(0.95f, 0.3f, 0.25f, 1.0f);
+        }
+    } else {
+        snprintf(line, sizeof(line), "off");
+    }
+    rb_text_draw(table.renderer, table.left + SANDBOX_STATS_COLUMN, y + 4.0f * SANDBOX_STATS_LINE,
+                 &counts, line);
+}
+
+/*
+ * Right half: memory (ADR 0012, 0025). Tags count the bytes asked for, by
+ * subsystem; arenas also show the pages committed for them; the process is
+ * the RAM the OS gives the whole program, the GPU driver's share included,
+ * which no tag sees.
+ */
+static void sandbox_draw_stats_memory(rb_app *app, sandbox_table table) {
+    rb_text_draw(table.renderer, table.left, table.top, &table.title, "MEMORY");
+    sandbox_table copy = table;
+    copy.value = table.label;
+    copy.value.align_x = RB_TEXT_RIGHT;
+    sandbox_table_row(&copy, 0, "", "used", "peak", "comm");
+
+    u32 row = 1;
+    for (u32 tag = 0; tag < RB_MEMORY_TAG_COUNT; ++tag, ++row) {
+        rb_memory_stats stats = rb_memory_get_stats((rb_memory_tag)tag);
+        sandbox_bytes_row(&table, row, rb_memory_tag_name((rb_memory_tag)tag), stats.live_bytes,
+                          stats.peak_bytes, NULL);
+    }
+    const rb_arena *persistent = rb_app_persistent_arena(app);
+    const rb_arena *frame = rb_app_frame_arena(app);
+    sandbox_bytes_row(&table, row++, "persistent", persistent->pos, persistent->peak,
+                      &persistent->committed);
+    sandbox_bytes_row(&table, row++, "frame arena", frame->pos, frame->peak, &frame->committed);
+    rb_process_memory process;
+    if (rb_process_get_memory(&process)) {
+        sandbox_bytes_row(&table, row, "process", process.resident_bytes,
+                          process.peak_resident_bytes, NULL);
+    } else {
+        sandbox_table_row(&table, row, "process", "-", "-", NULL);
+    }
+}
+
+/*
+ * Above the frame-time graph and the input panel, toggled with them (L): the
+ * engine's numbers, refreshed once a second. Titles white, labels gray, values
+ * light blue.
+ */
+static void sandbox_draw_stats(const sandbox_state *game, rb_app *app) {
+    if (game->font == NULL) {
+        return;
+    }
+    rb_renderer   *renderer = rb_app_renderer(app);
+    rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
+    const f32      width = 8.0f + 2.0f * SANDBOX_STATS_COLUMN + SANDBOX_STATS_GAP + 8.0f;
+    const f32      height = 8.0f + (f32)SANDBOX_STATS_ROWS * SANDBOX_STATS_LINE + 6.0f;
+    /* 8 pixels above the input panel. */
+    const f32 bottom = (f32)size.pixel_height - SANDBOX_GRAPH_MARGIN - SANDBOX_COMMANDS_HEIGHT -
+                       8.0f - SANDBOX_INPUT_HEIGHT - 8.0f;
+    const f32 top = bottom - height;
+    /*
+     * Opaque, unlike the other panels: in a small window it covers text, and
+     * even a tenth of white glyphs showing through reads as clutter.
+     */
+    rb_renderer_draw_quad(renderer, SANDBOX_GRAPH_MARGIN, top, width, height,
+                          rb_color_srgb(0.0f, 0.0f, 0.0f, 1.0f));
+
+    rb_text_style title = sandbox_style(game->font, 16.0f, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_text_style label = sandbox_style(game->font, 16.0f, rb_color_srgb(0.7f, 0.7f, 0.7f, 1.0f));
+    rb_text_style value = sandbox_style(game->font, 16.0f, rb_color_srgb(0.7f, 0.85f, 1.0f, 1.0f));
+    value.align_x = RB_TEXT_RIGHT;
+    sandbox_table table = {.renderer = renderer,
+                           .title = title,
+                           .label = label,
+                           .value = value,
+                           .left = SANDBOX_GRAPH_MARGIN + 8.0f,
+                           .top = top + 8.0f};
+    sandbox_draw_stats_frame(app, table);
+    table.left += SANDBOX_STATS_COLUMN + SANDBOX_STATS_GAP;
+    sandbox_draw_stats_memory(app, table);
+}
+
+/* ============================================================================
  * Render
  * ========================================================================== */
 
@@ -1088,7 +1310,6 @@ static void sandbox_draw_capture(const sandbox_state *game, rb_app *app) {
  */
 static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_state *game = state;
-    ++game->frames;
     sandbox_record_frame_time(game);
     f32 hue = sandbox_phase(game->start, SANDBOX_HUE_PERIOD_NS);
     rb_renderer_set_clear_color(rb_app_renderer(app), game->clear_fixed
@@ -1105,6 +1326,7 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_draw_capture(game, app);
     if (game->graph_visible) {
         sandbox_draw_frame_graph(game, app);
+        sandbox_draw_stats(game, app);
     }
     /* Anywhere in the frame: the capture is taken when the frame ends, with every draw in it. */
     if (game->capture_wanted) {

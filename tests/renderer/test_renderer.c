@@ -52,6 +52,26 @@ RB_TEST(renderer, starts_and_stops_without_validation) {
     close_window();
 }
 
+/* ADR 0025: vsync asks for FIFO, which every driver offers; the swapchain fits the window. */
+RB_TEST(renderer, info_describes_gpu_and_swapchain) {
+    RB_REQUIRE(open_window());
+    rb_renderer *renderer = start(rb_heap_allocator(), false);
+    RB_EXPECT(renderer != NULL);
+    if (renderer != NULL) {
+        rb_renderer_info info = rb_renderer_get_info(renderer);
+        RB_REQUIRE(info.gpu_name != NULL && info.gpu_type != NULL && info.present_mode != NULL);
+        RB_EXPECT(info.gpu_name[0] != '\0');
+        RB_EXPECT_EQ_STR(info.present_mode, "FIFO");
+        RB_EXPECT(info.vsync);
+        rb_window_size size = rb_window_get_size(platform, window);
+        RB_EXPECT_EQ_UINT(info.width, size.pixel_width);
+        RB_EXPECT_EQ_UINT(info.height, size.pixel_height);
+        RB_EXPECT(info.image_count >= 2);
+        rb_renderer_shutdown(renderer);
+    }
+    close_window();
+}
+
 RB_TEST(renderer, starts_with_validation_and_no_errors) {
     RB_REQUIRE(open_window());
     rb_renderer *renderer = start(rb_heap_allocator(), true);

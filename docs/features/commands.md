@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.2.0 (2026-11-24) |
-| **Updated** | v0.2.0 (2026-11-26) |
-| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/app/app_input.c`, `engine/src/app/app_screen.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
-| **ADRs** | [0022](../adr/0022-command-system.md), [0023](../adr/0023-input-injection.md), [0024](../adr/0024-screen-capture-and-png.md) |
+| **Updated** | v0.2.0 (2026-11-27) |
+| **Code** | `engine/include/reborn/command.h`, `engine/src/command/`, `engine/src/app/app_commands.c`, `engine/src/app/app_input.c`, `engine/src/app/app_screen.c`, `engine/src/app/app_stats.c`, `engine/src/platform/*/…_socket.c`, `tools/reborn-cmd/` |
+| **ADRs** | [0022](../adr/0022-command-system.md), [0023](../adr/0023-input-injection.md), [0024](../adr/0024-screen-capture-and-png.md), [0025](../adr/0025-frame-statistics.md) |
 
 ## Summary
 Named actions with arguments (`step 10`, `blink.state`), each answering with one JSON line. They
@@ -43,9 +43,13 @@ script can pause a game, advance it step by step and read its state, on Windows 
   `screenshot-<frame>.png` in the working directory; replies `path`, `width`, `height`, `bytes`,
   `frame`, `step`. Fails while the window is minimized. Details in
   [screen-capture.md](screen-capture.md).
-- **Names:** the commands that drive the run have none (`help`, `step`...); every other engine
-  command lives in its subsystem's group (`input.*`, `screen.*`); game commands carry the game's
-  prefix.
+- **Statistics commands** (ADR 0025): `stats` (frames and steps per second, frame, work, update
+  and render times of the last second), `memory.stats` (tags, arenas, the process),
+  `renderer.info` (GPU, present mode, swapchain, validation counts). Details in
+  [statistics.md](statistics.md).
+- **Names:** the commands that drive the run, and `stats`, which reports on it, have none
+  (`help`, `step`...); every other engine command lives in its subsystem's group (`input.*`,
+  `screen.*`, `memory.*`, `renderer.*`); game commands carry the game's prefix.
 - **Game commands:** registered in `init` with `rb_app_register_command`; names lowercase with
   the game's prefix (`blink.state`). At most 64 commands in all. Each game's README lists its
   own; the main README lists the engine's. The sandbox has `sandbox.clear [<r> <g> <b>]`.
@@ -115,3 +119,4 @@ Arguments: `rb_command_arg_u32` / `_u64` / `_f32` (write the error and return fa
 | v0.2.0 | 2026-11-24 | First version: registry, script, local server, `reborn-cmd`, pause and step; Blink's and the sandbox's commands |
 | v0.2.0 | 2026-11-26 | `input.*` commands (ADR 0023); engine commands outside the run's control grouped by subsystem |
 | v0.2.0 | 2026-11-26 | `screen.capture` (ADR 0024) |
+| v0.2.0 | 2026-11-27 | `stats`, `memory.stats`, `renderer.info` (ADR 0025) |

@@ -136,6 +136,23 @@ rb_renderer_validation_stats rb_renderer_get_validation_stats(const rb_renderer 
     return renderer->debug.stats;
 }
 
+rb_renderer_info rb_renderer_get_info(const rb_renderer *renderer) {
+    RB_ASSERT(renderer != NULL);
+    const rb_vk_swapchain *swapchain = &renderer->swapchain;
+    bool                   has_swapchain = swapchain->handle != VK_NULL_HANDLE;
+    const char *mode = has_swapchain ? rb_vk_present_mode_name(swapchain->present_mode) : "none";
+    return (rb_renderer_info){
+        .gpu_name = renderer->device.properties.deviceName,
+        .gpu_type = rb_vk_device_type_name(renderer->device.properties.deviceType),
+        /* Modes the engine never asks for, from extensions: not named, still not "none". */
+        .present_mode = mode != NULL ? mode : "other",
+        .vsync = renderer->vsync,
+        .width = has_swapchain ? swapchain->extent.width : 0,
+        .height = has_swapchain ? swapchain->extent.height : 0,
+        .image_count = has_swapchain ? swapchain->image_count : 0,
+    };
+}
+
 /* ============================================================================
  * Frames
  * ========================================================================== */

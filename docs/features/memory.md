@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | Stable |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.2.0 (2026-11-24) |
+| **Updated** | v0.2.0 (2026-11-27) |
 | **Code** | `engine/include/reborn/memory.h`, `engine/src/memory/`, `engine/src/platform/platform_os.h`, `engine/src/platform/*/…_memory.c`, `tests/support/failing_allocator.*` |
-| **ADRs** | [0010](../adr/0010-memory-allocation.md), [0012](../adr/0012-allocation-tracking.md) |
+| **ADRs** | [0010](../adr/0010-memory-allocation.md), [0012](../adr/0012-allocation-tracking.md), [0025](../adr/0025-frame-statistics.md) |
 
 ## Summary
 Where engine memory comes from: virtual memory from the OS, reserved and committed as separate
@@ -36,6 +36,9 @@ and peaks show up per subsystem at the end of the run.
 - Counted per tag by the helpers, whichever allocator serves the call: `live_bytes`, `peak_bytes`,
   `live_blocks`, `alloc_count` (a resize of `NULL` included), `free_count`
   (`rb_memory_get_stats`). Failed calls and frees of `NULL` count nothing. Always on.
+- The whole process (ADR 0025): `rb_process_get_memory` gives the resident bytes and their peak
+  as the OS counts them (Win32 working set, Linux `VmRSS` / `VmHWM`), the GPU driver's share
+  included. The sandbox and `memory.stats` show it next to the tags ([statistics.md](statistics.md)).
 - A free larger than its tag holds, or with no block left, is asserted (wrong size or tag).
 - Allocators never see tags; wrappers (failing allocator) call their parent's vtable, not the
   helpers, so nothing is counted twice.
@@ -224,3 +227,4 @@ for (u32 n = 1;; ++n) {
 | v0.1.0 | 2026-11-17 | `RB_MEMORY_TAG_RENDERER` |
 | v0.2.0 | 2026-11-24 | `RB_MEMORY_TAG_TEXT` (fonts) |
 | v0.2.0 | 2026-11-26 | `RB_MEMORY_TAG_IMAGE` (image encoding, captured frames) |
+| v0.2.0 | 2026-11-27 | `rb_process_get_memory`: resident memory and its peak from the OS (ADR 0025) |

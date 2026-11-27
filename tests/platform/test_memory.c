@@ -1,5 +1,7 @@
 #include "rb_test.h"
 
+#include <reborn/memory.h>
+
 #include "platform/platform_os.h"
 
 /* ============================================================================
@@ -141,4 +143,31 @@ RB_TEST(memory, heap_resize_keeps_contents_and_alignment) {
         RB_EXPECT_EQ_UINT(shrunk[3], 3);
         rb_platform_heap_free(shrunk);
     }
+}
+
+/* ============================================================================
+ * Process memory (ADR 0025, M2)
+ * ========================================================================== */
+
+RB_TEST(memory, process_memory_is_known) {
+    rb_process_memory memory;
+    RB_REQUIRE(rb_process_get_memory(&memory));
+    RB_EXPECT(memory.resident_bytes > 0);
+    RB_EXPECT(memory.peak_resident_bytes >= memory.resident_bytes);
+}
+
+/* Committed pages count once touched: 32 MiB written show as at least half that in RAM. */
+RB_TEST(memory, touched_pages_raise_resident_memory) {
+    rb_process_memory before;
+    RB_REQUIRE(rb_process_get_memory(&before));
+    usize size = RB_MIB(32);
+    u8   *base = rb_platform_memory_reserve(size);
+    RB_REQUIRE(base != NULL);
+    RB_REQUIRE(rb_platform_memory_commit(base, size));
+    pages_fill(base, size, 0x5A);
+    rb_process_memory after;
+    RB_EXPECT(rb_process_get_memory(&after));
+    RB_EXPECT(after.resident_bytes >= before.resident_bytes + size / 2);
+    RB_EXPECT(after.peak_resident_bytes >= after.resident_bytes);
+    rb_platform_memory_release(base, size);
 }

@@ -4,9 +4,9 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-16) |
-| **Updated** | v0.2.0 (2026-11-24) |
+| **Updated** | v0.2.0 (2026-11-27) |
 | **Code** | `engine/include/reborn/app.h`, `engine/src/app/` |
-| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md), [0013](../adr/0013-vulkan-renderer.md), [0022](../adr/0022-command-system.md) |
+| **ADRs** | [0011](../adr/0011-application-layer-and-game-loop.md), [0012](../adr/0012-allocation-tracking.md), [0013](../adr/0013-vulkan-renderer.md), [0022](../adr/0022-command-system.md), [0025](../adr/0025-frame-statistics.md) |
 
 ## Summary
 The engine owns the game loop. A game is a set of callbacks: the engine starts its systems, opens
@@ -25,6 +25,8 @@ and shuts everything down. Timing, frame memory and event handling are written o
 - **Commands:** once per frame, before the steps, from the script and the local server; game
   commands registered in `init`. The pause stops `update`, not events or `render`. See
   [commands.md](commands.md).
+- **Frame statistics:** the loop times each frame (interval, waits, steps, render) and publishes a
+  window of about a second: `rb_app_get_frame_stats` (ADR 0025, [statistics.md](statistics.md)).
 - **Renderer:** started after the main window, stopped before it (`rb_app_renderer`), configured
   in `config.renderer`: validation on by default in debug builds of the engine, vsync on. It draws
   into the main window. A machine without Vulkan 1.3 fails the startup. See
@@ -143,3 +145,4 @@ RB_FREE_TYPE(rb_app_allocator(app), enemy, rb_enemy, RB_MEMORY_TAG_GAME);
 | v0.1.0 | 2026-11-17 | The renderer gets the main window; render skipped when the renderer cannot show a frame |
 | v0.1.0 | 2026-11-17 | Render inside a renderer frame (begin / end); no frame cap by default, vsync paces |
 | v0.2.0 | 2026-11-24 | `rb_app_run` takes `argc`/`argv`; commands each frame, pause and step (ADR 0022) |
+| v0.2.0 | 2026-11-27 | Frame statistics: `rb_app_get_frame_stats` (ADR 0025) |

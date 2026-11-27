@@ -8,6 +8,7 @@
 #include <reborn/app.h>
 
 #include "app/app_internal.h"
+#include "app/frame_stats.h"
 #include "app/input_queue.h"
 #include "command/command_internal.h"
 #include "command/command_server.h"
@@ -50,6 +51,9 @@ struct rb_app {
 
     /* Input injection (ADR 0023). */
     rb_input_queue input_queue;
+
+    /* Frame statistics (ADR 0025), fed by the loop. */
+    rb_frame_stats frame_stats;
 };
 
 RB_INLINE bool rb_app_quit_requested(const rb_app *app) {
@@ -77,6 +81,9 @@ void rb_app_commands_run(rb_app *app);
 
 /* The screen.* commands (app_screen.c, ADR 0024), into the registry. */
 void rb_app_screen_commands_add(rb_app *app);
+
+/* stats, memory.stats, renderer.info (app_stats.c, ADR 0025), into the registry. */
+void rb_app_stats_commands_add(rb_app *app);
 
 /* The input.* commands (app_input.c, ADR 0023), into the registry. */
 void rb_app_input_commands_add(rb_app *app);
