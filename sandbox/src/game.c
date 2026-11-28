@@ -1,7 +1,8 @@
 /*
  * Sandbox game: logs every event and the loop's rates, so window lifecycle,
- * input and timing can be checked by hand, and draws a few quads: a world
- * field through a 2D camera (with a ball bouncing inside a ring), a HUD in
+ * input and timing can be checked by hand, and draws a few quads, upright and
+ * turned: a world field through a 2D camera (with a ball bouncing inside a
+ * ring of segments), a HUD in
  * window pixels on top, textures made in code, the builtin font's atlas and
  * text drawn with it, numbers drawn from a seed, the commands' panel (pause,
  * steps, its own sandbox.clear), the
@@ -64,7 +65,7 @@ typedef struct sandbox_state {
     bool        has_marker;
     /*
      * Bounces (ADR 0026), in the world field: a ball moved by each step and
-     * reflected off a ring of dots. Its trail draws the path: every bounce
+     * reflected off a ring. Its trail draws the path: every bounce
      * leaves at the angle it came in, so the chords stay tangent to one inner
      * circle, and the speed shown stays the same.
      */
@@ -571,6 +572,8 @@ static rb_color hsv_to_srgb(f32 h, f32 s, f32 v) {
 #define SANDBOX_SLIDE_PERIOD_S 4u
 /* One turn of the row of squares around the hue wheel, in seconds of game time. */
 #define SANDBOX_ROW_PERIOD_S 12u
+/* One turn of the checkerboard on its center, in seconds of game time. */
+#define SANDBOX_SPIN_PERIOD_S 10u
 
 #define SANDBOX_QUAD_SIDE 64.0f
 
@@ -595,11 +598,13 @@ static f32 sandbox_game_phase(rb_app *app, f64 alpha, u32 seconds) {
 
 /*
  * Quads (ADR 0015): a row of opaque squares around the hue wheel; one sliding
- * across the window by fractions of a pixel, so its motion stays smooth; the
- * checkerboard enlarged 16 times, sharp or blurred by its filter; a yellow
+ * across the window by fractions of a pixel, so its motion stays smooth, and
+ * rolling as it goes (ADR 0027); the checkerboard enlarged 16 times, sharp or
+ * blurred by its filter, turning on its center (`spin` of a turn); a yellow
  * glow under the mouse, blending with whatever it covers (ADR 0017).
  */
-static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 row_hue, f32 slide) {
+static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 row_hue, f32 slide,
+                               f32 spin) {
     rb_renderer       *renderer = rb_app_renderer(app);
     rb_platform_state *platform = rb_app_platform(app);
     rb_window_size     size = rb_window_get_size(platform, rb_app_window(app));
@@ -615,13 +620,27 @@ static void sandbox_draw_quads(const sandbox_state *game, rb_app *app, f32 row_h
     /* There and back: 0 to 1 in the first half of the period, 1 to 0 in the second. */
     f32 there_and_back = slide < 0.5f ? slide * 2.0f : 2.0f - slide * 2.0f;
     f32 travel = (f32)size.pixel_width - side;
-    rb_renderer_draw_quad(renderer, there_and_back * travel, ((f32)size.pixel_height - side) * 0.5f,
-                          side, side, rb_color_srgb(0.95f, 0.95f, 0.95f, 1.0f));
+    f32 x = there_and_back * travel;
+    /*
+     * Rolling like a wheel on the floor: the angle is the distance over the
+     * radius, so it turns clockwise going right and back coming left.
+     */
+    rb_renderer_draw_sprite(
+        renderer, &(rb_sprite){.rect = {x, ((f32)size.pixel_height - side) * 0.5f, side, side},
+                               .rotation = x / (side * 0.5f),
+                               .color = rb_color_srgb(0.95f, 0.95f, 0.95f, 1.0f)});
 
-    /* Top right: 8 texels across 128 pixels. */
+    /*
+     * Top right: 8 texels across 128 pixels, turning clockwise. The red texel
+     * in its top-left corner shows which way; turned, the nearest filter leaves
+     * jagged texel edges, the linear one smooths them (T).
+     */
     const f32 checker = (f32)SANDBOX_CHECKER_SIDE * 16.0f;
-    rb_renderer_draw_texture(renderer, (f32)size.pixel_width - checker - 32.0f, 32.0f, checker,
-                             checker, game->checker, rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f));
+    rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {(f32)size.pixel_width - checker - 32.0f,
+                                                            32.0f, checker, checker},
+                                                   .rotation = spin * 2.0f * RB_PI,
+                                                   .texture = game->checker,
+                                                   .color = rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f)});
 
     /* Drawn last: on top of the others, which show through where the glow fades. */
     rb_mouse_position mouse = rb_mouse_get_position(platform);
@@ -818,27 +837,36 @@ static void sandbox_draw_random(const sandbox_state *game, rb_app *app) {
 #define SANDBOX_FIELD_HEIGHT 9.0f
 #define SANDBOX_GRID_LINE    0.04f /* world units */
 
-#define SANDBOX_RING_DOTS 32u
+#define SANDBOX_RING_SEGMENTS 32u
 
 /*
- * The bounce demo (ADR 0026), in world units. The ring's dots come from one
- * spoke turned a little further for each; the square orbiting the ring is
- * placed by its angle, `turn` of a whole turn. The ball is drawn between its
- * last two steps, `alpha` of the way (ADR 0011), so it moves smoothly at any
- * frame rate. Text under the ring: the speed (the velocity's length, kept by
- * every reflection) and the bounces so far.
+ * The bounce demo (ADR 0026), in world units. The ring is drawn with segments
+ * turned along it (ADR 0027): each lies upright along x, centered on its
+ * point of the ring, and turns by that point's angle plus a quarter, which
+ * makes it tangent. The bar orbiting the ring is placed by its angle, `turn`
+ * of a whole turn, and turned by the same angle: it lies along x, so it points
+ * at the center all the way round. The ball is drawn between its last two
+ * steps, `alpha` of the way (ADR 0011), so it moves smoothly at any frame
+ * rate. Text under the ring: the speed (the velocity's length, kept by every
+ * reflection) and the bounces so far.
  */
 static void sandbox_draw_bounces(const sandbox_state *game, rb_renderer *renderer, f32 turn,
                                  f32 alpha) {
     rb_vec2 center = {SANDBOX_RING_X, SANDBOX_RING_Y};
 
-    const f32 dot = 0.06f;
-    rb_vec2   spoke = {SANDBOX_RING_RADIUS, 0.0f};
-    for (u32 i = 0; i < SANDBOX_RING_DOTS; ++i) {
-        rb_vec2 at = rb_vec2_add(center, spoke);
-        rb_renderer_draw_quad(renderer, at.x - dot * 0.5f, at.y - dot * 0.5f, dot, dot,
-                              rb_color_srgb(1.0f, 1.0f, 1.0f, 0.6f));
-        spoke = rb_vec2_rotate(spoke, 2.0f * RB_PI / (f32)SANDBOX_RING_DOTS);
+    /* Dashes with gaps between them, so each turned piece shows. */
+    const f32 length = 0.17f;
+    const f32 thickness = 0.035f;
+    /* Outside the radius the ball bounces at, so the ball touches the segments, not overlaps. */
+    const f32 radius = SANDBOX_RING_RADIUS + thickness * 0.5f;
+    for (u32 i = 0; i < SANDBOX_RING_SEGMENTS; ++i) {
+        f32     angle = 2.0f * RB_PI * (f32)i / (f32)SANDBOX_RING_SEGMENTS;
+        rb_vec2 at = rb_vec2_add(center, rb_vec2_scale(rb_vec2_from_angle(angle), radius));
+        rb_renderer_draw_sprite(
+            renderer,
+            &(rb_sprite){.rect = {at.x - length * 0.5f, at.y - thickness * 0.5f, length, thickness},
+                         .rotation = angle + RB_PI * 0.5f,
+                         .color = rb_color_srgb(1.0f, 1.0f, 1.0f, 0.6f)});
     }
 
     /* Oldest first, fading in toward the ball. */
@@ -857,11 +885,16 @@ static void sandbox_draw_bounces(const sandbox_state *game, rb_renderer *rendere
                           ball.y - SANDBOX_BALL_SIDE * 0.5f, SANDBOX_BALL_SIDE, SANDBOX_BALL_SIDE,
                           rb_color_srgb(1.0f, 0.85f, 0.3f, 1.0f));
 
-    const f32 square = 0.2f;
+    const f32 bar_length = 0.3f;
+    const f32 bar_thickness = 0.08f;
+    f32       orbit_angle = turn * 2.0f * RB_PI;
     rb_vec2   orbit = rb_vec2_add(
-        center, rb_vec2_scale(rb_vec2_from_angle(turn * 2.0f * RB_PI), SANDBOX_RING_RADIUS + 0.3f));
-    rb_renderer_draw_quad(renderer, orbit.x - square * 0.5f, orbit.y - square * 0.5f, square,
-                          square, rb_color_srgb(0.3f, 0.7f, 1.0f, 1.0f));
+        center, rb_vec2_scale(rb_vec2_from_angle(orbit_angle), SANDBOX_RING_RADIUS + 0.35f));
+    rb_renderer_draw_sprite(
+        renderer, &(rb_sprite){.rect = {orbit.x - bar_length * 0.5f, orbit.y - bar_thickness * 0.5f,
+                                        bar_length, bar_thickness},
+                               .rotation = orbit_angle,
+                               .color = rb_color_srgb(0.3f, 0.7f, 1.0f, 1.0f)});
 
     if (game->font != NULL) {
         /* 24 pixels in a 1600x900 window: 3 per font pixel, sharp. */
@@ -1420,9 +1453,9 @@ static void sandbox_draw_stats(const sandbox_state *game, rb_app *app) {
  * Two clocks on screen (ADR 0022). The clear color turns around the hue wheel
  * on the wall clock: it shows that frames keep reaching the screen, paused or
  * not. Muted (low saturation and value) so it stays easy on the eyes and the
- * quads stand out; shows from the next frame. The row of squares, the sliding
- * square, the world's ball and square move on game time, as a game's
- * animations would: the pause freezes them.
+ * quads stand out; shows from the next frame. The row of squares, the rolling
+ * square, the checkerboard, the world's ball and bar move on game time, as a
+ * game's animations would: the pause freezes them.
  */
 static void game_render(void *state, rb_app *app, f64 alpha) {
     sandbox_state *game = state;
@@ -1433,7 +1466,8 @@ static void game_render(void *state, rb_app *app, f64 alpha) {
                                                           : hsv_to_srgb(hue, 0.5f, 0.45f));
     f32 slide = sandbox_game_phase(app, alpha, SANDBOX_SLIDE_PERIOD_S);
     sandbox_draw_world(game, app, slide, (f32)alpha);
-    sandbox_draw_quads(game, app, sandbox_game_phase(app, alpha, SANDBOX_ROW_PERIOD_S), slide);
+    sandbox_draw_quads(game, app, sandbox_game_phase(app, alpha, SANDBOX_ROW_PERIOD_S), slide,
+                       sandbox_game_phase(app, alpha, SANDBOX_SPIN_PERIOD_S));
     sandbox_draw_font(game, app);
     sandbox_draw_text_demo(game, app);
     sandbox_draw_random(game, app);

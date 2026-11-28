@@ -52,7 +52,8 @@ rb_vec2 turned = rb_vec2_rotate(direction, RB_PI * 0.5f);
   normal; libm `PUBLIC` (ADR 0026).
 
 ## Future work
-- Matrix multiplication and rotation matrices, if rotated quads or 3D need them.
+- Matrix multiplication and rotation matrices, if camera rotation or 3D need them (sprites turn
+  without them: ADR 0027).
 - Lerp, angle of a vector, squared length: with their first user.
 
 ## History

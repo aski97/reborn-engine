@@ -10,7 +10,7 @@
 | Application lifecycle | [app.md](app.md) | In progress | v0.1.0 | 2026-11-27 |
 | Logging & asserts | [logging.md](logging.md) | Stable | v0.1.0 | 2026-11-16 |
 | Memory | [memory.md](memory.md) | Stable | v0.1.0 | 2026-11-27 |
-| Vulkan renderer | [renderer.md](renderer.md) | In progress | v0.1.0 | 2026-11-27 |
+| Vulkan renderer | [renderer.md](renderer.md) | In progress | v0.1.0 | 2026-11-28 |
 | Math | [math.md](math.md) | In progress | v0.2.0 | 2026-11-27 |
 | 2D camera | [camera2d.md](camera2d.md) | In progress | v0.2.0 | 2026-11-27 |
 | Fonts | [font.md](font.md) | In progress | v0.2.0 | 2026-11-24 |

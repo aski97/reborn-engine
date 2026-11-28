@@ -43,6 +43,7 @@ set(REBORN_SOURCES
     src/platform/input.c
     src/platform/platform.c
     src/renderer/camera2d.c
+    src/renderer/sprite.c
     src/renderer/vulkan/vulkan_capture.c
     src/renderer/vulkan/vulkan_debug.c
     src/renderer/vulkan/vulkan_device.c

@@ -35,6 +35,7 @@ reborn_add_test_executable(reborn_tests
     platform/test_memory.c
     platform/test_platform.c
     renderer/test_camera2d.c
+    renderer/test_sprite.c
     renderer/vulkan/test_vulkan_capture.c
     renderer/vulkan/test_vulkan_debug.c
     renderer/vulkan/test_vulkan_device.c

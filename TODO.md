@@ -21,11 +21,12 @@ the ring and the arc, the arc a shape of its own) and its phases (title, playing
 over) stay in its rules.
 - [x] 2D math for angles and bounces (ADR 0026): dot product, length, normalization, reflection, a
       vector from an angle and rotated by one
-- [ ] Rotated quads (ADR 0016): an angle in the quad's push constants, about the quad's center, in
-      ADR 0026's convention (radians, clockwise on screen)
-- [ ] Round shapes for the ball, the ring and the arc: a disc texture drawn in code and rotated
-      segments (in Orbit) vs circle and arc primitives in the engine (a shader of their own), to
-      decide
+- [x] Sprites (ADR 0027): one general draw (`rb_sprite`: rectangle, rotation, texture, region,
+      color), turned about its center by the CPU as a corner and two edges, in ADR 0026's
+      convention; the earlier draws are its shorthands
+- [ ] Round shapes for the ball, the ring and the arc: a disc texture drawn in code and turned
+      segments (sprites, in Orbit) vs circle and arc primitives in the engine (a shader of their
+      own), to decide
 - [ ] Orbit, playable without sound
   - [ ] Layers (rules, input, view, glue), rules and input tested
   - [ ] The ball bouncing off the arc, its new angle set by where it hits; the ring shrinking;
@@ -332,10 +333,13 @@ In order; each gets a version when it starts.
 - [ ] GPU override: choose the device by name or index (config or environment), e.g. to test the
       integrated GPU of a laptop or force lavapipe (ADR 0013, L3)
 - [ ] Batched 2D renderer (sprites, textures): few draw calls instead of one per quad (ADR 0015:
-      F2, a vertex buffer, instead of today's F1). `rb_renderer_draw_quad` and `_draw_texture`
-      keep their signatures
+      F2, a vertex buffer, instead of today's F1). Every draw keeps its signature; the batch
+      collects the same corner and edges `rb_sprite_quad_make` computes today (ADR 0027). Also
+      when a per-quad datum no longer fits the push constants (120 of 128 bytes used)
   - [ ] The frame's quads collected into a vertex buffer
   - [ ] `quad.vert` reads vertices instead of push constants
+  - [ ] `rb_renderer_draw_sprites(renderer, sprites, count)`: an array of `rb_sprite` in one
+        call, when a game keeps its sprites in arrays
   - [ ] A texture change breaks a batch: atlases vs bindless textures (one array of every texture
         bound once per frame, its index per vertex; ADR 0017, D2), to decide
 - [ ] GPU memory block allocator (ADR 0017, B2). Why it will be needed: today every texture and
@@ -375,7 +379,13 @@ In order; each gets a version when it starts.
 - [ ] Several cameras on the world at once (split-screen, minimap): a viewport rectangle in
       `rb_camera2d`, the part of the window its field goes into (today: the largest centered one);
       `rb_camera2d_make` gives it the whole window. When a game shows the world twice
-- [ ] Rotation beyond rotated quads (Orbit, v0.3.0), when a game needs it (ADR 0016)
+- [ ] Sprite fields, when a game needs them (ADR 0027): each a new field of `rb_sprite` whose zero
+      keeps a sprite as it was; only `renderer/sprite.c` changes, not the shader
+  - [ ] A pivot to turn about (a needle about its end, a door about its hinge), measured from the
+        center so that zero is the center
+  - [ ] Flipping, horizontal and vertical (a character facing left); today a negative source
+        size mirrors
+- [ ] Rotation beyond sprites (ADR 0027), when a game needs it (ADR 0016)
   - [ ] Matrix multiplication
   - [ ] Camera rotation
 - [ ] A color of their own for the camera's bars, where the window's aspect differs from the
@@ -424,6 +434,8 @@ Backends, the mixer, WAV decoding and sound effects come with Orbit (v0.3.0).
   - [ ] Word wrapping to a width
   - [ ] Colors per character
   - [ ] `rb_text_drawf`, if formatting numbers repeats everywhere
+- [ ] Turned text: a rotation in `rb_text_style`, each glyph's center turned about the anchor and
+      the glyph by the same angle (sprites, ADR 0027). When a game writes at an angle
 - [ ] UI scaled from a reference resolution, with elements anchored to the window's edges and a
       continuous scale (ADR 0021): with smooth TrueType text, whose pixels stay even at any scale
       (likely Hollow's menus)
@@ -458,6 +470,9 @@ second game needs it too.
       ADR)
   - [ ] Point in rectangle: in Blink's rules today (`rect_contains`, edges included); with the
         second game that needs it, Blink then drops its own
+  - [ ] Point in a turned rectangle (a click on a turned sprite, ADR 0027): the point turned back
+        by the sprite's angle about its center, then point in rectangle. When a game clicks
+        turned things
   - [ ] Circles and axis-aligned boxes (AABB), and the tests between them: Orbit's circle tests
         live in its rules (v0.3.0) and move here with Hollow, whose world is boxes
   - [ ] Contact data for the response: normal and penetration depth
@@ -568,6 +583,10 @@ capture are in v0.2.0 (driving Blink from an agent); these build on them.
   - [ ] `longjmp`-based `RB_REQUIRE` and an `RB_ASSERT` handler hook, to test that asserts fire
   - [ ] Fixtures, when tests start repeating setup
   - [ ] ULP-based float comparison
+  - [ ] Float and vector comparisons in the framework: `EXPECT_F32_NEAR` is copied into ten
+        test files (Blink's included, with two signatures), `EXPECT_VEC2_NEAR` into three
+        (`test_math.c`, `test_camera2d.c`, `test_sprite.c`). With the ULP comparison, or the
+        refactoring
 - [ ] Integration tests for platform and renderer
   - [x] Tests that open a window, start the renderer and run the app (`tests/app/`, renderer
         tests)

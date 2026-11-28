@@ -482,6 +482,65 @@ RB_TEST(vulkan_renderer, texture_regions_are_drawn_without_validation_messages) 
     stop(renderer);
 }
 
+/* ============================================================================
+ * Sprites (ADR 0027)
+ * ========================================================================== */
+
+/*
+ * Every kind of sprite: upright and turned (a huge angle too), plain,
+ * textured, with a region and mirrored, on a zero and a stale handle, with no
+ * color, in pixels and through a camera. Validation would report the push
+ * constants overflowing their range or a draw without a set.
+ */
+RB_TEST(vulkan_renderer, sprites_are_drawn_without_validation_messages) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_texture texture = create_test_texture(renderer, RB_TEXTURE_FILTER_LINEAR);
+    rb_texture stale = create_test_texture(renderer, RB_TEXTURE_FILTER_NEAREST);
+    rb_renderer_destroy_texture(renderer, stale);
+    rb_camera2d camera = rb_camera2d_make((rb_vec2){8.0f, 4.5f}, (rb_vec2){16.0f, 9.0f});
+    rb_color    white = rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f);
+    rb_sprite   sprites[] = {
+        {.rect = {10.0f, 10.0f, 40.0f, 20.0f}, .color = white},
+        {.rect = {60.0f, 10.0f, 40.0f, 20.0f}, .rotation = 0.7f, .color = white},
+        {.rect = {110.0f, 10.0f, 40.0f, 20.0f}, .rotation = -12345.0f, .color = white},
+        {.rect = {10.0f, 60.0f, 32.0f, 32.0f},
+         .rotation = 1.0f,
+         .texture = texture,
+         .color = white},
+        {.rect = {60.0f, 60.0f, 32.0f, 32.0f},
+         .rotation = 2.0f,
+         .texture = texture,
+         .source = {1.0f, 0.0f, 1.0f, 1.0f},
+         .color = white},
+        {.rect = {110.0f, 60.0f, 32.0f, 32.0f},
+         .texture = texture,
+         .source = {2.0f, 0.0f, -2.0f, 2.0f},
+         .color = white},
+        {.rect = {160.0f, 60.0f, 16.0f, 16.0f}, .rotation = 0.5f, .texture = stale, .color = white},
+        {.rect = {200.0f, 60.0f, 16.0f, 16.0f}, .rotation = 0.5f}, /* no color: invisible */
+        {.rect = {-20.0f, -20.0f, 60.0f, 10.0f}, .rotation = 0.3f, .color = white}, /* outside */
+    };
+    for (u32 i = 0; i < 2 * RB_VK_FRAMES_IN_FLIGHT + 1; ++i) {
+        if (!rb_renderer_begin_frame(renderer)) {
+            RB_EXPECT(false);
+            break;
+        }
+        for (usize s = 0; s < sizeof(sprites) / sizeof(sprites[0]); ++s) {
+            rb_renderer_draw_sprite(renderer, &sprites[s]);
+        }
+        rb_renderer_set_camera(renderer, &camera);
+        rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {7.0f, 4.0f, 2.0f, 1.0f},
+                                                       .rotation = RB_PI / 4.0f,
+                                                       .texture = texture,
+                                                       .color = white});
+        rb_renderer_end_frame(renderer);
+    }
+    RB_EXPECT(!renderer->failed);
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
 /* Destroying the shared objects with textures alive frees them too: validation sees no leak. */
 RB_TEST(vulkan_renderer, destroying_the_textures_frees_those_alive) {
     rb_renderer *renderer = start(true);
@@ -556,6 +615,50 @@ RB_TEST(vulkan_renderer, a_captured_frame_holds_what_was_drawn) {
     RB_EXPECT(pixel_near(image, 16, 16, red, 0));
     RB_EXPECT(pixel_near(image, 4, 4, clear, 1));
     RB_EXPECT(pixel_near(image, image->width - 1, image->height - 1, clear, 1));
+    expect_no_validation_messages(renderer);
+    stop(renderer);
+}
+
+/*
+ * Sprites turned a quarter, clockwise, about their centers (ADR 0027), as the
+ * window shows them. A 40 x 10 bar centered on (30, 30) stands up: x 25..35,
+ * y 10..50. The 2x2 test texture (red, green / blue, white), 40 x 40 centered
+ * on (220, 120), turns with its quad: red moves from the top left to the top
+ * right, blue from the bottom left to the top left.
+ */
+RB_TEST(vulkan_renderer, a_captured_sprite_turns_about_its_center) {
+    rb_renderer *renderer = start(true);
+    RB_REQUIRE(renderer != NULL);
+    rb_texture texture = create_test_texture(renderer, RB_TEXTURE_FILTER_NEAREST);
+    rb_renderer_set_clear_color(renderer, rb_color_srgb(0.2f, 0.4f, 0.6f, 1.0f));
+    RB_REQUIRE(rb_renderer_begin_frame(renderer));
+    rb_renderer_capture_frame(renderer);
+    rb_color white = rb_color_srgb(1.0f, 1.0f, 1.0f, 1.0f);
+    rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {10.0f, 25.0f, 40.0f, 10.0f},
+                                                   .rotation = RB_PI / 2.0f,
+                                                   .color = white});
+    rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {200.0f, 100.0f, 40.0f, 40.0f},
+                                                   .rotation = RB_PI / 2.0f,
+                                                   .texture = texture,
+                                                   .color = white});
+    rb_renderer_end_frame(renderer);
+
+    const rb_image *image = rb_renderer_captured_image(renderer);
+    RB_REQUIRE(image != NULL);
+    static const u8 clear[4] = {51, 102, 153, 255};
+    static const u8 opaque_white[4] = {255, 255, 255, 255};
+    static const u8 red[4] = {255, 0, 0, 255};
+    static const u8 green[4] = {0, 255, 0, 255};
+    static const u8 blue[4] = {0, 0, 255, 255};
+    /* Standing: drawn along y, not along x where it lay upright. */
+    RB_EXPECT(pixel_near(image, 30, 12, opaque_white, 0));
+    RB_EXPECT(pixel_near(image, 30, 47, opaque_white, 0));
+    RB_EXPECT(pixel_near(image, 13, 30, clear, 1));
+    RB_EXPECT(pixel_near(image, 46, 30, clear, 1));
+    /* The texture's quadrants, a quarter turn clockwise. */
+    RB_EXPECT(pixel_near(image, 210, 110, blue, 0));
+    RB_EXPECT(pixel_near(image, 230, 110, red, 0));
+    RB_EXPECT(pixel_near(image, 230, 130, green, 0));
     expect_no_validation_messages(renderer);
     stop(renderer);
 }

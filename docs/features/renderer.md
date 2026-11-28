@@ -4,18 +4,18 @@
 |---|---|
 | **Status** | In progress |
 | **Since** | v0.1.0 (2026-11-17) |
-| **Updated** | v0.2.0 (2026-11-27) |
+| **Updated** | v0.3.0 (2026-11-28) |
 | **Code** | `engine/include/reborn/renderer.h`, `engine/include/reborn/color.h`, `engine/src/core/color.c`, `engine/src/renderer/`, `engine/src/platform/platform_vulkan.h`, `engine/src/platform/*/…_library.c` |
-| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md), [0024](../adr/0024-screen-capture-and-png.md), [0025](../adr/0025-frame-statistics.md) |
+| **ADRs** | [0013](../adr/0013-vulkan-renderer.md), [0015](../adr/0015-shaders-and-graphics-pipeline.md), [0016](../adr/0016-math-and-2d-camera.md), [0017](../adr/0017-gpu-memory-and-textures.md), [0018](../adr/0018-bitmap-font-and-glyph-atlas.md), [0024](../adr/0024-screen-capture-and-png.md), [0025](../adr/0025-frame-statistics.md), [0027](../adr/0027-sprites-and-rotation.md) |
 
 ## Summary
 Draws through Vulkan 1.3 into a window, on Windows and Linux. Built step by step; so
 far it opens the Vulkan loader at run time, creates an instance with validation layers reporting
 to the engine's log, picks a GPU, opens a device, keeps a swapchain sized to the window and
 presents a frame cleared to a color the game sets, with two frames in flight. The game draws
-colored or textured quads through one graphics pipeline, its shaders compiled at build time, in
-window pixels or in world units through a 2D camera ([camera2d.md](camera2d.md)). Textures are
-created from RGBA pixels and live in GPU memory.
+colored or textured quads, upright or turned (sprites), through one graphics pipeline, its shaders
+compiled at build time, in window pixels or in world units through a 2D camera
+([camera2d.md](camera2d.md)). Textures are created from RGBA pixels and live in GPU memory.
 
 ## Spec
 - `rb_renderer_startup(allocator, config, platform, window)` returns an opaque `rb_renderer`, or
@@ -64,6 +64,15 @@ created from RGBA pixels and live in GPU memory.
   the top left, fractions allowed) stretched over the quad: a glyph out of a font's atlas
   (ADR 0018). Outside the texture its edge pixels repeat; a negative size mirrors.
   `rb_renderer_draw_texture` is the region covering the whole texture.
+- **Sprites** (ADR 0027): `rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect, .rotation,
+  .texture, .source, .color})`, the general draw; the three above are upright sprites in short
+  (`_draw_quad` and `_draw_texture` call it, `_draw_texture_region` shares its internal path).
+  `rect` is where the quad is upright; `rotation` turns it about
+  the rectangle's center, in radians, clockwise on screen for a positive angle (ADR 0026), any
+  finite value. The texture and its region turn with it. A field left out is zero, which is its
+  default: upright, no texture (a plain quad), and a `source` with no size (width and height 0)
+  is the whole texture; `rb_renderer_draw_texture_region` keeps its source as given. `color` has
+  no default: zero is transparent, so it is always given (as `rb_text_style`'s).
 - **Pipeline:** one, built at startup for the swapchain's format (a failure fails the startup),
   rebuilt only if a new swapchain comes with another format (a failure then stops drawing). No
   vertex buffers, no culling, viewport and scissor set at each frame's begin and each change of
@@ -136,7 +145,7 @@ A quad through the pipeline (window 800x600, pixels, `draw_quad(100, 50, 200, 10
 ```mermaid
 flowchart LR
     B0["begin: push view<br/>ortho(0, 800, 0, 600)"] --> C
-    C["draw_quad: bind the white texture's set if another is bound,<br/>push constants from offset 64<br/>{100,50} {200,100} uv {0,0} {1,1} red<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>corner → point → view × point → -1..1<br/>uv = uv_offset + corner × uv_size"]
+    C["draw_quad: bind the white texture's set if another is bound,<br/>rb_sprite_quad_make: rotation 0, so origin {100,50},<br/>edges {200,0} {0,100}; push constants from offset 64<br/>red, origin, edges, uv {0,0} {1,1}<br/>+ vkCmdDraw(6)"] --> V["quad.vert x6<br/>point = origin + corner.x × axis_x + corner.y × axis_y<br/>→ view × point → -1..1<br/>uv = uv_offset + corner × uv_size"]
     V --> RS["rasterizer<br/>pixels 100..299 x 50..149, uv interpolated"]
     RS --> FS["quad.frag x20000<br/>out = texture(tex, uv) × color"]
     FS --> B["blend: src·a + dst·(1−a)"]
@@ -181,12 +190,19 @@ sequenceDiagram
 - The presentation semaphore is per swapchain image, not per frame in flight: present signals
   nothing back, and the image returning from acquire is the only sign that its present is over.
 - Barriers and the submit use synchronization2 (`vkCmdPipelineBarrier2`, `vkQueueSubmit2`).
-- A quad needs no GPU memory: the vertex shader picks one of six corners with `gl_VertexIndex`
-  and scales it by the quad's rectangle, received as push constants. `rb_vk_quad_push` (112 bytes:
-  view matrix, position, size, UV offset and size, color) mirrors the block in `shaders/quad.glsl`, shared by both
-  shaders; `_Static_assert`s check offsets and size. The view (64 bytes) is pushed when the space
-  changes, each quad pushes only its 48 bytes: push constants persist across draws. The renderer divides
-  a draw's source rectangle by the texture's size: shaders sample in fractions of the texture.
+- A quad needs no GPU memory: the vertex shader picks one of six corners of the unit square with
+  `gl_VertexIndex` and places it along the quad's two edges, received as push constants.
+  `rb_vk_quad_push` (120 bytes: view matrix, color, origin, the two edges, UV offset and size)
+  mirrors the block in `shaders/quad.glsl`, shared by both shaders; `_Static_assert`s check
+  offsets and size. The view (64 bytes) is pushed when the space changes, each quad pushes only its
+  56 bytes: push constants persist across draws. 8 of the 128 guaranteed bytes are left: the next
+  per-quad datum needs the batched renderer. The renderer divides a draw's source rectangle by the
+  texture's size: shaders sample in fractions of the texture.
+- The CPU turns the quad (`renderer/sprite.c`, backend-independent and pure, like `camera2d.c`):
+  `rb_sprite_quad_make` gives the corner and the edges `(w cos, w sin)`, `(-h sin, h cos)`, with
+  the C library's sine and cosine, accurate at any angle (Vulkan guarantees the GPU's only within
+  [-π, π]). Written so that 0 gives exactly `(x, y)`, `(w, 0)`, `(0, h)`: upright quads land on
+  the pixels they did before rotation. A pivot, flipping or scale later change only that file.
 - A texture is an image (optimal tiling, `R8G8B8A8_SRGB`), its memory, a view and a descriptor
   set (binding 0: combined image sampler, read by the fragment shader) written once at creation
   with the sampler of its filter. The set layout is set 0 of the pipeline layout; the pool holds
@@ -268,12 +284,17 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
   resource (B1); blocking staging upload (C1); one descriptor set per texture (D1); nearest or
   linear per texture (E3); RGBA8 sRGB (F1); destroy waits for the GPU (G1).
 - A source rectangle per textured draw, in texture pixels (ADR 0018, A1).
+- One general draw taking a sprite struct, the earlier draws kept as shorthands (ADR 0027, A2);
+  turned about the center (B1); the CPU builds the quad as a corner and two edges (C3); a source
+  left out is the whole texture (D1).
 - Frame capture from the swapchain image, `TRANSFER_SRC` where offered (ADR 0024, B1): see
   [screen-capture.md](screen-capture.md).
 
 ## Future work
-- Batched 2D renderer with vertex buffers, when a game draws many sprites; bindless textures or
-  atlases with it (ADR 0017, D2).
+- Batched 2D renderer with vertex buffers, when a game draws many sprites, taking arrays of
+  `rb_sprite`; bindless textures or atlases with it (ADR 0017, D2).
+- Sprite fields when a game needs them (ADR 0027): a pivot (zero: the center), flipping, scale;
+  only `sprite.c` changes.
 - GPU memory block allocator, uploads without a stall, deferred destruction (ADR 0017, B2, C2,
   G2); premultiplied alpha with image decoding.
 - Shaders as files next to the executable, with hot reload (ADR 0015, E2).
@@ -295,3 +316,4 @@ rb_renderer_shutdown(renderer); /* "Vulkan validation: no errors or warnings" */
 | v0.2.0 | 2026-11-24 | `rb_renderer_draw_texture_region`: a source rectangle per draw; UV offset and size in the push constants (112 bytes) |
 | v0.2.0 | 2026-11-26 | Frame capture: `rb_renderer_capture_frame`, `rb_renderer_captured_image`; swapchain images copyable where the GPU allows (ADR 0024) |
 | v0.2.0 | 2026-11-27 | `rb_renderer_get_info`: GPU, present mode, vsync, swapchain (ADR 0025) |
+| v0.3.0 | 2026-11-28 | Sprites: `rb_sprite`, `rb_renderer_draw_sprite`, turned about their center; the CPU builds each quad as a corner and two edges, push constants 120 bytes (ADR 0027) |

@@ -9,13 +9,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   `rb_vec2_normalize` (the zero vector stays zero), `rb_vec2_reflect` (asserts a unit normal),
   `rb_vec2_from_angle`, `rb_vec2_rotate`, `RB_PI`. Angles in radians, clockwise on screen with
   y down.
-- Sandbox: a ball bouncing inside a ring of dots in the world field, with its trail, its speed
-  and its bounces; a square orbits the ring.
+- Sandbox: a ball bouncing inside a ring of segments, each turned tangent to it, in the world
+  field, with its trail, its speed and its bounces.
+- Sprites (ADR 0027), in `reborn/renderer.h`: `rb_sprite` (rectangle, rotation, texture, source
+  region, color) and `rb_renderer_draw_sprite`. A sprite turns about its center, in radians,
+  clockwise on screen; its texture turns with it. Fields left out are their default (upright, no
+  texture, the whole texture), except `color`. `rb_renderer_draw_quad`, `_draw_texture` and
+  `_draw_texture_region` are upright sprites in short.
 
 ### Changed
 - The engine links libm `PUBLIC` on Linux: `reborn/math.h`'s inline functions call it from the
   code that includes them.
-- Sandbox: the world's square orbits the bounce demo's ring instead of going around a rectangle.
+- Sandbox: the world's bar orbits the bounce demo's ring instead of a square going around a
+  rectangle.
+- The quad shader receives each quad as a corner and two edges, turned by the CPU with the C
+  library's sine and cosine: push constants grow from 112 to 120 bytes. Upright quads land on the
+  same pixels as before.
+- Sandbox: the sliding square rolls like a wheel; the checkerboard turns on its center.
 - The math has a feature page of its own, `docs/features/math.md`, apart from the 2D camera's.
 - Blink plays fairer and answers every click (ADR 0028): a click is tested against the square as
   it was on screen 50 ms earlier, and a square stays clickable that long after its time; the

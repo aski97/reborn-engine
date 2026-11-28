@@ -10,6 +10,7 @@
 #include "platform/platform_vulkan.h"
 #include "renderer/camera2d_internal.h"
 #include "renderer/renderer_internal.h"
+#include "renderer/sprite_internal.h"
 
 /*
  * Every Vulkan object that exists, in reverse order of creation: each one
@@ -207,11 +208,12 @@ void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *camera) {
 }
 
 /*
- * A quad with `texture`'s pixels multiplied by `color`: its set bound if the
- * last draw used another, its push constants, six vertices. `source` is the
- * region of the texture it shows, in the texture's pixels (ADR 0018).
+ * The one path of every draw (ADR 0027): `rect` turned by `rotation` about its
+ * center, showing the `source` region of `texture` (in its pixels, ADR 0018)
+ * multiplied by `color`. Binds the texture's set if the last draw used
+ * another, pushes the quad, draws six vertices.
  */
-static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
+static void renderer_draw(rb_renderer *renderer, rb_rect rect, f32 rotation,
                           const rb_vk_texture *texture, rb_rect source, rb_color color) {
     /* Outside a frame there is no command buffer to record into: a bug in the caller. */
     RB_ASSERT(renderer->in_frame);
@@ -223,53 +225,62 @@ static void renderer_draw(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 he
                                     renderer->pipeline.layout, 0, 1, &texture->set, 0, NULL);
         renderer->bound_set = texture->set;
     }
+    /* The CPU turns the quad; the shader only places corners along its edges. */
+    rb_sprite_quad turned = rb_sprite_quad_make(rect, rotation);
     /* Shaders sample in fractions of the texture: one division here instead of one per caller. */
     f32             texture_width = (f32)texture->width;
     f32             texture_height = (f32)texture->height;
     rb_vk_quad_push quad = {
-        .position = {x, y},
-        .size = {width, height},
+        .color = {color.r, color.g, color.b, color.a},
+        .origin = {turned.origin.x, turned.origin.y},
+        .axis_x = {turned.axis_x.x, turned.axis_x.y},
+        .axis_y = {turned.axis_y.x, turned.axis_y.y},
         .uv_offset = {source.x / texture_width, source.y / texture_height},
         .uv_size = {source.width / texture_width, source.height / texture_height},
-        .color = {color.r, color.g, color.b, color.a},
     };
-    /* From `position` on: the view pushed by the last change of space stays (ADR 0016). */
+    /* From `color` on: the view pushed by the last change of space stays (ADR 0016). */
     vk->vkCmdPushConstants(commands, renderer->pipeline.layout, RB_VK_QUAD_PUSH_STAGES,
-                           RB_VK_QUAD_PUSH_OFFSET, RB_VK_QUAD_PUSH_SIZE, quad.position);
+                           RB_VK_QUAD_PUSH_OFFSET, RB_VK_QUAD_PUSH_SIZE, quad.color);
     /* Six vertices, two triangles: the vertex shader builds them from the quad (F1). */
     vk->vkCmdDraw(commands, 6, 1, 0, 0);
 }
 
-/* The region covering the whole texture. */
-static rb_rect renderer_whole(const rb_vk_texture *texture) {
-    return (rb_rect){0.0f, 0.0f, (f32)texture->width, (f32)texture->height};
+void rb_renderer_draw_sprite(rb_renderer *renderer, const rb_sprite *sprite) {
+    RB_ASSERT(renderer != NULL);
+    RB_ASSERT(sprite != NULL);
+    /*
+     * A zero or stale handle gets the white texture, which the shader's texture
+     * times color leaves as it is (ADR 0017): a plain quad, never a freed set.
+     */
+    const rb_vk_texture *texture = rb_vk_textures_get(&renderer->textures, sprite->texture.id);
+    renderer_draw(renderer, sprite->rect, sprite->rotation, texture,
+                  rb_sprite_source(sprite->source, texture->width, texture->height), sprite->color);
 }
+
+/* The shorthands: upright sprites, their fields left out at their defaults. */
 
 void rb_renderer_draw_quad(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                            rb_color color) {
-    RB_ASSERT(renderer != NULL);
-    /* White: the shader's texture times color leaves the color as it is (ADR 0017). */
-    const rb_vk_texture *white = &renderer->textures.white;
-    renderer_draw(renderer, x, y, width, height, white, renderer_whole(white), color);
+    rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {x, y, width, height}, .color = color});
 }
 
 void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                               rb_texture texture, rb_color tint) {
-    RB_ASSERT(renderer != NULL);
-    /* A zero or stale handle gets the white texture: a plain quad, never a freed set. */
-    const rb_vk_texture *found = rb_vk_textures_get(&renderer->textures, texture.id);
-    renderer_draw(renderer, x, y, width, height, found, renderer_whole(found), tint);
+    rb_renderer_draw_sprite(
+        renderer, &(rb_sprite){.rect = {x, y, width, height}, .texture = texture, .color = tint});
 }
 
 void rb_renderer_draw_texture_region(rb_renderer *renderer, f32 x, f32 y, f32 width, f32 height,
                                      rb_texture texture, rb_rect source, rb_color tint) {
     RB_ASSERT(renderer != NULL);
     /*
-     * A zero or stale handle gets the white texture: the source lands far
-     * outside its single pixel, but clamping to the edge reads that pixel
-     * anyway, so it is still a plain quad.
+     * Not through rb_renderer_draw_sprite: its source is used as given, even
+     * with no size, where a sprite's would be the whole texture. A zero or
+     * stale handle gets the white texture: the source lands far outside its
+     * single pixel, but clamping to the edge reads that pixel anyway, so it is
+     * still a plain quad.
      */
-    renderer_draw(renderer, x, y, width, height,
+    renderer_draw(renderer, (rb_rect){x, y, width, height}, 0.0f,
                   rb_vk_textures_get(&renderer->textures, texture.id), source, tint);
 }
 

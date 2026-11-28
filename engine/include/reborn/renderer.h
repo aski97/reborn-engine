@@ -13,9 +13,10 @@
  *   rb_renderer_shutdown(renderer);   // logs the validation totals, frees the state
  *
  * Each frame starts cleared to the clear color; the game's `render` draws
- * colored or textured quads on top, in window pixels or, through a 2D camera,
- * in world units (rb_renderer_set_camera). Pointer parameters must not be NULL, unless
- * stated otherwise (RB_ASSERT in debug builds).
+ * colored or textured quads on top, upright or turned (rb_renderer_draw_sprite),
+ * in window pixels or, through a 2D camera, in world units
+ * (rb_renderer_set_camera). Pointer parameters must not be NULL, unless stated
+ * otherwise (RB_ASSERT in debug builds).
  */
 #ifndef RB_RENDERER_H
 #define RB_RENDERER_H
@@ -86,7 +87,8 @@ RB_API void rb_renderer_set_camera(rb_renderer *renderer, const rb_camera2d *cam
  * pixels by default, origin at the top left and y pointing down, like
  * rb_mouse_position; fractions are allowed. Alpha blends with what is
  * underneath: 1 covers, 0 leaves it untouched. Only inside the game's `render`
- * (a frame begun by the application layer).
+ * (a frame begun by the application layer). An upright, untextured sprite
+ * (rb_renderer_draw_sprite) in short.
  *
  *   rb_renderer_draw_quad(renderer, 100, 50, 200, 100, rb_color_srgb(1, 0, 0, 1));
  */
@@ -176,6 +178,59 @@ RB_API void rb_renderer_draw_texture(rb_renderer *renderer, f32 x, f32 y, f32 wi
 RB_API void rb_renderer_draw_texture_region(rb_renderer *renderer, f32 x, f32 y, f32 width,
                                             f32 height, rb_texture texture, rb_rect source,
                                             rb_color tint);
+
+/* ============================================================================
+ * Sprites (ADR 0027)
+ *
+ * Everything a 2D draw can have in one struct: a rectangle, a rotation, a
+ * texture and its region, a color. The draws above are its common cases in
+ * short; every draw goes through the same path.
+ *
+ *   // A bar 0.4 x 0.1 turned an eighth of a turn about its center, clockwise.
+ *   rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {x, y, 0.4f, 0.1f},
+ *                                                  .rotation = RB_PI / 4,
+ *                                                  .color = red});
+ *   // A frame of a sprite sheet, spinning.
+ *   rb_renderer_draw_sprite(renderer, &(rb_sprite){.rect = {x, y, 32, 32},
+ *                                                  .rotation = angle,
+ *                                                  .texture = sheet,
+ *                                                  .source = {64, 0, 16, 16},
+ *                                                  .color = white});
+ * ========================================================================== */
+
+/*
+ * One draw. With designated initializers the fields left out are zero, and
+ * zero is each field's default (upright, no texture, all of the texture),
+ * except `color`: zero is transparent, so it is always given, as in
+ * rb_text_style. Fields added later keep the rule: zero leaves a sprite as it
+ * was.
+ */
+typedef struct rb_sprite {
+    /* Where it is upright, in the current space (rb_renderer_set_camera); fractions allowed. */
+    rb_rect rect;
+    /*
+     * Radians about the rectangle's center, clockwise on screen for a
+     * positive angle (ADR 0026). Any finite value; one that keeps growing
+     * loses precision as a float: wrap it into a turn.
+     */
+    f32 rotation;
+    /* Zero or stale: no texture, a plain quad of `color`. */
+    rb_texture texture;
+    /*
+     * The region of the texture stretched over the rectangle, in its pixels,
+     * as rb_renderer_draw_texture_region's (it turns with the quad). No size
+     * (width and height 0): the whole texture.
+     */
+    rb_rect source;
+    /* The quad's color, or the texture's tint (white leaves it as it is); linear (rb_color). */
+    rb_color color;
+} rb_sprite;
+
+/*
+ * Draws `sprite` into the current frame, on top of what was drawn before it,
+ * blending by alpha like the other draws. Only inside the game's `render`.
+ */
+RB_API void rb_renderer_draw_sprite(rb_renderer *renderer, const rb_sprite *sprite);
 
 /* Counted since startup. Only messages from the validation layers count, not driver notes. */
 typedef struct rb_renderer_validation_stats {
