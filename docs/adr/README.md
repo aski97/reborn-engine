@@ -42,5 +42,6 @@ its implementation.
 | 0024 | [Screen capture and PNG writing](0024-screen-capture-and-png.md) | Accepted |
 | 0025 | [Frame statistics and the stats overlay](0025-frame-statistics.md) | Accepted |
 | 0026 | [Vectors for angles and bounces](0026-vectors-for-angles-and-bounces.md) | Accepted |
+| 0028 | [Blink: fair clicks and feedback](0028-blink-fair-clicks-and-feedback.md) | Proposed |
 
 Template: [`template.md`](template.md).

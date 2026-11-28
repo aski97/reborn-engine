@@ -68,6 +68,24 @@ over) stay in its rules.
         mixer's output saved like `screen.capture`, so agents and tests check what plays
 - [ ] Orbit's sounds: bounce, miss, game over. Sounds in Blink too: to propose
 
+**Blink, more playable** (from playing it: a click on the square's edge misses, the square is tiny
+by the time the mouse gets there, nothing answers a click)
+- [x] Events that carry what happened and where, in order (ADR 0028), instead of the step's bits
+- [x] Clicks outside the square logged at debug level with their distance from it: misses measured,
+      not guessed
+- [x] Feedback for every click and every lost square, drawn by the view and timed by the steps, so
+      a replay shows it the same
+- [x] A forgiving hit test: the click tested against the square as the player saw it, 50 ms earlier
+      (latency compensation)
+- [x] The timer apart from the target: the square stops shrinking at 40% of its side; the shortest
+      lifetime 0.6 s (0.4 s was less than reaction plus the mouse's travel)
+- [x] READY for 0.6 s before a game's first square
+- [ ] Input-to-screen latency (engine): the input is read before the wait for vsync (about 16 ms)
+      and the frame then queues behind others. Late input sampling vs fewer swapchain images vs
+      MAILBOX vs waiting for the present, to decide in an ADR; shown in the sandbox (a square on the
+      mouse next to the system cursor)
+- [x] Tests, README and an agent's game updated
+
 **Engine**
 - [ ] Command registry on a hash map (ADR 0022, F2) instead of the linear scan of a fixed table
   - [ ] Hash map, allocator-aware (macros vs `void*` + size: to decide in its ADR, ADR 0007)

@@ -13,11 +13,9 @@
 #include "blink_rules.h"
 #include "blink_view.h"
 
-/* Far more than a player can click in one step (1/60 s); beyond it, actions are dropped. */
-#define BLINK_MAX_ACTIONS 16u
-
 typedef struct blink_game {
     blink_state  rules;
+    blink_view   view; /* the effects still playing */
     rb_camera2d  camera;
     rb_font     *font;                       /* the builtin one, for the HUD */
     blink_action actions[BLINK_MAX_ACTIONS]; /* gathered by on_event, used by the next update */
@@ -56,6 +54,8 @@ static const char *blink_phase_name(blink_phase phase) {
     switch (phase) {
     case BLINK_PHASE_TITLE:
         return "title";
+    case BLINK_PHASE_READY:
+        return "ready";
     case BLINK_PHASE_PLAYING:
         return "playing";
     case BLINK_PHASE_GAME_OVER:
@@ -114,6 +114,7 @@ static void cmd_restart(void *state, rb_app *app, const rb_command_args *args,
         return;
     }
     blink_start(&game->rules, &blink_default_tuning, seed);
+    game->view = (blink_view){0};
     game->action_count = 0;
     RB_LOG_INFO("Seed: %llu (restart)", (unsigned long long)seed);
     rb_command_reply_u64(reply, "seed", seed);
@@ -173,16 +174,17 @@ static void game_on_event(void *state, rb_app *app, const rb_event *event) {
 static void game_update(void *state, rb_app *app, f64 dt) {
     (void)app;
     blink_game  *game = state;
-    blink_events events = blink_step(&game->rules, game->actions, game->action_count, (f32)dt);
+    blink_events events;
+    blink_step(&game->rules, game->actions, game->action_count, (f32)dt, &events);
     game->action_count = 0;
-    blink_view_report(&game->rules, events);
+    blink_view_update(&game->view, &game->rules, &events, (f32)dt);
 }
 
 static void game_render(void *state, rb_app *app, f64 alpha) {
     (void)alpha;
     blink_game    *game = state;
     rb_window_size size = rb_window_get_size(rb_app_platform(app), rb_app_window(app));
-    blink_view_draw(&game->rules, &game->camera, game->font,
+    blink_view_draw(&game->view, &game->rules, &game->camera, game->font,
                     (rb_vec2){(f32)size.pixel_width, (f32)size.pixel_height}, rb_app_renderer(app));
 }
 

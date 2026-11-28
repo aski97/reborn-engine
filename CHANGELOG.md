@@ -17,6 +17,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   code that includes them.
 - Sandbox: the world's square orbits the bounce demo's ring instead of going around a rectangle.
 - The math has a feature page of its own, `docs/features/math.md`, apart from the 2D camera's.
+- Blink plays fairer and answers every click (ADR 0028): a click is tested against the square as
+  it was on screen 50 ms earlier, and a square stays clickable that long after its time; the
+  square shrinks to 40% of its side, not to nothing, and the shortest lifetime is 0.6 s instead
+  of 0.4 s; 0.6 s of READY before a game's first square (`blink.state` phase `ready`); effects for
+  a hit (a flash, a growing outline), a click outside (a small outline where it landed) and a lost
+  square (a red flash); clicks outside logged at debug level with their distance from the square.
+  The rules' step fills a list of events with where they happened instead of returning bits.
 
 ## [0.2.0] - 2026-11-27
 

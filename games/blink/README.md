@@ -21,15 +21,22 @@ The log goes to the console and to `blink.log.jsonl` in the current directory.
 
 | Input | Action |
 |---|---|
-| Space or left click, title screen | First game |
+| Space or left click, title screen | First game, after READY |
 | Left click on the square | One point; the next square appears at once |
 | Space, game over | New game |
 | Left click, game over | New game, one second after the game over |
 | Closing the window | Quit |
 
-- The square's size is its timer: it shrinks to nothing when its time is up.
-- **Speed-up:** the first square lasts 1.5 s; each hit takes 5% off, down to 0.4 s. A miss does not
+- The square's size is its timer: it shrinks to 40% of its side as its time runs out, then
+  vanishes. It never becomes too small to click.
+- **Speed-up:** the first square lasts 1.5 s; each hit takes 5% off, down to 0.6 s. A miss does not
   change it.
+- **READY:** every game begins with 0.6 s of READY over an empty field, then the first square.
+- **Fair clicks:** what the screen shows left the game about 50 ms earlier, so a click is tested
+  against the square as it was then, and a square stays clickable that long after its time is up
+  (ADR 0028).
+- **Feedback:** a hit flashes the square, whose outline grows and fades; a click outside leaves a
+  small white outline where it landed; a lost square flashes red where it vanished.
 - **Title screen:** "BLINK" made of squares, "PRESS SPACE" blinking. Shown once, at launch.
 - **HUD:** the score in the top left corner, the lives as white pips in the top right one (a lost
   one fades). A click outside the square costs nothing.
@@ -39,7 +46,9 @@ The log goes to the console and to `blink.log.jsonl` in the current directory.
   whole factor, one per 180 pixels of window height (x4 at 720p, x6 at 1080p): text never gets
   uneven pixels, and on common screens it keeps the same proportion (ADR 0021).
 - **Log:** score and lives are logged at every change too (`Hit: score 4, next square lasts
-  1.22 s`, `Missed: 1 life left`, `Game over: score 4, best 4`), for agents and replays.
+  1.22 s`, `Missed: 1 life left`, `Game over: score 4, best 4`), for agents and replays. At debug
+  level, only in `blink.log.jsonl`: each click outside with its distance from the square
+  (`Click outside the square: 0.12 away, its side 0.90`), and each hit the grace allowed.
 
 ## Replaying a session
 
@@ -56,7 +65,7 @@ or from
 
 | Command | Reply |
 |---|---|
-| `blink.state` | `phase` (`title`, `playing`, `game_over`), `score`, `lives`, `best`, `phase_time`; while playing, `square`: center `x`, `y` and `side` in world units, `remaining` seconds, and `pixels` (`x`, `y`, `width`, `height`, `center_x`, `center_y`) in window pixels |
+| `blink.state` | `phase` (`title`, `ready`, `playing`, `game_over`), `score`, `lives`, `best`, `phase_time`; while playing, `square`: center `x`, `y` and `side` in world units, `remaining` seconds, and `pixels` (`x`, `y`, `width`, `height`, `center_x`, `center_y`) in window pixels |
 | `blink.restart <seed>` | Back to the title, a new session from that seed |
 
 An agent plays it with injected input (ADR 0023): paused, the square waits, and a click at
@@ -65,7 +74,7 @@ An agent plays it with injected input (ADR 0023): paused, the square waits, and 
 ```sh
 ./build/debug/bin/blink --listen 7777 &
 ./build/debug/bin/reborn-cmd 7777 "input.real off" pause "blink.restart 42" "input.tap space" \
-    "step 2" "blink.state"                     # playing: the square's pixels
+    "step 40" "blink.state"                    # past READY: the square's pixels
 ./build/debug/bin/reborn-cmd 7777 "input.click 1330.5 222.1" "step 2" "blink.state"   # those pixels: score 1
 ```
 
@@ -73,10 +82,10 @@ An agent plays it with injected input (ADR 0023): paused, the square waits, and 
 
 | File | Layer (ADR 0014) |
 |---|---|
-| `src/blink_rules.c` | Rules: state, tuning (`blink_default_tuning`), `blink_start`, `blink_step(actions, dt)` → events, `blink_square_rect` |
+| `src/blink_rules.c` | Rules: state, tuning (`blink_default_tuning`), `blink_start`, `blink_step(actions, dt)` → the step's events, in order, with where they happened; `blink_square_rect` |
 | `src/blink_input.c` | Input: left press → click in world units, Space → start |
-| `src/blink_view.c` | View: field and square in world units; title, HUD and game over in window pixels; a log line per event; the window icon |
-| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update`; the icon drawn in `configure`; the builtin font created in `init`, destroyed in `shutdown`; the `blink.*` commands |
+| `src/blink_view.c` | View: field, effects and square in world units; title, READY, HUD and game over in window pixels; per step, the events start effects (`blink_view`) and log a line each; the window icon |
+| `src/blink_game.c` | Glue: the engine callbacks; actions gathered by `on_event`, used by the next `update`, whose events go to the view; the icon drawn in `configure`; the builtin font created in `init`, destroyed in `shutdown`; the `blink.*` commands |
 | `src/main.c` | Entry point |
 
 The field is 16x9 world units through a 2D camera: the whole field is always visible, with bars
@@ -85,8 +94,9 @@ drawn in code at 16, 32 and 64 pixels and given to the window at creation (ADR 0
 
 ## Tests
 
-`tests/` checks the rules (title, hits, speed-up, shrinking target, lives, game over, restart,
-same seed same game), the input mapping, the HUD's scale and the icon, without a window:
+`tests/` checks the rules (title, READY, hits, the grace, speed-up, shrinking target, the events,
+lives, game over, restart, same seed same game), the effects, the input mapping, the HUD's scale
+and the icon, without a window:
 
 ```sh
 ctest --preset debug -R blink
